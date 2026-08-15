@@ -11,9 +11,11 @@ import '../../shared/json_helpers.dart';
 import '../../shared/widgets/barcode_scanner_sheet.dart';
 import '../customers/customer_picker.dart';
 import 'gift_card_share_sheet.dart';
+import 'gift_card_edit_sheet.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../appointments/calendar_theme.dart';
+import '../../core/network/idempotency.dart';
 
 /// Hediye Çeki & Kupon — web `hediye-cek` sayfasının mobil karşılığı.
 ///
@@ -70,6 +72,16 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
    */
   List<Map<String, dynamic>> _services = const [];
   List<Map<String, dynamic>> _packages = const [];
+  List<Map<String, dynamic>> _products = const [];
+  /*
+   * YÜKLENEMEDİ ≠ TANIMLI DEĞİL. Yan yollar sessizce yutulunca ekranda "katalog boş" ve
+   * "kurumun açık adresi tanımlı değil" yazıyordu; ikisi de yanlış teşhis — kullanıcı olmayan
+   * bir ayarı düzeltmeye gönderiliyor, çeki kataloğa bağlamadan oluşturuyordu.
+   */
+  bool _catalogFailed = false;
+  bool _profileFailed = false;
+  /// Kullanım (redeem) anahtarlarının oturum tuzu — ekran açıkken sabit kalır.
+  final String _redeemSalt = newIdempotencySalt();
   String _targetKind = 'service';
   String? _targetId;
 
@@ -124,25 +136,29 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
       final logo = '${profile['logoData'] ?? ''}';
       final name = '${profile['name'] ?? ''}'.trim();
       setState(() {
+        _profileFailed = false;
         _salonSlug = '${profile['slug'] ?? ''}'.isEmpty ? null : '${profile['slug']}';
         if (name.isNotEmpty) _salonName = name;
         _logoBytes = _decodeDataUrl(logo);
       });
     } catch (_) {
-      // sessiz geç
+      if (mounted) setState(() => _profileFailed = true);
     }
     try {
       final results = await Future.wait<dynamic>([
         widget.api.get('/api/admin/services/', query: {'page': 1, 'pageSize': 500}),
         widget.api.get('/api/admin/packages/', query: {'page': 1, 'pageSize': 500}),
+        widget.api.get('/api/admin/products/', query: {'page': 1, 'pageSize': 500}),
       ]);
       if (!mounted) return;
       setState(() {
+        _catalogFailed = false;
         _services = apiItems(results[0]);
         _packages = apiItems(results[1]);
+        _products = apiItems(results[2]);
       });
     } catch (_) {
-      // sessiz geç
+      if (mounted) setState(() => _catalogFailed = true);
     }
   }
 
@@ -158,12 +174,15 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
     }
   }
 
+  /// Hedef türüne göre katalog listesi — 'service' | 'package' | 'product'.
+  List<Map<String, dynamic>> _listForKind(String kind) =>
+      kind == 'service' ? _services : (kind == 'package' ? _packages : _products);
+
   /// Seçili katalog kaydı — kapsam metnini besler.
   Map<String, dynamic>? get _selectedTarget {
     final id = _targetId;
     if (id == null || id.isEmpty) return null;
-    final list = _targetKind == 'service' ? _services : _packages;
-    for (final x in list) {
+    for (final x in _listForKind(_targetKind)) {
       if ('${x['id']}' == id) return x;
     }
     return null;
@@ -253,6 +272,7 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
             : _recipientName.text.trim(),
         'serviceDefinitionId': _targetKind == 'service' ? _targetId : null,
         'servicePackageId': _targetKind == 'package' ? _targetId : null,
+        'productId': _targetKind == 'product' ? _targetId : null,
         'customerId': _createCustomer?.id,
         'branchId': widget.api.auth?.user?.branchId,
       });
@@ -307,13 +327,19 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
       {required bool allowReassign}) async {
     setState(() => _busy = true);
     try {
-      await widget.api.post('/api/admin/gift-cards/assign-customer', {
+      final result = await widget.api.post('/api/admin/gift-cards/assign-customer', {
         'code': code,
         'customerId': customerId,
         'allowReassign': allowReassign,
       });
       await _reload();
-      _toast('$code kartı $customerName adlı müşteriye tanımlandı.');
+      // ONAYA DÜŞTÜYSE TAMAMLANMIŞ DEME: personel yazmaları taslağa düşer ve istek yine 200
+      // döner. "Tanımlandı" demek, gerçekleşmemiş bir işlemin ardından kullanıcıyı bırakır;
+      // tekrar denenip mükerrer onay talebi açılır.
+      final pending = result is Map && result['pendingApproval'] == true;
+      _toast(pending
+          ? '$code kartının $customerName adlı müşteriye tanımlanması onaya gönderildi.'
+          : '$code kartı $customerName adlı müşteriye tanımlandı.');
     } catch (e) {
       final message = '$e';
       // Kart BAŞKA müşteriye tanımlıysa sunucu 409 döner; devir kullanıcı onayıyla yapılır.
@@ -347,7 +373,15 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
     final text = raw.trim();
     if (text.isEmpty) return '';
     final match = RegExp(r'hediye-kart/[^/]+/([^/?#\s]+)', caseSensitive: false).firstMatch(text);
-    if (match != null) return Uri.decodeComponent(match.group(1)!).toUpperCase();
+    if (match != null) {
+      // BOZUK KAÇIŞ ÇÖKERTMEZ: "%" gibi yarım diziler decodeComponent'i fırlatır; ham değere düşülür.
+      final raw = match.group(1)!;
+      try {
+        return Uri.decodeComponent(raw).toUpperCase();
+      } catch (_) {
+        return raw.toUpperCase();
+      }
+    }
     if (RegExp(r'^[A-Za-z0-9-]{4,40}$').hasMatch(text)) return text.toUpperCase();
     return '';
   }
@@ -365,6 +399,7 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
       card: card,
       salonName: _salonName,
       salonSlug: _salonSlug,
+      salonProfileFailed: _profileFailed,
       logoBytes: _logoBytes,
       defaultPhone: _phoneByCard['${card['code']}'] ?? '',
     );
@@ -397,15 +432,42 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
     final value = double.tryParse((amount ?? '').replaceAll(',', '.'));
     if (value == null || value <= 0) return;
     await _run(() async {
+      /*
+       * PARA YAZAR → ANAHTARLI GİDER. Anahtarsız istek ağ hatasında tekrar denendiğinde çekten
+       * İKİNCİ KEZ bakiye düşerdi; müşteri parasını sessizce kaybederdi. Anahtar İÇERİKTEN
+       * türetilir: aynı kart + aynı tutar aynı anahtarı üretir (çift dokunuş tek kayıt), tutar
+       * düzeltilirse anahtar da değişir ve meşru ikinci kullanım yazılır.
+       */
+      final key = idempotencyKey(_redeemSalt, ['gift-redeem', '${card['id']}', value]);
       await widget.api.post('/api/admin/gift-cards/${card['id']}/redeem', {
         'amount': value,
-      });
+      }, key);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Hediye çeki kullanıldı.')),
         );
       }
     });
+  }
+
+  /*
+   * KART DÜZELTME — kod/tür/değer HARİÇ (web'deki GiftCardEditModal'in eşi).
+   *
+   * Kart basılıp müşterinin eline geçer ve üstündeki QR kodu kalıcı olarak kodlar; kodu
+   * değiştirmek dolaşımdaki kartı tek hamlede öldürür. Yanlış basılmış kartın doğru yolu
+   * pasifleştirip yenisini basmaktır — bu yüzden düzeltme yalnız geçerlilik, kapsam, alıcı,
+   * kullanım hakkı, iç not ve katalog bağını kapsar.
+   */
+  Future<void> _edit(Map<String, dynamic> card) async {
+    final saved = await showGiftCardEditSheet(
+      context,
+      api: widget.api,
+      card: card,
+      services: _services,
+      packages: _packages,
+      products: _products,
+    );
+    if (saved == true) await _reload();
   }
 
   Future<void> _delete(Map<String, dynamic> card) async {
@@ -909,7 +971,7 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
 
   /// Katalog seçici — çekin hangi hizmet/paket için geçerli olduğu.
   Widget _targetPicker() {
-    final list = _targetKind == 'service' ? _services : _packages;
+    final list = _listForKind(_targetKind);
     final selected = _selectedTarget;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -917,14 +979,16 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
         Row(
           children: [
             const Expanded(
-              child: Text('Hangi hizmet / paket için? (ops.)',
+              child: Text('Hangi hizmet / paket / ürün için? (ops.)',
                   style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.muted)),
             ),
             SegmentedButton<String>(
               style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              // ÜÇÜNDEN EN FAZLA BİRİ: kısıt sunucuda da uygulanır (GiftCard.SetCatalogTarget).
               segments: const [
                 ButtonSegment(value: 'service', label: Text('Hizmet')),
                 ButtonSegment(value: 'package', label: Text('Paket')),
+                ButtonSegment(value: 'product', label: Text('Ürün')),
               ],
               selected: {_targetKind},
               onSelectionChanged: (v) => setState(() {
@@ -939,9 +1003,13 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
           initialValue: _targetId,
           isExpanded: true,
           decoration: InputDecoration(
-            labelText: _targetKind == 'service' ? 'Hizmet' : 'Paket',
+            labelText: _targetKind == 'service'
+                ? 'Hizmet'
+                : (_targetKind == 'package' ? 'Paket' : 'Ürün'),
             isDense: true,
-            hintText: list.isEmpty ? 'Katalog yüklenemedi' : 'Seçilmedi',
+            hintText: _catalogFailed
+                ? 'Katalog yüklenemedi'
+                : (list.isEmpty ? 'Tanımlı kayıt yok' : 'Seçilmedi'),
           ),
           items: [
             const DropdownMenuItem<String>(value: null, child: Text('Seçilmedi')),
@@ -950,6 +1018,23 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
           ],
           onChanged: (v) => setState(() => _targetId = v),
         ),
+        if (_catalogFailed) ...[
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFDF3E2),
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: const Color(0xFFEFC98B)),
+            ),
+            child: const Text(
+              'Hizmet/paket listesi alınamadı. Çeki şimdi kataloğa bağlamadan oluşturabilir, '
+              'liste geldiğinde bağı sonradan kurabilirsiniz.',
+              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF8A5A11)),
+            ),
+          ),
+        ],
         const SizedBox(height: 4),
         Text(
           selected == null
@@ -1430,6 +1515,16 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
               color: const Color(0xFF5D4A56),
               bg: AppColors.surfaceSoft,
               onTap: _busy ? null : () => _toggleActive(card),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _barButton(
+              icon: Icons.edit_outlined,
+              label: 'Düzelt',
+              color: const Color(0xFF5D4A56),
+              bg: AppColors.surfaceSoft,
+              onTap: _busy ? null : () => _edit(card),
             ),
           ),
           const SizedBox(width: 8),

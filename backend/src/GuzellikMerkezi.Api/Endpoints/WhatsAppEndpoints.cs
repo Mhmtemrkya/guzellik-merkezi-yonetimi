@@ -1,6 +1,7 @@
 using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
+using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Application.Features.WhatsApp;
 
@@ -43,6 +44,14 @@ public static class WhatsAppEndpoints
         // kontör/kuyruk protokolünden geçirir (bkz. WhatsAppService.SendGiftCardAsync).
         group.MapPost("/gift-card", async (SendGiftCardRequest request, Guid? tenantId, ICurrentUser currentUser, IWhatsAppService service, HttpContext http, CancellationToken ct) =>
         {
+            // BİLEŞİK YETKİ: grup zaten Notifications istiyor; hediye kartı MÜŞTERİYE AİT bir
+            // değer belgesi olduğu için ayrıca GiftCards izni de aranır. Yalnız "bildirim
+            // gönderebilen" bir personel, hediye kartı belgesi dağıtabilir olmamalı.
+            if (!currentUser.IsAllowed(Permissions.GiftCards))
+                return Results.Json(
+                    ApiResponse<object>.Fail("Forbidden", "Hediye kartı gönderimi için hediye çeki yetkisi gerekir.", http.TraceIdentifier),
+                    statusCode: StatusCodes.Status403Forbidden);
+
             var tid = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             return tid == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SendGiftCardAsync(tid, request, ct)).ToHttpResult(http);
         });

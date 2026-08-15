@@ -23,6 +23,8 @@ public sealed record GiftCardDto(
     Guid? ServiceDefinitionId,
     /// <summary>Çekin bağlandığı paket (varsa).</summary>
     Guid? ServicePackageId,
+    /// <summary>Çekin bağlandığı ürün (varsa).</summary>
+    Guid? ProductId,
     /// <summary>Kartın üzerine basılan alıcı adı; boşsa elle yazılmak üzere boş bırakılır.</summary>
     string? RecipientName,
     bool IsValid);
@@ -41,7 +43,31 @@ public sealed record CreateGiftCardRequest(
     string? ScopeLabel = null,
     string? RecipientName = null,
     Guid? ServiceDefinitionId = null,
-    Guid? ServicePackageId = null);
+    Guid? ServicePackageId = null,
+    Guid? ProductId = null);
+
+/// <summary>
+/// Var olan bir kartın DÜZELTİLMESİ.
+///
+/// <para>KOD, TÜR ve DEĞER BURADA YOK — bilerek. Kart basılıp müşterinin eline geçtiği ve
+/// üstündeki QR kodu kalıcı olarak kodladığı için kod değişikliği dolaşımdaki kartı öldürür;
+/// tür/değer ise kullanılmış bir kartta defteri (bkz. GiftCardTransaction) geçmişe dönük
+/// tutarsız yapar. Yanlış basılmış kartın doğru yolu: pasifleştirip yenisini basmaktır.</para>
+///
+/// <para>Alanlar OPSİYONELDİR ama <c>null</c> "dokunma" DEĞİL "temizle" demektir; istemci kartın
+/// tam hâlini gönderir (aksi hâlde "kapsamı sil" ile "kapsama dokunma" ayırt edilemezdi).</para>
+/// </summary>
+public sealed record UpdateGiftCardRequest(
+    DateTime? ValidFromUtc,
+    DateTime? ValidUntilUtc,
+    int MaxUses,
+    string? Note,
+    string? ScopeLabel,
+    string? RecipientName,
+    Guid? CustomerId,
+    Guid? ServiceDefinitionId,
+    Guid? ServicePackageId,
+    Guid? ProductId);
 
 /// <summary>QR okutularak çekin bir müşteriye bağlanması.</summary>
 public sealed record AssignGiftCardCustomerRequest(

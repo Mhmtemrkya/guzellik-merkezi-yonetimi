@@ -155,12 +155,16 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
 
   Future<void> _sendAssign(String code, {required bool allowReassign}) async {
     try {
-      await widget.api.post('/api/admin/gift-cards/assign-customer', {
+      final result = await widget.api.post('/api/admin/gift-cards/assign-customer', {
         'code': code,
         'customerId': _id,
         'allowReassign': allowReassign,
       });
-      _snack('$code kartı bu müşteriye tanımlandı.');
+      // Onaya düştüyse "tanımlandı" DENMEZ (aynı gerekçe: hediye çeki ekranı).
+      final pending = result is Map && result['pendingApproval'] == true;
+      _snack(pending
+          ? '$code kartının bu müşteriye tanımlanması onaya gönderildi.'
+          : '$code kartı bu müşteriye tanımlandı.');
     } catch (e) {
       final message = '$e';
       if (!allowReassign && message.contains('başka bir müşteriye')) {
@@ -188,7 +192,15 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
     final text = raw.trim();
     if (text.isEmpty) return '';
     final match = RegExp(r'hediye-kart/[^/]+/([^/?#\s]+)', caseSensitive: false).firstMatch(text);
-    if (match != null) return Uri.decodeComponent(match.group(1)!).toUpperCase();
+    if (match != null) {
+      // BOZUK KAÇIŞ ÇÖKERTMEZ: "%" gibi yarım diziler decodeComponent'i fırlatır; ham değere düşülür.
+      final raw = match.group(1)!;
+      try {
+        return Uri.decodeComponent(raw).toUpperCase();
+      } catch (_) {
+        return raw.toUpperCase();
+      }
+    }
     if (RegExp(r'^[A-Za-z0-9-]{4,40}$').hasMatch(text)) return text.toUpperCase();
     return '';
   }

@@ -334,7 +334,17 @@ public sealed class AdisyonService : IAdisyonService
 
         var card = await _db.GiftCards.FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Code == code, cancellationToken);
         if (card is null) return Result<AdisyonDto>.Failure(Error.NotFound("Kod bulunamadı."));
-        if (!card.IsValid(DateTime.UtcNow)) return Result<AdisyonDto>.Failure(Error.Validation("Kod geçerli değil (pasif, süresi dolmuş, hakkı bitmiş veya bakiyesi yok)."));
+
+        // KART KISITLARI BURADA ZORLANIR (müşteri / şube / katalog hedefi) — bkz.
+        // GiftCard.UsageProblemFor. Yalnız "geçerli mi" bakmak, kartın kime ve neye tanımlı
+        // olduğunu tamamen anlamsızlaştırıyordu.
+        var refIds = adisyon.Items
+            .Where(i => i.RefId.HasValue)
+            .Select(i => i.RefId!.Value)
+            .Distinct()
+            .ToArray();
+        var problem = card.UsageProblemFor(DateTime.UtcNow, adisyon.CustomerId, adisyon.BranchId, refIds);
+        if (problem is not null) return Result<AdisyonDto>.Failure(Error.Validation(problem));
 
         // Aynı kod iki kez uygulanamaz.
         if (adisyon.Items.Any(i => i.Type == AdisyonItemType.Discount && i.RefId == card.Id))
@@ -868,7 +878,9 @@ public sealed class AdisyonService : IAdisyonService
             }
             try
             {
-                card.Redeem(discountItem.LineTotal, nowUtc);
+                // Bakiye değişimi DEFTERE de yazılır — mutasyon ile kayıt tek çağrıda (bkz. GiftCardLedger).
+                GiftCardLedger.Redeem(_db, card, discountItem.LineTotal, nowUtc,
+                    GiftCardLedger.SourceAdisyon, adisyon.Id, adisyon.CustomerId, _currentUser.UserId);
             }
             catch (DomainException ex)
             {

@@ -19,11 +19,19 @@ import { join, relative } from 'node:path'
  *  • `forceNew` göndermeyen `createAdisyon` — sunucu açık fiş varsa onu döndürür (idempotent).
  */
 
-/** Anahtarın KAÇINCI argüman olduğu (1 tabanlı) — bu sayıda argüman geçilmiş olmalı. */
-const GUARDED = {
-  'adminApi.registerAccountPayment(': 4,
-  'adminApi.addAdisyonItem(': 4,
-} as const
+/**
+ * Anahtarın KAÇINCI argüman olduğu (1 tabanlı) — bu sayıda argüman geçilmiş olmalı.
+ *
+ * `callSites: 'optional'` işaretli uçların BUGÜN web'de çağıranı yoktur (ör. hediye çeki
+ * kullanımı yalnız mobilde sunuluyor). Kural yine de burada durur: web'e bir çağrı eklendiği gün
+ * anahtarsız geçemez. Yeniden adlandırma koruması bu uçlarda çağrıya değil TANIMA bakar.
+ */
+const GUARDED: Record<string, { args: number; callSites?: 'required' | 'optional' }> = {
+  'adminApi.registerAccountPayment(': { args: 4 },
+  'adminApi.addAdisyonItem(': { args: 4 },
+  // Hediye çeki kullanımı bakiyeden para düşer: tekrar denenen istek çeki İKİNCİ KEZ harcar.
+  'adminApi.redeemGiftCard(': { args: 4, callSites: 'optional' },
+}
 
 const ROOT = join(__dirname, '..')
 const SKIP_DIRS = new Set(['node_modules', '.next', '.git', 'out', 'dist'])
@@ -83,7 +91,8 @@ describe('para yazan çağrılar Idempotency-Key geçmeli', () => {
     expect(files.length).toBeGreaterThan(50)
   })
 
-  for (const [call, minArgs] of Object.entries(GUARDED)) {
+  for (const [call, rule] of Object.entries(GUARDED)) {
+    const minArgs = rule.args
     it(`${call.replace('adminApi.', '').replace('(', '')} — her çağrı anahtar argümanını veriyor`, () => {
       const offenders: string[] = []
       let found = 0
@@ -104,7 +113,14 @@ describe('para yazan çağrılar Idempotency-Key geçmeli', () => {
       }
 
       // Uç yeniden adlandırılırsa arama sessizce 0 bulur ve test yine yeşil kalırdı.
-      expect(found, `"${call}" hiç bulunamadı — uç yeniden mi adlandırıldı?`).toBeGreaterThan(0)
+      if (rule.callSites === 'optional') {
+        // Çağıran yok ama TANIM durmalı: adı değişirse kural sessizce ölmesin.
+        const wrapper = call.replace('adminApi.', '').replace('(', '')
+        const client = readFileSync(join(ROOT, 'lib', 'apiClient.ts'), 'utf8')
+        expect(client, `"${wrapper}" apiClient'ta yok — uç yeniden mi adlandırıldı?`).toContain(`${wrapper}:`)
+      } else {
+        expect(found, `"${call}" hiç bulunamadı — uç yeniden mi adlandırıldı?`).toBeGreaterThan(0)
+      }
       expect(offenders, `Anahtarsız para yazan çağrı:\n${offenders.join('\n')}`).toEqual([])
     })
   }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useId, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Activity,
@@ -113,6 +113,7 @@ function ItemFilter({
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<'package' | 'service'>(value?.kind ?? 'package')
   const wrapRef = useRef<HTMLDivElement | null>(null)
+  const panelId = `${useId()}-katalog`
 
   // Dışarı tıklama + ESC artık AnchoredPopover'ın işi (panel <body>'ye portal'lanıyor).
 
@@ -123,7 +124,9 @@ function ItemFilter({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        aria-haspopup="dialog"
         aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
         className={`group flex w-full items-center gap-3 rounded-[16px] border-2 px-3.5 py-3 text-left transition-all ${
           value
             ? 'border-[#BE7690] bg-[linear-gradient(100deg,#FBEAF0,#F6DFE6)] shadow-[0_16px_34px_-26px_rgba(87,39,61,0.9)]'
@@ -173,7 +176,7 @@ function ItemFilter({
 
       {/* Panel karta GÖMÜLÜ DEĞİL: pano kart kabuğu `overflow-hidden` taşıdığı için buradaki
           `absolute` bir menü kartın alt kenarında kırpılıyordu (z-index bunu aşamaz). */}
-      <AnchoredPopover open={open} anchorRef={wrapRef} onClose={() => setOpen(false)} width={420} align="right" gap={8}>
+      <AnchoredPopover open={open} anchorRef={wrapRef} onClose={() => setOpen(false)} width={420} align="right" gap={8} id={panelId} label="Paket ve hizmet seçici">
         <div className="p-3">
             <div className="inline-flex rounded-full border border-[#E4DEE0] bg-[#F7F6F6] p-0.5">
               {(

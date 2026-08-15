@@ -18,6 +18,12 @@ public interface IGiftCardService
     /// </summary>
     Task<Result<GiftCardDto>> AssignCustomerAsync(Guid tenantId, AssignGiftCardCustomerRequest request, CancellationToken cancellationToken = default);
     Task<Result<GiftCardDto>> CreateAsync(Guid tenantId, CreateGiftCardRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Kartı düzeltir. KOD/TÜR/DEĞER DEĞİŞTİRİLEMEZ (bkz. <see cref="UpdateGiftCardRequest"/>);
+    /// kullanılmaya başlanmış kartın müşterisi de devredilemez.
+    /// </summary>
+    Task<Result<GiftCardDto>> UpdateAsync(Guid tenantId, Guid id, UpdateGiftCardRequest request, CancellationToken cancellationToken = default);
     /// <summary>Koda göre doğrula (satış/adisyon akışında uygulamadan önce).</summary>
     Task<Result<GiftCardDto>> GetByCodeAsync(Guid tenantId, string code, CancellationToken cancellationToken = default);
     Task<Result<GiftCardDto>> RedeemAsync(Guid tenantId, Guid id, RedeemGiftCardRequest request, CancellationToken cancellationToken = default);

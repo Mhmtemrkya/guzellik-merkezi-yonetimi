@@ -18,6 +18,7 @@ export default function GiftCardShareModal({
   card,
   salonName,
   salonSlug,
+  salonProfileFailed = false,
   logoDataUrl,
   open,
   onClose,
@@ -28,6 +29,8 @@ export default function GiftCardShareModal({
   salonName: string
   /** Kurumun herkese açık adres anahtarı — QR'ın hedefi buna dayanır. */
   salonSlug: string | null
+  /** Profil ucu düştü mü — "adres tanımlı değil" ile "profil yüklenemedi" ayrı teşhistir. */
+  salonProfileFailed?: boolean
   logoDataUrl: string | null
   open: boolean
   onClose: () => void
@@ -35,7 +38,8 @@ export default function GiftCardShareModal({
    * WhatsApp gönderimi. Verilmezse düğme çizilmez.
    * `pdfBase64` veri-URL önekiSİZ ham base64'tür (kart PDF'i).
    */
-  onSendWhatsApp?: (pdfBase64: string, phone: string) => Promise<void>
+  /** `true` dönerse işlem ONAYA gönderilmiştir (gönderilmemiştir). */
+  onSendWhatsApp?: (pdfBase64: string, phone: string) => Promise<boolean | void>
   /** Karta bağlı müşterinin kayıtlı numarası — biliniyorsa gönderim kutusuna ön-dolum gelir. */
   defaultPhone?: string
 }) {
@@ -190,8 +194,10 @@ export default function GiftCardShareModal({
     setNotice('')
     try {
       const pdfBase64 = await buildPdfBase64(canvas)
-      await onSendWhatsApp(pdfBase64, target)
-      setNotice('Hediye kartı WhatsApp\'tan gönderildi.')
+      const pending = await onSendWhatsApp(pdfBase64, target)
+      setNotice(pending === true
+        ? 'Gönderim ONAYA GÖNDERİLDİ. Yönetici onayladıktan sonra iletilecek.'
+        : 'Hediye kartı WhatsApp\'tan gönderildi.')
       setSendOpen(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gönderilemedi.')
@@ -214,7 +220,10 @@ export default function GiftCardShareModal({
 
           {/* QR ekranda görünmez; yalnız çizime kaynaklık eder. */}
           <div className="pointer-events-none absolute left-[-9999px] top-0" aria-hidden>
-            {qrValue && <QRCodeCanvas ref={setQr} value={qrValue} size={530} level="M" marginSize={0} />}
+            {/* SESSİZ BÖLGE ZORUNLU: QR standardı çevresinde 4 modül boşluk ister. marginSize={0}
+                ile üretilen kod, kartın desenli pembe zemininde bazı okuyucularda hiç okunmuyordu —
+                ve bu basılı kartta kalıcı bir kusur olurdu. */}
+            {qrValue && <QRCodeCanvas ref={setQr} value={qrValue} size={530} level="M" marginSize={4} />}
           </div>
 
           <motion.div
@@ -254,8 +263,9 @@ export default function GiftCardShareModal({
 
               {!qrValue && (
                 <p className="mt-3 rounded-[11px] border border-[#EFC98B] bg-[#FDF3E2] px-3 py-2 text-[12px] font-medium text-[#8A5A11]">
-                  Kurumun herkese açık adresi tanımlı olmadığı için karta QR basılamadı. Salon Profili
-                  sayfasından kurum adresini tanımlayınca QR otomatik gelir.
+                  {salonProfileFailed
+                    ? 'Kurum profili yüklenemediği için karta QR basılamadı. Bu bir ayar eksiği değil, geçici bir erişim sorunudur — sayfayı yenileyip tekrar deneyin (kartı QR olmadan yazdırmayın, QR sonradan eklenemez).'
+                    : 'Kurumun herkese açık adresi tanımlı olmadığı için karta QR basılamadı. Salon Profili sayfasından kurum adresini tanımlayınca QR otomatik gelir.'}
                 </p>
               )}
               {error && (

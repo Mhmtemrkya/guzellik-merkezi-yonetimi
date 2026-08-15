@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
@@ -118,6 +118,18 @@ interface DashboardData {
    */
   reportFailed: boolean
   packagesResult: PagedResult<ApiServicePackage>
+  /**
+   * Personel performansı SUNUCUDAN. "En çok çalışan personel" kutusu eskiden ekrandaki randevu
+   * listesinden sayıyordu; o liste `pageSize: 200` ile KIRPIK geliyor ve yoğun bir kurumda
+   * dönemin yalnız ilk 200 randevusuna bakıp yanlış personeli birinci ilan ediyordu. Uç düşerse
+   * `null` kalır ve kutu tahmin yürütmek yerine durumu söyler.
+   */
+  staffReport: ApiStaffReport | null
+}
+
+/** /api/admin/reports/staff yanıtının kullandığımız kadarı. */
+interface ApiStaffReport {
+  rows?: Array<{ staffName?: string; completedCount?: number; appointmentCount?: number }>
 }
 
 interface StatusBadgeMeta {
@@ -426,6 +438,8 @@ function CategoryFilter({
 }) {
   const [open, setOpen] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
+  // Tetikleyici ↔ panel bağı (`aria-controls`) için ortak kimlik; ekran okuyucu ikisini eşler.
+  const panelId = `${useId()}-kategori`
 
   // Dışarı tıklama + ESC artık AnchoredPopover'ın işi: panel <body>'ye portal'landığı için
   // "kutumun dışına tıklandı mı" ölçütü panelin İÇİNE tıklamayı da dışarı sayardı.
@@ -438,6 +452,9 @@ function CategoryFilter({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
         className={`inline-flex max-w-[240px] items-center gap-1.5 rounded-full border px-2.5 py-[5px] text-[11px] font-semibold leading-none transition-colors ${
           active
             ? 'border-[#8C4460] bg-[#A5556E] text-white shadow-sm'
@@ -452,7 +469,7 @@ function CategoryFilter({
 
       {/* Panel karta GÖMÜLÜ DEĞİL: kart kabuğu `overflow-hidden` taşıdığı için buradaki
           `absolute` bir menü kartın alt kenarında kırpılıyordu (z-index bunu aşamaz). */}
-      <AnchoredPopover open={open} anchorRef={boxRef} onClose={() => setOpen(false)} width={240} align="right">
+      <AnchoredPopover open={open} anchorRef={boxRef} onClose={() => setOpen(false)} width={240} align="right" id={panelId} label="Kategori filtresi">
         <div>
             <div className="p-1.5">
               <button
@@ -575,6 +592,7 @@ function DateRangeFilter({
   const [from, setFrom] = useState(value?.from ?? '')
   const [to, setTo] = useState(value?.to ?? '')
   const boxRef = useRef<HTMLDivElement>(null)
+  const panelId = `${useId()}-tarih`
 
   const apply = () => {
     if (!from || !to) return
@@ -598,6 +616,9 @@ function DateRangeFilter({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
         className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-[4px] text-[10px] font-semibold leading-none transition-colors ${
           value
             ? 'border-[#8C4460] bg-[#A5556E] text-white'
@@ -610,7 +631,7 @@ function DateRangeFilter({
 
       {/* Panel karta GÖMÜLÜ DEĞİL: metrik ve rapor kartlarının kabuğu `overflow-hidden` taşıyor,
           içeride açılan `absolute` bir panel kartın kenarında kırpılıyordu (z-index aşamaz). */}
-      <AnchoredPopover open={open} anchorRef={boxRef} onClose={() => setOpen(false)} width={248} align="right">
+      <AnchoredPopover open={open} anchorRef={boxRef} onClose={() => setOpen(false)} width={248} align="right" id={panelId} label="Özel tarih aralığı">
           <div className="p-3">
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[#74616A]">Tarih aralığı</div>
             <div className="space-y-2">
@@ -947,16 +968,20 @@ function RevenueChart({
   granularity = 'gün',
   periodLabel = 'Bu hafta',
   topStaff = null,
+  topStaffFailed = false,
 }: {
   data: WeeklyRevenuePoint[]
   granularity?: string
   periodLabel?: string
   /**
-   * En çok randevusu olan personel. Bu kutu daha önce "Performans API" yazan bir YER TUTUCUYDU:
-   * ekranda gerçek bir ad varmış gibi duruyordu. Değer artık randevu listesinden sayılır;
-   * ad yoksa kutu bunu açıkça söyler (uydurma yok).
+   * En çok TAMAMLANMIŞ randevusu olan personel. Bu kutu bir zamanlar "Performans API" yazan bir
+   * YER TUTUCUYDU; sonra ekrandaki (kırpık) randevu listesinden sayıldı. Değer artık sunucudaki
+   * personel raporundan gelir — dönemin tamamı, yalnız tamamlanan randevular. Ad yoksa kutu bunu
+   * açıkça söyler (uydurma yok).
    */
   topStaff?: { name: string; count: number; scopeLabel: string } | null
+  /** Rapor ucu düştüyse "kayıt yok" demek yanlış olur; kutu bilinmediğini söyler. */
+  topStaffFailed?: boolean
 }) {
   const n = Math.max(data.length, 1)
   const rawMax = Math.max(0, ...data.map((point) => point.value))
@@ -1069,8 +1094,14 @@ function RevenueChart({
         <InsightTile title={`En yoğun ${granularity}`} value={hasData ? peak.label : 'Veri bekleniyor'} sub={formatTL(Math.round(peak.value))} />
         <InsightTile
           title="En çok çalışan personel"
-          value={topStaff ? topStaff.name : 'Kayıt yok'}
-          sub={topStaff ? `${topStaff.count} randevu · ${topStaff.scopeLabel}` : 'Dönemde randevu yok'}
+          value={topStaff ? topStaff.name : topStaffFailed ? 'Hesaplanamadı' : 'Kayıt yok'}
+          sub={
+            topStaff
+              ? `${topStaff.count} tamamlanan randevu · ${topStaff.scopeLabel}`
+              : topStaffFailed
+                ? 'Personel raporu yüklenemedi'
+                : 'Dönemde tamamlanan randevu yok'
+          }
           medal
         />
         <InsightTile title="Toplam gelir" value={formatTL(Math.round(total))} sub={periodLabel} pie />
@@ -1681,6 +1712,7 @@ export default function AdminDashboard() {
         passiveResult,
         reportResult,
         packagesResult,
+        staffReport,
       ] = await Promise.all([
         adminApi.appointments<ApiAppointment>({
           tenantId,
@@ -1706,6 +1738,10 @@ export default function AdminDashboard() {
         // Paket Raporu kategori süzgecinin seçenekleri paketlerin kendi kategorilerinden türetilir
         // (boş kategori gösterilmesin diye katalog listesi yerine gerçek paketler kullanılır).
         adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 300 }).catch(() => ({ items: [] })),
+        // Dönemin TAMAMINI kapsayan personel toplamı (kırpık liste değil).
+        adminApi
+          .reportStaff<ApiStaffReport>({ tenantId, fromUtc: apptFromIso, toUtc: apptToIso })
+          .catch<null>(() => null),
       ])
       return {
         appointmentsResult,
@@ -1722,6 +1758,7 @@ export default function AdminDashboard() {
         /** Rapor ucu düştü mü — grafik "veri yok" yerine hata gösterebilsin. */
         reportFailed: reportResult === null,
         packagesResult,
+        staffReport,
       }
     },
     [tenantId, apptFromIso, apptToIso, dayStartIso, dayEndIso, yearStartIso],
@@ -2001,22 +2038,31 @@ export default function AdminDashboard() {
    *
    * İPTALLER SAYILMAZ: iptal edilmiş randevu yapılmış iş değildir.
    */
+  /*
+   * EN ÇOK ÇALIŞAN PERSONEL — kaynak: sunucudaki personel raporu.
+   *
+   * İki kusur birden kapanıyor:
+   *  1) Sayım artık ekrandaki KIRPIK listeden (pageSize 200) değil, dönemin tamamından geliyor.
+   *  2) Ölçüt TAMAMLANAN randevu. "İptal değilse say" demek, ileri tarihli açık randevularını
+   *     ve gelmeyen müşterilerini de çalışmış gibi sayıyordu; en çok çalışan ≠ en çok defteri
+   *     dolu olan. Rapor ucu düşerse ad UYDURULMAZ, kutu durumu söyler (aşağıdaki `failed`).
+   */
+  const staffReportRows = data?.staffReport?.rows
   const topStaff = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const appointment of appointments) {
-      if (appointment.status === 'iptal') continue
-      const name = (appointment.personel || '').trim()
-      if (!name || name === '—') continue
-      counts.set(name, (counts.get(name) ?? 0) + 1)
-    }
+    if (!staffReportRows) return null
     let best: { name: string; count: number } | null = null
-    for (const [name, count] of counts) {
+    for (const row of staffReportRows) {
+      const name = (row.staffName || '').trim()
+      const count = Number(row.completedCount ?? 0)
+      if (!name || count <= 0) continue
       if (!best || count > best.count || (count === best.count && name.localeCompare(best.name, 'tr') < 0)) {
         best = { name, count }
       }
     }
     return best ? { ...best, scopeLabel: apptRange.label } : null
-  }, [appointments, apptRange.label])
+  }, [staffReportRows, apptRange.label])
+  /** Rapor ucu düştü mü — "kayıt yok" ile "bilinmiyor" ayrı cümlelerdir. */
+  const topStaffFailed = Boolean(data) && !staffReportRows
 
   const performanceRows = useMemo(() => {
     return staff.slice(0, 3).map((person, index) => {
@@ -2452,7 +2498,7 @@ export default function AdminDashboard() {
                 title="Gelir Analizi"
                 action={<PeriodTabs value={chartRange} onChange={setChartRange} options={CHART_PERIOD_OPTIONS} />}
               >
-                <div data-guide="dash-gelir"><RevenueChart data={chartData} granularity={chartGranularity} periodLabel={chartPeriodLabel} topStaff={topStaff} /></div>
+                <div data-guide="dash-gelir"><RevenueChart data={chartData} granularity={chartGranularity} periodLabel={chartPeriodLabel} topStaff={topStaff} topStaffFailed={topStaffFailed} /></div>
               </SectionCard>
 
               <SectionCard

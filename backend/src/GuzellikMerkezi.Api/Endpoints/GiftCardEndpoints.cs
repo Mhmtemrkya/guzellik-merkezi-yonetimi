@@ -44,6 +44,13 @@ public static class GiftCardEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.CreateAsync(resolvedTenantId, request, ct)).ToHttpResult(http);
         });
 
+        // Düzeltme — kod/tür/değer HARİÇ (bkz. UpdateGiftCardRequest).
+        group.MapPut("/{id:guid}", async (Guid id, UpdateGiftCardRequest request, Guid? tenantId, ICurrentUser currentUser, IGiftCardService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.UpdateAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
+        });
+
         group.MapPost("/{id:guid}/redeem", async (Guid id, RedeemGiftCardRequest request, Guid? tenantId, ICurrentUser currentUser, IGiftCardService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);

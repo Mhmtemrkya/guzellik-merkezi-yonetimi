@@ -342,13 +342,38 @@ class GiftCardArtwork extends StatelessWidget {
   final GiftCardArtworkData data;
   final GiftCardImages images;
 
+  /*
+   * ÇİZİMİN METİN KARŞILIĞI.
+   *
+   * Kartın tüm bilgisi tuvale çiziliyor; TalkBack/VoiceOver için burası bomboş bir kutuydu ve
+   * görme engelli kullanıcı kendi kartının kodunu, tutarını, geçerliliğini hiç öğrenemiyordu.
+   * `Semantics` etiketi çizimle aynı veriden üretilir — görsel tasarım değişmez. (Web tarafında
+   * aynı işi canvas'ın `role="img"` + gizli özeti yapıyor.)
+   */
+  String get _semanticsLabel {
+    final parts = <String>[
+      '${data.salonName} hediye kartı.',
+      // Kod harf harf okunur: "A5K2" yerine "A 5 K 2" — sesli okumada karışmaz.
+      'Kart kodu ${data.code.split('').join(' ')}.',
+      '${data.amountLabel}: ${data.amountText}.',
+      'Geçerlilik: ${data.validText}.',
+      'Kapsam: ${data.scopeLabel.isEmpty ? 'tüm hizmetler' : data.scopeLabel}.',
+      if (data.recipientName.isNotEmpty) 'Alıcı: ${data.recipientName}.',
+    ];
+    return parts.join(' ');
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: AspectRatio(
-        aspectRatio: kCardW / kCardH,
-        child: CustomPaint(painter: GiftCardPainter(data: data, images: images)),
+    return Semantics(
+      image: true,
+      label: _semanticsLabel,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: AspectRatio(
+          aspectRatio: kCardW / kCardH,
+          child: CustomPaint(painter: GiftCardPainter(data: data, images: images)),
+        ),
       ),
     );
   }

@@ -387,7 +387,7 @@ public sealed class LifecycleAndScopeIntegrityTests
         await using (var db = NewDb(options))
         {
             var user = new TestCurrentUser(UserRole.InstitutionOwner);
-            var service = new GiftCardService(db, new NoopAuditLogger(), new AllowAllFeatureService());
+            var service = new GiftCardService(db, new NoopAuditLogger(), new AllowAllFeatureService(), new TestCurrentUser());
             var result = await service.DeleteAsync(seed.TenantId, cardId);
             Assert.True(result.IsFailure, "Açık fişte kullanılan hediye çeki silinebildi.");
             Assert.Equal("Conflict", result.Error.Code);

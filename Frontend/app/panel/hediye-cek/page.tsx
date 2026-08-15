@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useMemo, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import Topbar from '@/components/dashboard/Topbar'
@@ -8,14 +8,15 @@ import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import { adminApi } from '@/lib/apiClient'
-import { apiItems, formatTL, guidOrUndefined, normalizeGiftCard, normalizePackage, normalizeService } from '@/lib/apiMappers'
-import type { ApiGiftCard, ApiService, ApiServicePackage, GiftCard, GiftCardKind } from '@/lib/types'
+import { adminApi, isPendingApprovalResult } from '@/lib/apiClient'
+import { apiItems, formatTL, guidOrUndefined, normalizeGiftCard, normalizePackage, normalizeProduct, normalizeService } from '@/lib/apiMappers'
+import type { ApiGiftCard, ApiProduct, ApiService, ApiServicePackage, GiftCard, GiftCardKind } from '@/lib/types'
 import GiftCardShareModal from '@/components/dashboard/GiftCardShareModal'
 import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPicker'
 import GiftCardScanModal from '@/components/dashboard/GiftCardScanModal'
-import { CheckCircle2, Gift, Image as ImageIcon, Link2, Lock, Percent, Plus, Power, QrCode, Sparkles, Ticket, Trash2, Wallet, XCircle } from 'lucide-react'
+import GiftCardEditModal from '@/components/dashboard/GiftCardEditModal'
+import { CheckCircle2, Gift, Image as ImageIcon, Link2, Lock, Pencil, Percent, Plus, Power, QrCode, Sparkles, Ticket, Trash2, Wallet, XCircle } from 'lucide-react'
 
 type ScopeKey = 'all' | 'active' | 'stored' | 'coupon'
 
@@ -39,6 +40,7 @@ function GiftCardTile({
   onToggleActive,
   onDelete,
   onShow,
+  onEdit,
 }: {
   card: GiftCard
   index: number
@@ -47,6 +49,8 @@ function GiftCardTile({
   onDelete: () => void
   /** Basılabilir/gönderilebilir kart görselini açar. */
   onShow: () => void
+  /** Yanlış girilen geçerlilik/kapsam/hedef bilgisini düzeltir (kod ve değer HARİÇ). */
+  onEdit: () => void
 }) {
   const meta = kindMeta[card.kind]
   const Icon = meta.icon
@@ -179,6 +183,14 @@ function GiftCardTile({
         <button
           type="button"
           disabled={busy}
+          onClick={onEdit}
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[12px] bg-[#f7ecf1] px-2.5 py-2 text-[11px] font-semibold text-[#5d4a56] transition-colors hover:bg-[#efdfe7] hover:text-[#A5556E] disabled:opacity-50"
+        >
+          <Pencil className="h-3.5 w-3.5" /> Düzelt
+        </button>
+        <button
+          type="button"
+          disabled={busy}
           onClick={onDelete}
           className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[12px] bg-[#d1556f]/10 px-2.5 py-2 text-[11px] font-semibold text-[#cf4d68] transition-colors hover:bg-[#d1556f]/18 disabled:opacity-50"
         >
@@ -189,6 +201,18 @@ function GiftCardTile({
   )
 }
 
+/*
+ * Çekin bağlanabileceği katalog türleri. ÜÇÜNDEN EN FAZLA BİRİ seçilebilir; kısıt sunucuda da
+ * uygulanır (GiftCard.SetCatalogTarget), buradaki yalnız arayüz tarafıdır.
+ */
+type TargetKind = 'service' | 'package' | 'product'
+const TARGET_KINDS: ReadonlyArray<readonly [TargetKind, string]> = [
+  ['service', 'Hizmet'],
+  ['package', 'Paket'],
+  ['product', 'Ürün'],
+]
+const TARGET_LABEL: Record<TargetKind, string> = { service: 'Hizmet', package: 'Paket', product: 'Ürün' }
+
 function HediyeCekPageInner() {
   const search = useSearchParams()
   const scopeParam = (search?.get('scope') as ScopeKey | null) ?? 'all'
@@ -198,8 +222,14 @@ function HediyeCekPageInner() {
   const tenantId = guidOrUndefined(selectedInstitutionId)
   const branchId = guidOrUndefined(selectedBranch?.id || selectedBranch?.branchId)
 
+  /*
+   * HATA "KAYIT YOK" DEĞİLDİR. Uç 500/403 dönünce `.catch(() => [])` boş dizi üretiyor,
+   * ekranda "Bu filtrede kayıt yok" yazıyordu: kurum, duran bir sistemi "hiç çekim yok"
+   * diye okuyup aynı kodları yeniden üretebilirdi. Hata artık `useApiQuery`'nin `error`'una
+   * düşer ve `ApiStateNotice` gerçek durumu gösterir.
+   */
   const { data, loading, error, reload } = useApiQuery<ApiGiftCard[]>(
-    async () => (tenantId ? adminApi.giftCards<ApiGiftCard>(tenantId).catch(() => []) : []),
+    async () => (tenantId ? adminApi.giftCards<ApiGiftCard>(tenantId) : []),
     [tenantId],
     { initialData: [] },
   )
@@ -210,18 +240,30 @@ function HediyeCekPageInner() {
    * müşterinin çekini görünce doğru hizmeti/paketi kendiliğinden seçebilsin diye. Serbest
    * metinden eşleştirme denemek ("El ve Ayak Bakım" ≟ "El & Ayak Bakımı") kırılgan olurdu.
    */
-  const { data: catalog } = useApiQuery<{ services: ApiService[]; packages: ApiServicePackage[] }>(
+  const { data: catalog } = useApiQuery<{ services: ApiService[]; packages: ApiServicePackage[]; products: ApiProduct[]; failed: boolean }>(
     async () => {
-      if (!tenantId) return { services: [], packages: [] }
-      const [svc, pkg] = await Promise.all([
-        adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
-        adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
+      if (!tenantId) return { services: [], packages: [], products: [], failed: false }
+      const [svc, pkg, prd] = await Promise.all([
+        adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 500 }).catch<null>(() => null),
+        adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 500 }).catch<null>(() => null),
+        adminApi.products<ApiProduct>({ tenantId, page: 1, pageSize: 500 }).catch<null>(() => null),
       ])
-      return { services: apiItems(svc), packages: apiItems(pkg) }
+      /*
+       * YÜKLENEMEDİ ≠ TANIMLI DEĞİL. Boş listeye düşmek, seçicide "Hizmet bulunamadı." yazdırıyordu;
+       * kullanıcı kataloğunun silindiğini sanıp çeki bağlamadan oluşturuyordu (ve çek, hiçbir
+       * hizmeti kısıtlamayan bir kayda dönüşüyordu). Durum artık ayrı taşınıyor.
+       */
+      return {
+        services: apiItems(svc ?? { items: [] }),
+        packages: apiItems(pkg ?? { items: [] }),
+        products: apiItems(prd ?? { items: [] }),
+        failed: svc === null || pkg === null || prd === null,
+      }
     },
     [tenantId],
-    { initialData: { services: [], packages: [] } },
+    { initialData: { services: [], packages: [], products: [], failed: false } },
   )
+  const catalogFailed = Boolean(catalog?.failed)
 
   const serviceItems = useMemo<PickerItem[]>(
     () => (catalog?.services || []).map((s, i) => {
@@ -237,14 +279,43 @@ function HediyeCekPageInner() {
     }),
     [catalog],
   )
-
-  // Kart görseline basılacak kurum logosu. Hata YUTULUR: logo bulunamazsa kart yine çizilir,
-  // sadece logonun yerine kurum adı yazılır (bkz. GiftCardArtwork).
-  const { data: profile } = useApiQuery<{ logoData?: string | null; slug?: string | null } | null>(
-    async () => (tenantId ? adminApi.publicProfile<{ logoData?: string | null; slug?: string | null }>().catch(() => null) : null),
-    [tenantId],
-    { initialData: null },
+  const productItems = useMemo<PickerItem[]>(
+    () => (catalog?.products || []).map((p, i) => {
+      const n = normalizeProduct(p, i)
+      return { id: n.id, name: n.name, price: n.salePrice, cat: n.category || '', sub: '', meta: n.unit || 'adet' }
+    }),
+    [catalog],
   )
+  /** Hedef türüne göre seçici listesi — tek yerde çözülür, üç yerde kullanılır. */
+  const itemsForKind = useCallback(
+    (kind: TargetKind): PickerItem[] =>
+      kind === 'service' ? serviceItems : kind === 'package' ? packageItems : productItems,
+    [serviceItems, packageItems, productItems],
+  )
+
+  /*
+   * Kurum profili — kart görselindeki logo ve QR'ın kurum anahtarı (slug) buradan gelir.
+   *
+   * Logo yoksa kart yine çizilir (yerine kurum adı yazılır). Ama SLUG'ın yokluğu ile profilin
+   * YÜKLENEMEMESİ aynı şey değildir: ikisi de `null` olunca paylaşım modali "kurumun herkese
+   * açık adresi tanımlı değil, Salon Profili'nden tanımlayın" diyordu — tanımlı bir kurumu
+   * olmayan bir ayara yönlendiren, yanlış bir teşhis. Durum ayrı taşınır.
+   */
+  const { data: profileState } = useApiQuery<{ profile: { logoData?: string | null; slug?: string | null } | null; failed: boolean }>(
+    async () => {
+      if (!tenantId) return { profile: null, failed: false }
+      try {
+        const p = await adminApi.publicProfile<{ logoData?: string | null; slug?: string | null }>()
+        return { profile: p, failed: false }
+      } catch {
+        return { profile: null, failed: true }
+      }
+    },
+    [tenantId],
+    { initialData: { profile: null, failed: false } },
+  )
+  const profile = profileState?.profile ?? null
+  const profileFailed = Boolean(profileState?.failed)
 
   const filtered = useMemo(() => {
     switch (scope) {
@@ -271,7 +342,7 @@ function HediyeCekPageInner() {
    * Çekin bağlandığı katalog kaydı — 'service' | 'package'. Seçilince kartın üzerine basılan
    * kapsam metni de kendiliğinden dolar (kullanıcı isterse üzerine yazabilir).
    */
-  const [targetKind, setTargetKind] = useState<'service' | 'package'>('service')
+  const [targetKind, setTargetKind] = useState<TargetKind>('service')
   const [targetId, setTargetId] = useState('')
   /** Kartın üzerine basılan kapsam ve alıcı — ikisi de opsiyonel. */
   const [scopeLabel, setScopeLabel] = useState('')
@@ -283,8 +354,8 @@ function HediyeCekPageInner() {
   const [customer, setCustomer] = useState<CustomerPickerItem | null>(null)
   /** Seçili katalog kaydı — kapsam metnini ve rozeti besler. */
   const selectedTarget = useMemo(
-    () => (targetKind === 'service' ? serviceItems : packageItems).find((i) => i.id === targetId) ?? null,
-    [targetKind, targetId, serviceItems, packageItems],
+    () => itemsForKind(targetKind).find((i) => i.id === targetId) ?? null,
+    [targetKind, targetId, itemsForKind],
   )
 
   /*
@@ -300,6 +371,8 @@ function HediyeCekPageInner() {
 
   /** Görseli açılan kart. */
   const [shareCard, setShareCard] = useState<GiftCard | null>(null)
+  /** Düzeltme modali açılan kart. */
+  const [editCard, setEditCard] = useState<GiftCard | null>(null)
   /**
    * Kart→müşteri telefonu eşlemesi. Liste ucu telefon döndürmediği için (ve şifreli alan
    * olduğundan sunucuda da aranamadığı için) seçim anında burada tutulur; gönderim kutusuna
@@ -349,6 +422,7 @@ function HediyeCekPageInner() {
           scopeLabel: scopeLabel.trim() || selectedTarget?.name || null,
           serviceDefinitionId: targetKind === 'service' ? targetId || null : null,
           servicePackageId: targetKind === 'package' ? targetId || null : null,
+          productId: targetKind === 'product' ? targetId || null : null,
           // Alıcı adı yazılmadıysa seçilen müşterinin adı karta basılır.
           recipientName: recipientName.trim() || customer?.name || null,
           customerId: customer?.id ?? null,
@@ -393,8 +467,15 @@ function HediyeCekPageInner() {
     setScanBusy(true)
     setScanError('')
     try {
-      await adminApi.assignGiftCardCustomer({ code, customerId: assignCustomer.id }, tenantId)
-      setAssignNotice(`${code} kartı ${assignCustomer.name} adlı müşteriye tanımlandı.`)
+      const res = await adminApi.assignGiftCardCustomer({ code, customerId: assignCustomer.id }, tenantId)
+      // ONAYA DÜŞTÜYSE TAMAMLANMIŞ DEME: personel yazmaları taslağa düşer (bkz.
+      // StaffApprovalGateMiddleware) ve HTTP 200 döner. "Tanımlandı" demek, kullanıcıyı
+      // gerçekleşmemiş bir işlemin ardından bırakır; tekrar deneyip mükerrer talep açar.
+      setAssignNotice(
+        isPendingApprovalResult(res)
+          ? `${code} kartının ${assignCustomer.name} adlı müşteriye tanımlanması ONAYA GÖNDERİLDİ.`
+          : `${code} kartı ${assignCustomer.name} adlı müşteriye tanımlandı.`,
+      )
       setScanOpen(false)
       setAssignCustomer(null)
       await reload()
@@ -407,8 +488,12 @@ function HediyeCekPageInner() {
 Bu kartı ${assignCustomer.name} adlı müşteriye devretmek istiyor musunuz?`)
         if (ok) {
           try {
-            await adminApi.assignGiftCardCustomer({ code, customerId: assignCustomer.id, allowReassign: true }, tenantId)
-            setAssignNotice(`${code} kartı ${assignCustomer.name} adlı müşteriye devredildi.`)
+            const res2 = await adminApi.assignGiftCardCustomer({ code, customerId: assignCustomer.id, allowReassign: true }, tenantId)
+            setAssignNotice(
+              isPendingApprovalResult(res2)
+                ? `${code} kartının devri ONAYA GÖNDERİLDİ.`
+                : `${code} kartı ${assignCustomer.name} adlı müşteriye devredildi.`,
+            )
             setScanOpen(false)
             setAssignCustomer(null)
             await reload()
@@ -591,7 +676,7 @@ Bu kartı ${assignCustomer.name} adlı müşteriye devretmek istiyor musunuz?`)
               <div className="mb-1.5 flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-semibold text-[#74616A]">Hangi hizmet / paket için? (ops.)</span>
                 <div className="inline-flex rounded-full border border-[#EAD8DF] bg-[#F7F6F6] p-0.5">
-                  {(['service', 'package'] as const).map((k) => (
+                  {TARGET_KINDS.map(([k, label]) => (
                     <button
                       key={k}
                       type="button"
@@ -600,7 +685,7 @@ Bu kartı ${assignCustomer.name} adlı müşteriye devretmek istiyor musunuz?`)
                         targetKind === k ? 'bg-[#A5556E] text-white' : 'text-[#5A4B53] hover:text-[#8C4460]'
                       }`}
                     >
-                      {k === 'service' ? 'Hizmet' : 'Paket'}
+                      {label}
                     </button>
                   ))}
                 </div>
@@ -611,14 +696,24 @@ Bu kartı ${assignCustomer.name} adlı müşteriye devretmek istiyor musunuz?`)
                 )}
               </div>
               <CatalogPicker
-                items={targetKind === 'service' ? serviceItems : packageItems}
+                items={itemsForKind(targetKind)}
                 value={targetId}
                 clearable
                 onChange={setTargetId}
-                emptyText={targetKind === 'service' ? 'Hizmet bulunamadı.' : 'Paket bulunamadı.'}
+                emptyText={
+                  catalogFailed
+                    ? 'Katalog yüklenemedi — bağlantıyı kontrol edip sayfayı yenileyin.'
+                    : `${TARGET_LABEL[targetKind]} bulunamadı.`
+                }
               />
+              {catalogFailed && (
+                <span className="mt-1 block rounded-[9px] border border-[#EFC98B] bg-[#FDF3E2] px-2.5 py-1.5 text-[10.5px] font-medium text-[#8A5A11]">
+                  Hizmet/paket listesi alınamadı. Çeki şimdi kataloğa bağlamadan oluşturabilirsiniz;
+                  liste yüklendiğinde bağı sonradan kurabilirsiniz.
+                </span>
+              )}
               <span className="mt-1 block text-[10.5px] text-[#74616A]">
-                Bağlarsanız satış ekranı, çeki olan müşteride bu hizmeti/paketi kendiliğinden seçer.
+                Bağlarsanız satış ekranı, çeki olan müşteride bu hizmeti/paketi/ürünü kendiliğinden seçer.
               </span>
             </div>
             <label className="block">
@@ -723,6 +818,7 @@ Bu kartı ${assignCustomer.name} adlı müşteriye devretmek istiyor musunuz?`)
           onScanned={(code) => void assignScanned(code)}
           busy={scanBusy}
           error={scanError}
+          expectedSlug={profile?.slug ?? null}
           title="Kartı müşteriye tanımla"
           hint={assignCustomer ? `${assignCustomer.name} adlı müşteriye bağlanacak.` : undefined}
         />
@@ -759,6 +855,7 @@ Bu kartı ${assignCustomer.name} adlı müşteriye devretmek istiyor musunuz?`)
           onClose={() => setShareCard(null)}
           salonName={selectedInstitution?.name || 'Güzellik Merkezi'}
           salonSlug={profile?.slug ?? null}
+          salonProfileFailed={profileFailed}
           logoDataUrl={profile?.logoData ?? null}
           defaultPhone={shareCard ? (phoneByCard[shareCard.id] ?? '') : ''}
           /* Gönderim yalnız WhatsApp özelliği açıkken sunulur: kapalıyken düğmeyi gösterip
@@ -766,13 +863,39 @@ Bu kartı ${assignCustomer.name} adlı müşteriye devretmek istiyor musunuz?`)
           onSendWhatsApp={
             canWhatsApp && shareCard
               ? async (pdfBase64, phone) => {
-                  await adminApi.sendGiftCardWhatsapp(
+                  const res = await adminApi.sendGiftCardWhatsapp(
                     { giftCardId: shareCard.id, phone, pdfBase64 },
                     tenantId,
                   )
+                  // Onaya düştüyse modal "gönderildi" değil "onaya gönderildi" der.
+                  return isPendingApprovalResult(res)
                 }
               : undefined
           }
+        />
+
+        {/*
+          * DÜZELTME — kod/tür/değer HARİÇ. Kart basılıp müşterinin eline geçtiği için kod
+          * değişmez; yanlış basılan kartın yolu pasifleştirip yenisini basmaktır.
+          */}
+        <GiftCardEditModal
+          card={editCard}
+          open={editCard !== null}
+          busy={busy}
+          targetKinds={TARGET_KINDS}
+          itemsForKind={itemsForKind}
+          onClose={() => setEditCard(null)}
+          onSave={async (body) => {
+            setBusy(true)
+            setActionError('')
+            try {
+              await adminApi.updateGiftCard(editCard!.id, body, tenantId)
+              setEditCard(null)
+              await reload()
+            } finally {
+              setBusy(false)
+            }
+          }}
         />
 
         {/* Kart ızgarası */}
@@ -786,6 +909,7 @@ Bu kartı ${assignCustomer.name} adlı müşteriye devretmek istiyor musunuz?`)
               onToggleActive={() => runAction(() => adminApi.setGiftCardActive(g.id, !g.isActive, tenantId))}
               onDelete={() => runAction(() => adminApi.deleteGiftCard(g.id, tenantId))}
               onShow={() => setShareCard(g)}
+              onEdit={() => setEditCard(g)}
             />
           ))}
         </div>

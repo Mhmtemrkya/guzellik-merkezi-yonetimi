@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { GiftCard } from '@/lib/types'
 
 /**
@@ -178,12 +178,27 @@ export async function drawGiftCard(
   ctx.fillStyle = INK_SOFT
   // Referans tasarımdaki ferah dokuyu veren hafif harf aralığı (destekleyen tarayıcılarda).
   ctx.letterSpacing = '1.4px'
+
+  /*
+   * TAŞMA KORUMASI. Alıcı ve kapsam alanları 120 karaktere kadar serbest metindir; kırpılmazsa
+   * sol sütun QR'ın ve alt bilgi şeridinin üstüne biner, kart kodu tuvalin dışına çıkardı.
+   * Kart BASILIYOR — ekranda fark edilmeyen taşma kalıcı bir kusura dönüşür.
+   */
+  const clampToWidth = (text: string, maxWidth: number, size: number, bold: boolean): string => {
+    ctx.font = `${bold ? 800 : 500} ${size}px Manrope, Inter, sans-serif`
+    if (ctx.measureText(text).width <= maxWidth) return text
+    let cut = text
+    while (cut.length > 1 && ctx.measureText(`${cut}…`).width > maxWidth) cut = cut.slice(0, -1)
+    return `${cut}…`
+  }
+
+  const recipient = clampToWidth(data.recipientName || '..........', 470, bodySize, Boolean(data.recipientName))
   // 1. satır — alıcı adı yoksa elle yazılsın diye noktalı boşluk kalır (basılı kart geleneği).
   drawRuns(
     ctx,
     [
       { text: 'Bu çek, ' },
-      { text: data.recipientName || '..........', bold: Boolean(data.recipientName) },
+      { text: recipient, bold: Boolean(data.recipientName) },
       { text: ' size' },
     ],
     bodyX,
@@ -194,7 +209,8 @@ export async function drawGiftCard(
   bodyY += 46
   ctx.font = `500 ${bodySize}px Manrope, Inter, sans-serif`
   const salonLine = `${data.salonName}'nde geçerli`
-  const salonLines = wrapLines(ctx, salonLine, 780)
+  // EN ÇOK 2 SATIR: uzun kurum adı gövdeyi aşağı iterek kodu tuvalin dışına taşıyordu.
+  const salonLines = wrapLines(ctx, salonLine, 780).slice(0, 2)
   for (const line of salonLines) {
     ctx.font = `500 ${bodySize}px Manrope, Inter, sans-serif`
     ctx.fillText(line, bodyX, bodyY)
@@ -203,7 +219,7 @@ export async function drawGiftCard(
   drawRuns(
     ctx,
     [
-      { text: data.scopeLabel || 'tüm hizmetlerde', bold: true },
+      { text: clampToWidth(data.scopeLabel || 'tüm hizmetlerde', 560, bodySize, true), bold: true },
       { text: ' çekidir.' },
     ],
     bodyX,
@@ -235,6 +251,14 @@ export async function drawGiftCard(
 
   ctx.fillStyle = INK
   ctx.font = '600 62px Manrope, Inter, sans-serif'
+  // Tutar QR'ın soluna kadar sığmalı: çok büyük rakamda punto küçültülür, taşma yerine okunur kalır.
+  const amountMax = 760
+  let amountSize = 62
+  while (amountSize > 34) {
+    ctx.font = `600 ${amountSize}px Manrope, Inter, sans-serif`
+    if (ctx.measureText(data.amountText).width <= amountMax) break
+    amountSize -= 4
+  }
   ctx.fillText(data.amountText, rightX, 528)
 
   /* ---------------- QR ---------------- */
@@ -321,9 +345,35 @@ export default function GiftCardArtwork({
 
   useEffect(() => { void render() }, [render])
 
+  /*
+   * CANVAS'IN METİN KARŞILIĞI.
+   *
+   * Kartın TÜM bilgisi piksele çiziliyor: ekran okuyucu için burası bomboş bir kutuydu; görme
+   * engelli bir kullanıcı kendi kartının kodunu, tutarını ya da geçerliliğini hiçbir şekilde
+   * öğrenemiyordu. Canvas artık `role="img"` ile duyurulur ve altındaki gizli özet ona ad olur —
+   * gizli metin `sr-only`'dir, görsel tasarım değişmez.
+   */
+  const summaryId = `${useId()}-kart-ozet`
+  const summary = [
+    `${data.salonName} hediye kartı.`,
+    `Kart kodu ${data.code.split('').join(' ')}.`,
+    `${data.amountLabel}: ${data.amountText}.`,
+    `Geçerlilik: ${data.validText}.`,
+    `Kapsam: ${data.scopeLabel || 'tüm hizmetler'}.`,
+    data.recipientName ? `Alıcı: ${data.recipientName}.` : '',
+    data.qrValue ? `Doğrulama adresi: ${data.qrValue}` : 'Kartta QR yok.',
+  ].filter(Boolean).join(' ')
+
   return (
     <div className={`relative ${className}`}>
-      <canvas ref={ref} className="block h-auto w-full rounded-[14px] shadow-[0_18px_44px_-30px_rgba(150,78,104,0.6)]" />
+      <canvas
+        ref={ref}
+        role="img"
+        aria-labelledby={summaryId}
+        className="block h-auto w-full rounded-[14px] shadow-[0_18px_44px_-30px_rgba(150,78,104,0.6)]"
+      />
+      {/* Görsel olarak gizli, ekran okuyucuya açık kart özeti. */}
+      <p id={summaryId} className="sr-only">{summary}</p>
       {error && (
         <p className="mt-2 rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[11.5px] font-medium text-rose-700">
           {error}

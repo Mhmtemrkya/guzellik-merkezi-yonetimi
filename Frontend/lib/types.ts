@@ -664,6 +664,7 @@ export interface ApiGiftCard {
   scopeLabel?: string | null
   serviceDefinitionId?: string | null
   servicePackageId?: string | null
+  productId?: string | null
   recipientName?: string | null
   isValid?: boolean
 }
@@ -688,6 +689,8 @@ export interface GiftCard {
   serviceDefinitionId: string | null
   /** Çekin bağlandığı paket. */
   servicePackageId: string | null
+  /** Çekin bağlandığı ürün. Üçünden EN FAZLA BİRİ dolu olabilir. */
+  productId: string | null
   /** Kartın üzerine basılan alıcı adı; boşsa elle yazılmak üzere boş bırakılır. */
   recipientName: string
   isValid: boolean

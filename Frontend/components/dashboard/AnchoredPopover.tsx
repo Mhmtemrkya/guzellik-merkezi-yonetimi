@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 
 /**
@@ -18,6 +18,12 @@ import ModalPortal from '@/components/dashboard/ModalPortal'
  *
  * Konum her açılışta ve kaydırma/boyut değişiminde tetikleyicinin gerçek ekran koordinatından
  * yeniden hesaplanır; alta sığmıyorsa panel yukarı açılır.
+ *
+ * ERİŞİLEBİLİRLİK: panel `body`'nin çocuğu olduğu için, klavyeyle gezen kullanıcının Tab'ı
+ * tetikleyiciden sonra BELGENİN SONUNA sıçrıyordu — panel görünürken içeriğine hiç uğramadan.
+ * Bu yüzden panel `role="dialog"` olarak duyurulur, açılışta odak İÇERİ alınır, Tab panelin
+ * içinde döner ve kapanışta odak tetikleyiciye geri verilir. Tetikleyicinin `aria-expanded` /
+ * `aria-controls` bağını kuran taraf ÇAĞIRAN'dır; `id` bu yüzden dışarı verilir.
  */
 export default function AnchoredPopover({
   open,
@@ -28,6 +34,8 @@ export default function AnchoredPopover({
   align = 'right',
   gap = 6,
   className = '',
+  id,
+  label,
 }: {
   open: boolean
   /** Panelin tutturulacağı tetikleyici (düğme ya da onu saran kutu). */
@@ -39,8 +47,14 @@ export default function AnchoredPopover({
   align?: 'left' | 'right'
   gap?: number
   className?: string
+  /** Tetikleyicideki `aria-controls` ile eşleşmesi için dışarıdan verilebilir. */
+  id?: string
+  /** Ekran okuyucunun panele vereceği ad ("Kategori filtresi" gibi). */
+  label?: string
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const autoId = useId()
+  const panelId = id ?? `popover-${autoId}`
   const [pos, setPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null)
 
   const measure = useCallback(() => {
@@ -57,8 +71,15 @@ export default function AnchoredPopover({
     const spaceAbove = rect.top - gap - 8
     // Altta yer dar VE üstte daha genişse yukarı aç (sayfa sonundaki kartlarda kritik).
     const openUp = spaceBelow < 220 && spaceAbove > spaceBelow
-    const maxHeight = Math.max(160, openUp ? spaceAbove : spaceBelow)
-    const top = openUp ? Math.max(8, rect.top - gap - maxHeight) : rect.bottom + gap
+    let maxHeight = openUp ? spaceAbove : spaceBelow
+    /*
+     * KISA EKRAN (yatay telefon, açık klavye): iki yöne de yer yoksa eskiden 160px'lik bir taban
+     * dayatılıyordu ve panel ekranın altından TAŞIYORDU — alttaki düğmelere hiç ulaşılamıyordu.
+     * Artık ekranın verebildiği kadarını alır, gerisini kendi içinde kaydırır.
+     */
+    if (maxHeight < 160) maxHeight = Math.max(120, Math.min(vh - 16, Math.max(spaceAbove, spaceBelow)))
+    const rawTop = openUp ? rect.top - gap - maxHeight : rect.bottom + gap
+    const top = Math.max(8, Math.min(rawTop, vh - maxHeight - 8))
     setPos({ top, left, width: w, maxHeight })
   }, [anchorRef, width, align, gap])
 
@@ -102,12 +123,60 @@ export default function AnchoredPopover({
     }
   }, [open, onClose, anchorRef])
 
+  /*
+   * ODAK YÖNETİMİ. Açılışta odak panelin ilk odaklanabilir öğesine (yoksa panelin kendisine)
+   * gider; Tab panelin içinde döner; kapanışta odak tetikleyiciye GERİ VERİLİR — yoksa klavye
+   * kullanıcısı, panelden sonra sayfanın en başına düşer ve bulunduğu yeri kaybeder.
+   */
+  useEffect(() => {
+    if (!open || !pos) return
+    const panel = panelRef.current
+    if (!panel) return
+    const trigger = document.activeElement as HTMLElement | null
+    const focusables = (): HTMLElement[] =>
+      Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement)
+
+    const first = focusables()[0]
+    ;(first ?? panel).focus({ preventScroll: true })
+
+    const onTab = (event: KeyboardEvent): void => {
+      if (event.key !== 'Tab') return
+      const items = focusables()
+      if (items.length === 0) { event.preventDefault(); return }
+      const current = document.activeElement as HTMLElement | null
+      const index = current ? items.indexOf(current) : -1
+      const next = event.shiftKey
+        ? items[(index <= 0 ? items.length : index) - 1]
+        : items[index === items.length - 1 ? 0 : index + 1]
+      event.preventDefault()
+      next?.focus({ preventScroll: true })
+    }
+    panel.addEventListener('keydown', onTab)
+    return () => {
+      panel.removeEventListener('keydown', onTab)
+      // Odağı yalnızca panel içindeyken geri al: kullanıcı başka yere tıkladıysa oradan koparma.
+      if (panel.contains(document.activeElement)) {
+        const back = anchorRef.current?.querySelector<HTMLElement>('button, [tabindex]:not([tabindex="-1"])') ?? trigger
+        back?.focus({ preventScroll: true })
+      }
+    }
+    // `pos` bağımlılıkta: ilk ölçüm bitmeden panel DOM'da olmaz.
+  }, [open, pos, anchorRef])
+
   if (!open || !pos) return null
 
   return (
     <ModalPortal>
       <div
         ref={panelRef}
+        id={panelId}
+        role="dialog"
+        aria-label={label}
+        tabIndex={-1}
         style={{
           position: 'fixed',
           top: pos.top,

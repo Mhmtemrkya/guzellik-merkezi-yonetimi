@@ -25,7 +25,8 @@ public sealed class GiftCard : Entity
         string? scopeLabel = null,
         string? recipientName = null,
         Guid? serviceDefinitionId = null,
-        Guid? servicePackageId = null)
+        Guid? servicePackageId = null,
+        Guid? productId = null)
     {
         TenantId = tenantId;
         BranchId = branchId;
@@ -39,7 +40,7 @@ public sealed class GiftCard : Entity
         CustomerId = customerId;
         ScopeLabel = Clean(scopeLabel);
         RecipientName = Clean(recipientName);
-        SetCatalogTarget(serviceDefinitionId, servicePackageId);
+        SetCatalogTarget(serviceDefinitionId, servicePackageId, productId);
         IsActive = true;
     }
 
@@ -79,10 +80,15 @@ public sealed class GiftCard : Entity
      * hizmeti/paketi kendiliğinden seçebilsin diye. Serbest metinden hizmet eşleştirmeye
      * çalışmak ("El ve Ayak Bakım" ≟ "El & Ayak Bakımı") kırılgan olurdu.
      *
-     * İKİSİ AYNI ANDA DOLU OLAMAZ: bir çek ya bir hizmete ya bir pakete bağlıdır.
+     * EN FAZLA BİRİ DOLU OLABİLİR: bir çek ya bir hizmete, ya bir pakete, ya bir ürüne bağlıdır.
      */
     public Guid? ServiceDefinitionId { get; private set; }
     public Guid? ServicePackageId { get; private set; }
+    /// <summary>
+    /// Çekin bağlandığı ürün (varsa). Ürün satışı da adisyona kalem olarak girdiği için kısıt
+    /// aynı yerden uygulanır; "yalnız şu şampuan için geçerli" çekleri kataloğa bağlar.
+    /// </summary>
+    public Guid? ProductId { get; private set; }
 
     public void SetCode(string code)
     {
@@ -110,6 +116,41 @@ public sealed class GiftCard : Entity
         && (!ValidUntilUtc.HasValue || ValidUntilUtc.Value >= nowUtc)
         && (MaxUses <= 0 || UsedCount < MaxUses)
         && (Kind != GiftCardKind.StoredValue || Balance > 0m);
+
+    /// <summary>
+    /// Kartın BU KULLANIMDA geçerli olup olmadığı — engel varsa sebebi, yoksa <c>null</c>.
+    ///
+    /// <para>KISITLAR KAYITTA DEĞİL KULLANIMDA ANLAM KAZANIR. <see cref="CustomerId"/>,
+    /// <see cref="BranchId"/> ve katalog hedefi kart üzerinde yazılıydı ama kullanım anında
+    /// hiç okunmuyordu: A müşterisine, A şubesine ve X paketine bağlı bir çek, B müşterisinin
+    /// Y paketi satışında sorunsuz harcanabiliyordu. Bu, kurumlar arası değil ama MÜŞTERİLER
+    /// ARASI parasal değer aktarımıdır.</para>
+    ///
+    /// <para><paramref name="itemRefIds"/> adisyondaki hizmet/paket/ürün kalemlerinin katalog
+    /// kimlikleridir; kart bir kaleme bağlıysa o kalem fişte BULUNMALIDIR.</para>
+    /// </summary>
+    public string? UsageProblemFor(
+        DateTime nowUtc,
+        Guid customerId,
+        Guid? branchId,
+        IReadOnlyCollection<Guid> itemRefIds)
+    {
+        if (!IsValid(nowUtc))
+            return "Kod geçerli değil (pasif, süresi dolmuş, hakkı bitmiş veya bakiyesi yok).";
+
+        if (CustomerId.HasValue && CustomerId.Value != customerId)
+            return "Bu kart başka bir müşteriye tanımlı.";
+
+        // Kart bir şubeye bağlıysa yalnız o şubede geçerlidir. Şubesiz kart (null) kurum geneli.
+        if (BranchId.HasValue && branchId.HasValue && BranchId.Value != branchId.Value)
+            return "Bu kart başka bir şubeye tanımlı.";
+
+        var target = ServiceDefinitionId ?? ServicePackageId ?? ProductId;
+        if (target.HasValue && !itemRefIds.Contains(target.Value))
+            return "Bu kart yalnızca tanımlı olduğu hizmet/paket/ürün satışında kullanılabilir.";
+
+        return null;
+    }
 
     /// <summary>Verilen fiyata uygulanacak indirim tutarı (fiyatı aşmaz).</summary>
     public decimal DiscountFor(decimal price) => Kind switch
@@ -144,6 +185,24 @@ public sealed class GiftCard : Entity
 
     public void SetActive(bool active) { IsActive = active; Touch(); }
 
+    /// <summary>Kullanım hakkı (0 = sınırsız). Negatif değer sınırsız sayılır.</summary>
+    public void SetMaxUses(int maxUses)
+    {
+        MaxUses = maxUses < 0 ? 0 : maxUses;
+        Touch();
+    }
+
+    /// <summary>
+    /// Kartın bağlı müşterisi — düzeltme ucu için. <c>null</c> bağı KALDIRIR (kart tekrar
+    /// taşıyıcıya ait olur). Devir kuralı (kullanılmış kart devredilemez) servis katmanındadır;
+    /// burada tek başına bir hak kontrolü yapılmaz çünkü "bağı kaldırma" da meşru bir düzeltmedir.
+    /// </summary>
+    public void SetCustomer(Guid? customerId)
+    {
+        CustomerId = customerId;
+        Touch();
+    }
+
     public void SetNote(string? note)
     {
         Note = Clean(note);
@@ -158,25 +217,43 @@ public sealed class GiftCard : Entity
         Touch();
     }
 
-    /// <summary>Geçerlilik penceresi. Ters aralık kullanıcı hatasıdır, hata mesajı değil düzeltme hak eder.</summary>
+    /// <summary>
+    /// Geçerlilik penceresi.
+    ///
+    /// <para>TERS ARALIK REDDEDİLİR, sessizce takas EDİLMEZ. Takas, operatörün girdiğinden
+    /// FARKLI bir hak kaydeder: "1 Ocak–1 Şubat" yerine yanlışlıkla "1 Şubat–1 Ocak" yazan
+    /// kullanıcı, düzeltilmiş bir kart alır ve yanlışını hiç görmez. Kartlar basılıp müşteriye
+    /// verildiği için bu, sonradan düzeltilemeyen bir kayıttır.</para>
+    /// </summary>
     public void SetValidity(DateTime? fromUtc, DateTime? untilUtc)
     {
         if (fromUtc.HasValue && untilUtc.HasValue && fromUtc.Value > untilUtc.Value)
-            (fromUtc, untilUtc) = (untilUtc, fromUtc);
+            throw new DomainException("Geçerlilik başlangıcı bitişten sonra olamaz.");
         ValidFromUtc = fromUtc;
         ValidUntilUtc = untilUtc;
         Touch();
     }
 
-    /// <summary>Çekin bağlandığı katalog kaydı. İkisi birden verilirse hata — bir çek tek şeye bağlanır.</summary>
-    public void SetCatalogTarget(Guid? serviceDefinitionId, Guid? servicePackageId)
+    /// <summary>Çekin bağlandığı katalog kaydı. Birden fazlası verilirse hata — bir çek TEK şeye bağlanır.</summary>
+    public void SetCatalogTarget(Guid? serviceDefinitionId, Guid? servicePackageId, Guid? productId = null)
     {
-        if (serviceDefinitionId.HasValue && servicePackageId.HasValue)
-            throw new DomainException("Hediye çeki ya bir hizmete ya bir pakete bağlanabilir, ikisine birden değil.");
+        var filled = (serviceDefinitionId.HasValue ? 1 : 0) + (servicePackageId.HasValue ? 1 : 0) + (productId.HasValue ? 1 : 0);
+        if (filled > 1)
+            throw new DomainException("Hediye çeki yalnız bir hizmete, bir pakete VEYA bir ürüne bağlanabilir.");
         ServiceDefinitionId = serviceDefinitionId;
         ServicePackageId = servicePackageId;
+        ProductId = productId;
         Touch();
     }
+
+    /*
+     * KOD DEĞİŞTİRİLEMEZ — bilerek `SetCode` public kalsa da düzeltme ucundan ÇAĞRILMAZ.
+     *
+     * Kart basılıp müşterinin eline geçer; üstündeki QR o kodu kalıcı olarak kodlar. Kodu
+     * değiştirmek, dolaşımdaki her kartı tek hamlede geçersiz kılar ve müşteri elindeki kâğıdın
+     * neden çalışmadığını asla öğrenemez. Yanlış kod için doğru yol: kartı pasifleştirip yenisini
+     * basmaktır. Aynı gerekçeyle Kind/Value de kullanılmış kartta değiştirilemez (bkz. GiftCardService).
+     */
 
     /// <summary>
     /// Çeki bir müşteriye bağlar (QR okutup eşleştirme). Zaten BAŞKA bir müşteriye bağlıysa

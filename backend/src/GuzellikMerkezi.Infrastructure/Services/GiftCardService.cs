@@ -17,12 +17,14 @@ public sealed class GiftCardService : IGiftCardService
     private readonly GuzellikDbContext _db;
     private readonly IAuditLogger _audit;
     private readonly IFeatureService _features;
+    private readonly ICurrentUser _currentUser;
 
-    public GiftCardService(GuzellikDbContext db, IAuditLogger audit, IFeatureService features)
+    public GiftCardService(GuzellikDbContext db, IAuditLogger audit, IFeatureService features, ICurrentUser currentUser)
     {
         _db = db;
         _audit = audit;
         _features = features;
+        _currentUser = currentUser;
     }
 
     private const string FeatureDeniedMessage = "Hediye çeki & kupon özelliği paketinizde yok. Üst pakete geçerek kullanabilirsiniz.";
@@ -56,10 +58,40 @@ public sealed class GiftCardService : IGiftCardService
             var exists = await _db.GiftCards.AsNoTracking().AnyAsync(g => g.TenantId == tenantId && g.Code == code, cancellationToken);
             if (exists) return Result<GiftCardDto>.Failure(Error.Conflict("Bu kod zaten kullanılıyor."));
 
+            /*
+             * REFERANSLAR DOĞRULANIR. Müşteri ve katalog kimlikleri metadata gibi kabul edilip
+             * hiç kontrol edilmiyordu: başka kuruma ait ya da var olmayan bir kimlik kalıcı olarak
+             * yazılabiliyor, kart sonradan hiçbir kısıtı uygulayamayan bir kayda dönüşüyordu.
+             */
+            if (request.CustomerId.HasValue)
+            {
+                var customerOk = await _db.Customers.AsNoTracking()
+                    .AnyAsync(c => c.TenantId == tenantId && c.Id == request.CustomerId.Value, cancellationToken);
+                if (!customerOk) return Result<GiftCardDto>.Failure(Error.Validation("Seçilen müşteri bulunamadı."));
+            }
+            if (request.ServiceDefinitionId.HasValue)
+            {
+                var serviceOk = await _db.ServiceDefinitions.AsNoTracking()
+                    .AnyAsync(x => x.TenantId == tenantId && x.Id == request.ServiceDefinitionId.Value, cancellationToken);
+                if (!serviceOk) return Result<GiftCardDto>.Failure(Error.Validation("Seçilen hizmet bulunamadı."));
+            }
+            if (request.ServicePackageId.HasValue)
+            {
+                var packageOk = await _db.ServicePackages.AsNoTracking()
+                    .AnyAsync(x => x.TenantId == tenantId && x.Id == request.ServicePackageId.Value, cancellationToken);
+                if (!packageOk) return Result<GiftCardDto>.Failure(Error.Validation("Seçilen paket bulunamadı."));
+            }
+            if (request.ProductId.HasValue)
+            {
+                var productOk = await _db.Products.AsNoTracking()
+                    .AnyAsync(x => x.TenantId == tenantId && x.Id == request.ProductId.Value, cancellationToken);
+                if (!productOk) return Result<GiftCardDto>.Failure(Error.Validation("Seçilen ürün bulunamadı."));
+            }
+
             var card = new GiftCard(tenantId, request.BranchId, code, request.Kind, request.Value,
                 request.ValidUntilUtc, request.MaxUses, request.Note, request.CustomerId,
                 request.ValidFromUtc, request.ScopeLabel, request.RecipientName,
-                request.ServiceDefinitionId, request.ServicePackageId);
+                request.ServiceDefinitionId, request.ServicePackageId, request.ProductId);
             _db.GiftCards.Add(card);
             await _db.SaveChangesAsync(cancellationToken);
             await _audit.LogAsync(tenantId, card.BranchId, "Create", "GiftCard", card.Id, $"Hediye çeki/kupon: {card.Code}", null, cancellationToken);
@@ -91,20 +123,55 @@ public sealed class GiftCardService : IGiftCardService
         var normalized = (request.Code ?? string.Empty).Trim().ToUpperInvariant();
         if (normalized.Length == 0) return Result<GiftCardDto>.Failure(Error.Validation("Kart kodu okunamadı."));
 
-        var card = await _db.GiftCards.FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Code == normalized, cancellationToken);
-        if (card is null) return Result<GiftCardDto>.Failure(Error.NotFound("Bu koda ait kart bulunamadı."));
-
         // Müşteri gerçekten bu kuruma ait mi? Aksi hâlde uç, başka kurumun müşterisine kart
         // bağlayan bir yol olurdu.
         var customerExists = await _db.Customers.AsNoTracking()
-            .AnyAsync(c => c.TenantId == tenantId && c.Id == request.CustomerId && !c.IsDeleted, cancellationToken);
+            .AnyAsync(c => c.TenantId == tenantId && c.Id == request.CustomerId, cancellationToken);
         if (!customerExists) return Result<GiftCardDto>.Failure(Error.NotFound("Müşteri bulunamadı."));
+
+        /*
+         * DEVİR KİLİT ALTINDA — oku/karar ver/yaz üçlüsü tek transaction'da.
+         *
+         * Kilitsiz hâlde iki eşzamanlı atama da "başarılı" dönebiliyor ve son commit sessizce
+         * kazanıyordu; daha kötüsü, kartın sahibi DEĞİŞİRKEN aynı kart üzerinde bakiye hareketi
+         * (satış geri alma → iade) yapılabiliyordu. Kart satırı, para hareketi yollarıyla AYNI
+         * kilit protokolüne (bkz. RedeemAsync / AdisyonEffectsReversal) sokulur.
+         */
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        var cardId = await _db.GiftCards.AsNoTracking()
+            .Where(g => g.TenantId == tenantId && g.Code == normalized)
+            .Select(g => (Guid?)g.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (cardId is null) return Result<GiftCardDto>.Failure(Error.NotFound("Bu koda ait kart bulunamadı."));
+
+        if (relational) await RowLock.LockRowAsync(_db, "gift_cards", cardId.Value, cancellationToken);
+
+        var card = await _db.GiftCards.FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == cardId.Value, cancellationToken);
+        if (card is null) return Result<GiftCardDto>.Failure(Error.NotFound("Bu koda ait kart bulunamadı."));
+        // Kilitten ÖNCE okunmuş olabilir (izleyicide bayat nesne) → kilit altında yeniden oku.
+        if (relational)
+        {
+            await _db.Entry(card).ReloadAsync(cancellationToken);
+            if (_db.Entry(card).State == EntityState.Detached)
+                return Result<GiftCardDto>.Failure(Error.NotFound("Bu koda ait kart bulunamadı."));
+        }
 
         // GEÇERSİZ KART EŞLEŞTİRİLMEZ: süresi dolmuş çeki müşteriye tanımlamak, satış ekranında
         // kullanılamayacak bir hak varmış gibi görünmesine yol açar.
         if (!card.IsValid(DateTime.UtcNow))
             return Result<GiftCardDto>.Failure(Error.Validation("Kart geçerli değil (pasif, süresi dolmuş, hakkı bitmiş veya bakiyesi yok)."));
 
+        // KISMEN KULLANILMIŞ KART DEVREDİLEMEZ: bakiyesinden harcama yapılmış bir çek başka
+        // müşteriye geçerse, eski satışın geri alınması YENİ sahibin bakiyesini şişirir/tüketir.
+        if (card.CustomerId.HasValue && card.CustomerId.Value != request.CustomerId && card.UsedCount > 0)
+            return Result<GiftCardDto>.Failure(Error.Conflict(
+                "Bu kart kullanılmaya başlanmış; başka müşteriye devredilemez. Yeni bir kart tanımlayın."));
+
+        var previousCustomerId = card.CustomerId;
         try
         {
             card.AssignCustomer(request.CustomerId, request.AllowReassign);
@@ -116,8 +183,14 @@ public sealed class GiftCardService : IGiftCardService
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
+        // Denetim kaydı ESKİ VE YENİ sahibi birlikte yazar: "kart kime geçti" sorusu sonradan
+        // yalnız bu satırdan cevaplanabilir.
         await _audit.LogAsync(tenantId, card.BranchId, "AssignCustomer", "GiftCard", card.Id,
-            $"Hediye çeki müşteriye tanımlandı: {card.Code}", null, cancellationToken);
+            previousCustomerId is null
+                ? $"Hediye çeki müşteriye tanımlandı: {card.Code} → {request.CustomerId}"
+                : $"Hediye çeki devredildi: {card.Code} ({previousCustomerId} → {request.CustomerId})",
+            null, cancellationToken);
         return Result<GiftCardDto>.Success(ToDto(card, DateTime.UtcNow));
     }
 
@@ -129,6 +202,90 @@ public sealed class GiftCardService : IGiftCardService
         return card is null
             ? Result<GiftCardDto>.Failure(Error.NotFound("Kod bulunamadı."))
             : Result<GiftCardDto>.Success(ToDto(card, DateTime.UtcNow));
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<GiftCardDto>> UpdateAsync(Guid tenantId, Guid id, UpdateGiftCardRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!await _features.IsFeatureAllowedAsync(tenantId, FeatureCatalog.MarketingGiftCards, cancellationToken))
+            return Result<GiftCardDto>.Failure(Error.Conflict(FeatureDeniedMessage));
+
+        // Referanslar burada da doğrulanır: düzeltme, oluşturmanın açık bıraktığı bir arka kapı olamaz.
+        if (request.CustomerId.HasValue)
+        {
+            var customerOk = await _db.Customers.AsNoTracking()
+                .AnyAsync(c => c.TenantId == tenantId && c.Id == request.CustomerId.Value, cancellationToken);
+            if (!customerOk) return Result<GiftCardDto>.Failure(Error.Validation("Seçilen müşteri bulunamadı."));
+        }
+        if (request.ServiceDefinitionId.HasValue)
+        {
+            var serviceOk = await _db.ServiceDefinitions.AsNoTracking()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == request.ServiceDefinitionId.Value, cancellationToken);
+            if (!serviceOk) return Result<GiftCardDto>.Failure(Error.Validation("Seçilen hizmet bulunamadı."));
+        }
+        if (request.ServicePackageId.HasValue)
+        {
+            var packageOk = await _db.ServicePackages.AsNoTracking()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == request.ServicePackageId.Value, cancellationToken);
+            if (!packageOk) return Result<GiftCardDto>.Failure(Error.Validation("Seçilen paket bulunamadı."));
+        }
+        if (request.ProductId.HasValue)
+        {
+            var productOk = await _db.Products.AsNoTracking()
+                .AnyAsync(x => x.TenantId == tenantId && x.Id == request.ProductId.Value, cancellationToken);
+            if (!productOk) return Result<GiftCardDto>.Failure(Error.Validation("Seçilen ürün bulunamadı."));
+        }
+
+        // Para taşıyan satır → ortak kilit protokolü (bkz. RedeemAsync / SetActiveAsync).
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (relational) await RowLock.LockRowAsync(_db, "gift_cards", id, cancellationToken);
+
+        var card = await _db.GiftCards.FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == id, cancellationToken);
+        if (card is null) return Result<GiftCardDto>.Failure(Error.NotFound("Kart bulunamadı."));
+        if (relational)
+        {
+            await _db.Entry(card).ReloadAsync(cancellationToken);
+            if (_db.Entry(card).State == EntityState.Detached)
+                return Result<GiftCardDto>.Failure(Error.NotFound("Kart bulunamadı."));
+        }
+
+        /*
+         * KULLANILMAYA BAŞLANMIŞ KARTIN SAHİBİ DEĞİŞMEZ — atama ucundaki (AssignCustomerAsync)
+         * kuralın aynısı. Aksi hâlde düzeltme ucu o korumanın etrafından dolaşan bir yol olurdu:
+         * bakiyesinden harcama yapılmış çek başka müşteriye geçerse, eski satışın iptali YENİ
+         * sahibin bakiyesini şişirir.
+         */
+        if (card.CustomerId != request.CustomerId && card.UsedCount > 0)
+            return Result<GiftCardDto>.Failure(Error.Conflict(
+                "Bu kart kullanılmaya başlanmış; bağlı müşterisi değiştirilemez."));
+
+        // KULLANIM HAKKI GERİYE ÇEKİLEMEZ: MaxUses'i mevcut kullanımın altına indirmek, geçmiş
+        // kullanımları "fazladan yapılmış" duruma sokar ve kartı sessizce ölü ilan eder.
+        if (request.MaxUses > 0 && request.MaxUses < card.UsedCount)
+            return Result<GiftCardDto>.Failure(Error.Validation(
+                $"Bu kart {card.UsedCount} kez kullanılmış; kullanım hakkı bunun altına indirilemez."));
+
+        try
+        {
+            card.SetValidity(request.ValidFromUtc, request.ValidUntilUtc);
+            card.SetMaxUses(request.MaxUses);
+            card.SetNote(request.Note);
+            card.SetPrintDetails(request.ScopeLabel, request.RecipientName);
+            card.SetCatalogTarget(request.ServiceDefinitionId, request.ServicePackageId, request.ProductId);
+            card.SetCustomer(request.CustomerId);
+            await _db.SaveChangesAsync(cancellationToken);
+            if (tx is not null) await tx.CommitAsync(cancellationToken);
+        }
+        catch (DomainException ex)
+        {
+            return Result<GiftCardDto>.Failure(Error.Validation(ex.Message));
+        }
+
+        await _audit.LogAsync(tenantId, card.BranchId, "Update", "GiftCard", card.Id, $"Kart düzeltildi: {card.Code}", null, cancellationToken);
+        return Result<GiftCardDto>.Success(ToDto(card, DateTime.UtcNow));
     }
 
     /// <summary>
@@ -163,7 +320,8 @@ public sealed class GiftCardService : IGiftCardService
 
         try
         {
-            card.Redeem(request.Amount, DateTime.UtcNow);
+            GiftCardLedger.Redeem(_db, card, request.Amount, DateTime.UtcNow,
+                GiftCardLedger.SourceDirect, sourceId: null, customerId: null, performedByUserId: _currentUser.UserId);
             await _db.SaveChangesAsync(cancellationToken);
             if (tx is not null) await tx.CommitAsync(cancellationToken);
             await _audit.LogAsync(tenantId, card.BranchId, "Redeem", "GiftCard", card.Id, $"Kullanım: {card.Code}", null, cancellationToken);
@@ -283,6 +441,14 @@ public sealed class GiftCardService : IGiftCardService
             .FirstOrDefaultAsync(cancellationToken);
         if (tenant is null) return Result<PublicGiftCardDto>.Failure(Error.NotFound("Kart bulunamadı."));
 
+        /*
+         * TAHMİN EDİLEBİLİR KOD KORUMASI. Bu uç anonimdir; kurum "VIP", "2024" gibi kısa özel
+         * kodlar tanımlayabildiği için kaba kuvvetle bakiye/geçerlilik okunabilirdi. Çok kısa
+         * kodlar bu uçtan HİÇ sorgulanamaz — kart yine işletmede kullanılabilir, yalnız herkese
+         * açık sorgulama yüzeyi kapanır. (Uç ayrıca "public-browse" hız sınırındadır.)
+         */
+        if (normalizedCode.Length < 6) return Result<PublicGiftCardDto>.Failure(Error.NotFound("Kart bulunamadı."));
+
         var card = await _db.GiftCards.IgnoreQueryFilters().AsNoTracking()
             .FirstOrDefaultAsync(g => !g.IsDeleted && g.TenantId == tenant.Id && g.Code == normalizedCode, cancellationToken);
         if (card is null) return Result<PublicGiftCardDto>.Failure(Error.NotFound("Kart bulunamadı."));
@@ -313,5 +479,5 @@ public sealed class GiftCardService : IGiftCardService
     private static GiftCardDto ToDto(GiftCard g, DateTime nowUtc) => new(
         g.Id, g.TenantId, g.BranchId, g.Code, g.Kind, g.Value, g.Balance,
         g.ValidFromUtc, g.ValidUntilUtc, g.MaxUses, g.UsedCount, g.IsActive, g.Note, g.CustomerId,
-        g.ScopeLabel, g.ServiceDefinitionId, g.ServicePackageId, g.RecipientName, g.IsValid(nowUtc));
+        g.ScopeLabel, g.ServiceDefinitionId, g.ServicePackageId, g.ProductId, g.RecipientName, g.IsValid(nowUtc));
 }

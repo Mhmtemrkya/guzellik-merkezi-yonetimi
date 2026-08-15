@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { use, useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Gift, Loader2 } from 'lucide-react'
 import { getPublicGiftCard, type PublicGiftCard } from '@/lib/publicSalonApi'
 
@@ -28,15 +28,32 @@ export default function PublicGiftCardPage({ params }: { params: Promise<{ slug:
   const [card, setCard] = useState<PublicGiftCard | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  /**
+   * ERİŞİM HATASI ≠ KART YOK. Ağ kesintisi, 429 ya da 5xx durumunda "bu kart bulunamadı" demek
+   * müşteriye elindeki kartın SAHTE olduğunu söylemektir. İki durum ayrı gösterilir.
+   */
+  const [unreachable, setUnreachable] = useState(false)
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true)
+    setError('')
+    setUnreachable(false)
     let alive = true
     getPublicGiftCard(slug, code)
       .then((c) => { if (alive) setCard(c) })
-      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : 'Kart bulunamadı.') })
+      .catch((e) => {
+        if (!alive) return
+        const message = e instanceof Error ? e.message : ''
+        // "Bulunamadı" sunucunun kesin cevabıdır; gerisi ulaşılamama sayılır.
+        const notFound = /bulunamad/i.test(message)
+        setUnreachable(!notFound)
+        setError(notFound ? message : 'Kart bilgisi şu an alınamıyor.')
+      })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [slug, code])
+
+  useEffect(() => load(), [load])
 
   const from = fmt(card?.validFromUtc ?? null)
   const until = fmt(card?.validUntilUtc ?? null)
@@ -66,15 +83,28 @@ export default function PublicGiftCardPage({ params }: { params: Promise<{ slug:
                 <Loader2 className="h-4 w-4 animate-spin" /> Kart doğrulanıyor…
               </div>
             ) : error || !card ? (
-              /* BULUNAMADI ≠ GEÇERSİZ: sahte/yanlış kodla süresi dolmuş kart aynı şey değildir. */
+              /* BULUNAMADI ≠ GEÇERSİZ ≠ ULAŞILAMADI — üçü ayrı cümle hak eder. */
               <div className="rounded-[16px] border border-dashed border-[#e7c7d4] bg-[#fffafc] px-4 py-8 text-center">
                 <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#FCE7EC] text-[#A32347]">
                   <AlertTriangle className="h-6 w-6" />
                 </span>
-                <p className="mt-3 text-[14px] font-semibold text-[#2f2230]">Bu kart bulunamadı</p>
-                <p className="mt-1 text-[12px] leading-relaxed text-[#74616A]">
-                  Adres yanlış olabilir ya da kart kaldırılmış olabilir. Kartı aldığınız işletmeyle iletişime geçin.
+                <p className="mt-3 text-[14px] font-semibold text-[#2f2230]">
+                  {unreachable ? 'Kart bilgisi alınamadı' : 'Bu kart bulunamadı'}
                 </p>
+                <p className="mt-1 text-[12px] leading-relaxed text-[#74616A]">
+                  {unreachable
+                    ? 'Bağlantı sorunu olabilir. Kartınız geçersiz demek DEĞİLDİR; birazdan tekrar deneyin.'
+                    : 'Adres yanlış olabilir ya da kart kaldırılmış olabilir. Kartı aldığınız işletmeyle iletişime geçin.'}
+                </p>
+                {unreachable && (
+                  <button
+                    type="button"
+                    onClick={load}
+                    className="mt-3 rounded-[11px] border border-[#EAD8DF] bg-white px-3.5 py-2 text-[12px] font-semibold text-[#A5556E]"
+                  >
+                    Tekrar dene
+                  </button>
+                )}
               </div>
             ) : (
               <>
@@ -116,7 +146,8 @@ export default function PublicGiftCardPage({ params }: { params: Promise<{ slug:
           </div>
         </div>
 
-        <p className="mt-4 text-center text-[11px] text-[#9d8792]">Güzellik Merkezi Yönetim Sistemi</p>
+        {/* Kontrast WCAG AA (4.5:1): önceki #9d8792 beyaz üstünde 3.18:1 ile altındaydı. */}
+        <p className="mt-4 text-center text-[11px] text-[#6E5A64]">Güzellik Merkezi Yönetim Sistemi</p>
       </div>
     </main>
   )

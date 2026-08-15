@@ -22,6 +22,8 @@ Future<void> showGiftCardShareSheet(
   required Map<String, dynamic> card,
   required String salonName,
   required String? salonSlug,
+  /// Kurum profili ucu düştü mü — "adres tanımlı değil" ile "profil yüklenemedi" ayrı teşhistir.
+  bool salonProfileFailed = false,
   Uint8List? logoBytes,
   String defaultPhone = '',
   bool canWhatsApp = true,
@@ -36,6 +38,7 @@ Future<void> showGiftCardShareSheet(
       card: card,
       salonName: salonName,
       salonSlug: salonSlug,
+      salonProfileFailed: salonProfileFailed,
       logoBytes: logoBytes,
       defaultPhone: defaultPhone,
       canWhatsApp: canWhatsApp,
@@ -49,6 +52,7 @@ class _GiftCardShareSheet extends StatefulWidget {
     required this.card,
     required this.salonName,
     required this.salonSlug,
+    required this.salonProfileFailed,
     required this.logoBytes,
     required this.defaultPhone,
     required this.canWhatsApp,
@@ -58,6 +62,7 @@ class _GiftCardShareSheet extends StatefulWidget {
   final Map<String, dynamic> card;
   final String salonName;
   final String? salonSlug;
+  final bool salonProfileFailed;
   final Uint8List? logoBytes;
   final String defaultPhone;
   final bool canWhatsApp;
@@ -85,7 +90,9 @@ class _GiftCardShareSheetState extends State<_GiftCardShareSheet> {
     final base = ApiConfig.publicWebBaseUrl;
     if (base.isEmpty) return '';
     final code = valueOf(widget.card, const ['code'], fallback: '');
-    return '$base/hediye-kart/$slug/$code';
+    // YOL PARÇALARI KODLANIR: "SUMMER/25" gibi bir kod ham birleştirmede fazladan yol
+    // parçası üretir ve QR yanlış adrese gider — basılı kartta kalıcı kusur olurdu.
+    return '$base/hediye-kart/${Uri.encodeComponent(slug)}/${Uri.encodeComponent(code)}';
   }
 
   @override
@@ -170,13 +177,20 @@ class _GiftCardShareSheetState extends State<_GiftCardShareSheet> {
     try {
       final bytes = await _buildPdf();
       if (bytes == null) throw Exception('PDF üretilemedi.');
-      await widget.api.post('/api/admin/whatsapp/gift-card', {
+      final result = await widget.api.post('/api/admin/whatsapp/gift-card', {
         'giftCardId': '${widget.card['id']}',
         'phone': phone.isEmpty ? null : phone,
         'pdfBase64': base64Encode(bytes),
       });
       if (mounted) {
-        setState(() { _notice = 'Hediye kartı WhatsApp\'tan gönderildi.'; _sendOpen = false; });
+        // Onaya düştüyse "gönderildi" DENMEZ — mesaj henüz iletilmedi.
+        final pending = result is Map && result['pendingApproval'] == true;
+        setState(() {
+          _notice = pending
+              ? 'Gönderim onaya gönderildi. Yönetici onayladıktan sonra iletilecek.'
+              : 'Hediye kartı WhatsApp\'tan gönderildi.';
+          _sendOpen = false;
+        });
       }
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -259,10 +273,14 @@ class _GiftCardShareSheetState extends State<_GiftCardShareSheet> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: AppColors.warning.withValues(alpha: .40)),
                       ),
-                      child: const Text(
-                        'Kurumun herkese açık adresi tanımlı olmadığı için karta QR basılamadı. '
-                        'Salon Profili sayfasından tanımlayınca QR otomatik gelir.',
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.warning),
+                      child: Text(
+                        widget.salonProfileFailed
+                            ? 'Kurum profili yüklenemediği için karta QR basılamadı. Bu bir ayar eksiği '
+                                  'değil, geçici bir erişim sorunudur — sayfayı yenileyip tekrar deneyin '
+                                  '(kartı QR olmadan yazdırmayın, QR sonradan eklenemez).'
+                            : 'Kurumun herkese açık adresi tanımlı olmadığı için karta QR basılamadı. '
+                                  'Salon Profili sayfasından tanımlayınca QR otomatik gelir.',
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.warning),
                       ),
                     ),
                   ],

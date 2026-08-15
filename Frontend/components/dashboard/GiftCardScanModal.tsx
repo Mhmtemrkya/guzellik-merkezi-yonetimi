@@ -14,19 +14,45 @@ import ModalPortal from '@/components/dashboard/ModalPortal'
  * kamera yoksa ya da QR yıpranmışsa iş durmasın.
  */
 
+/** Okunan QR'dan çıkan kart kimliği: kod + (adresten geldiyse) kurum anahtarı. */
+export interface ScannedCard {
+  code: string
+  /** Adresteki kurum anahtarı; çıplak kod okunduysa null. */
+  slug: string | null
+}
+
 /**
- * Okunan QR'dan kart kodunu çıkarır.
+ * Okunan QR'dan kart kimliğini çıkarır.
  * Kabul edilenler: tam adres (`https://.../hediye-kart/slug/HD-XXXX`), göreli yol ve çıplak kod.
+ *
+ * SLUG ATILMAZ. Önceden yalnız kod alınıyordu; BAŞKA salonun QR'ı okutulduğunda kod bu kurumda
+ * da varsa (ör. "VIP" gibi kısa kodlar) istek sessizce KENDİ kurumumuzun aynı kodlu kartına
+ * yazıyordu — somut bir yanlış hedefe yazma. Kurum anahtarı taşınır ve çağıran, kartın bu
+ * kuruma ait olduğunu doğrulayana kadar işlem yapmaz.
  */
-export function extractCode(raw: string): string {
+export function extractScanned(raw: string): ScannedCard {
   const text = (raw || '').trim()
-  if (!text) return ''
-  // Adres ise son yol parçası koddur.
-  const match = text.match(/hediye-kart\/[^/]+\/([^/?#\s]+)/i)
-  if (match?.[1]) return decodeURIComponent(match[1]).toUpperCase()
-  // Adres değilse çıplak kod kabul edilir; boşluk/karakter temizliği yapılır.
-  if (/^[A-Za-z0-9-]{4,40}$/.test(text)) return text.toUpperCase()
-  return ''
+  if (!text) return { code: '', slug: null }
+  const match = text.match(/hediye-kart\/([^/]+)\/([^/?#\s]+)/i)
+  if (match?.[2]) {
+    // BOZUK KAÇIŞ ÇÖKERTMEZ: "%" gibi yarım diziler decodeURIComponent'i fırlatır; ham değere düşülür.
+    const safe = (value: string): string => {
+      try {
+        return decodeURIComponent(value)
+      } catch {
+        return value
+      }
+    }
+    return { code: safe(match[2]).toUpperCase(), slug: safe(match[1]).toLowerCase() }
+  }
+  // Adres değilse çıplak kod kabul edilir (elle giriş / kod yazan basit QR).
+  if (/^[A-Za-z0-9-]{4,40}$/.test(text)) return { code: text.toUpperCase(), slug: null }
+  return { code: '', slug: null }
+}
+
+/** Geriye dönük yardımcı — yalnız kod isteyen çağrılar için. */
+export function extractCode(raw: string): string {
+  return extractScanned(raw).code
 }
 
 interface BarcodeDetectorLike {
@@ -38,6 +64,7 @@ export default function GiftCardScanModal({
   open,
   onClose,
   onScanned,
+  expectedSlug,
   title = 'Hediye kartı okut',
   hint,
   busy = false,
@@ -47,6 +74,11 @@ export default function GiftCardScanModal({
   onClose: () => void
   /** Okunan/yazılan kart kodu (temizlenmiş). */
   onScanned: (code: string) => void
+  /**
+   * Bu kurumun herkese açık adres anahtarı. Okunan QR BAŞKA bir kuruma aitse işlem yapılmaz —
+   * kod bu kurumda da bulunabilir ve yanlış karta yazılırdı.
+   */
+  expectedSlug?: string | null
   title?: string
   hint?: string
   busy?: boolean
@@ -58,6 +90,8 @@ export default function GiftCardScanModal({
   const [camError, setCamError] = useState('')
   const [manual, setManual] = useState('')
   const [lastRead, setLastRead] = useState('')
+  /** Okunan QR başka bir kuruma aitti. */
+  const [foreign, setForeign] = useState(false)
 
   const stopCam = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -66,7 +100,7 @@ export default function GiftCardScanModal({
   }, [])
 
   useEffect(() => {
-    if (!open) { stopCam(); setManual(''); setLastRead(''); setCamError('') }
+    if (!open) { stopCam(); setManual(''); setLastRead(''); setCamError(''); setForeign(false) }
   }, [open, stopCam])
 
   // Modal kapanınca kamera MUTLAKA kapanmalı: açık kalan akış telefonun kamerasını
@@ -96,11 +130,18 @@ export default function GiftCardScanModal({
           const found = await detector.detect(videoRef.current)
           const value = found[0]?.rawValue
           if (value) {
-            const code = extractCode(value)
-            if (code) {
-              setLastRead(code)
+            const scanned = extractScanned(value)
+            if (scanned.code) {
+              // BAŞKA KURUMUN KARTI REDDEDİLİR (bkz. extractScanned).
+              if (scanned.slug && expectedSlug && scanned.slug !== expectedSlug.toLowerCase()) {
+                setForeign(true)
+                stopCam()
+                return
+              }
+              setForeign(false)
+              setLastRead(scanned.code)
               stopCam()
-              onScanned(code)
+              onScanned(scanned.code)
               return
             }
           }
@@ -200,8 +241,16 @@ export default function GiftCardScanModal({
                 </label>
                 <button
                   type="button"
-                  disabled={busy || extractCode(manual).length === 0}
-                  onClick={() => onScanned(extractCode(manual))}
+                  disabled={busy || extractScanned(manual).code.length === 0}
+                  onClick={() => {
+                    const scanned = extractScanned(manual)
+                    if (scanned.slug && expectedSlug && scanned.slug !== expectedSlug.toLowerCase()) {
+                      setForeign(true)
+                      return
+                    }
+                    setForeign(false)
+                    onScanned(scanned.code)
+                  }}
                   className="mt-2.5 inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-[11px] bg-[#A5556E] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#8C4460] disabled:opacity-50"
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Eşleştir
@@ -211,6 +260,11 @@ export default function GiftCardScanModal({
               {lastRead && !error && (
                 <p className="flex items-center gap-1.5 rounded-[11px] border border-[#8ED6B4] bg-[#DFF3EA] px-3 py-2 text-[11.5px] font-medium text-[#15694A]">
                   <ScanLine className="h-3.5 w-3.5" /> Okundu: {lastRead}
+                </p>
+              )}
+              {foreign && (
+                <p className="rounded-[11px] border border-[#F0AFBF] bg-[#FCE7EC] px-3 py-2 text-[11.5px] font-medium text-[#A32347]">
+                  Bu QR başka bir işletmeye ait bir hediye kartına ait. İşlem yapılmadı.
                 </p>
               )}
               {error && (

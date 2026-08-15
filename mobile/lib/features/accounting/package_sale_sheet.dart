@@ -115,6 +115,8 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   List<Map<String, dynamic>> _giftCards = const [];
   int? _loyaltyPoints;
   bool _autoPicked = false;
+  /// Kullanıcı kalemi ELLE seçti mi? Katalog yüklenirken yapılan varsayılan seçimden ayırır.
+  bool _userPickedItem = false;
   String? productId;
   int quantity = 1;
   String? staffId;
@@ -265,10 +267,19 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   /// kolaylık katmanıdır, satış akışını durdurmamalı.
   Future<void> _loadCustomerExtras() async {
     final cid = customerId;
+    // ÖNCEKİ MÜŞTERİNİN İZİ SİLİNİR: otomatik seçilmiş kalem geri alınır, aksi hâlde A
+    // müşterisinin çekinden gelen paket B müşterisine geçilince seçili kalırdı.
+    if (mounted && _autoPicked) {
+      setState(() {
+        if (_isService) { serviceId = null; } else { packageId = null; }
+        _autoPicked = false;
+      });
+    }
     if (cid == null || cid.isEmpty) {
-      if (mounted) setState(() { _giftCards = const []; _loyaltyPoints = null; _autoPicked = false; });
+      if (mounted) setState(() { _giftCards = const []; _loyaltyPoints = null; });
       return;
     }
+    if (mounted) setState(() => _giftCards = const []);
     try {
       final rows = await widget.api.get('/api/admin/gift-cards/by-customer/$cid');
       if (mounted) setState(() => _giftCards = apiItems(rows));
@@ -285,15 +296,22 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
     _applyGiftCardAutoPick();
   }
 
-  /// Çeke bağlı katalog kaydı satılacak türle uyuşuyorsa otomatik seçilir.
-  /// Kullanıcının seçimi EZİLMEZ: yalnız alan boşken ve bir kez.
+  /*
+   * Çeke bağlı katalog kaydı satılacak türle uyuşuyorsa otomatik seçilir.
+   *
+   * KATALOĞUN İLK-SEÇİMİ EZİLİR, KULLANICININKİ EZİLMEZ. Katalog yüklendiğinde listenin ilk
+   * kaydı varsayılan olarak seçiliyor; "alan doluysa dokunma" kuralı bu varsayılanı kullanıcı
+   * seçimi sanıp çeki uygulamıyordu — üstelik hangi isteğin önce bittiğine göre sonuç
+   * değişiyordu. Ayrım `_userPickedItem`: yalnız kullanıcı dokunduğunda true olur.
+   */
   void _applyGiftCardAutoPick() {
-    if (_autoPicked || _isProduct || !mounted) return;
+    if (_autoPicked || _isProduct || !mounted || _userPickedItem) return;
     for (final g in _giftCards) {
       final target = _isService ? '${g['serviceDefinitionId'] ?? ''}' : '${g['servicePackageId'] ?? ''}';
       if (target.isEmpty) continue;
-      if (_isService && (serviceId ?? '').isNotEmpty) return;
-      if (!_isService && (packageId ?? '').isNotEmpty) return;
+      // Hedef katalogda gerçekten var mı? Yoksa seçimi bozup boş bırakmayalım.
+      final pool = _isService ? services : packages;
+      if (!pool.any((x) => '${x['id']}' == target)) continue;
       setState(() {
         if (_isService) { serviceId = target; } else { packageId = target; }
         _autoPicked = true;
@@ -1272,6 +1290,9 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                           } else {
                             packageId = id;
                           }
+                          // ELLE SEÇİM İŞARETLENİR: hediye çeki otomatik seçimi bundan sonra
+                          // kullanıcının tercihini ezmez (katalog varsayılanını ezer).
+                          _userPickedItem = true;
                           price.clear();
                         }),
                         categoryOrder: categoryOrder,

@@ -324,8 +324,17 @@ public sealed class WhatsAppService : IWhatsAppService
     /// </summary>
     public async Task<Result<ReminderResultDto>> SendGiftCardAsync(Guid tenantId, SendGiftCardRequest request, CancellationToken ct = default)
     {
-        var card = await _db.GiftCards.IgnoreQueryFilters().AsNoTracking()
-            .FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == request.GiftCardId && !g.IsDeleted, ct);
+        /*
+         * ŞUBE KAPSAMI KORUNUR — `IgnoreQueryFilters` YOK.
+         *
+         * Bu bir İSTEK BAĞLAMI ucudur (arka plan işi değil): global query filter tenant VE şube
+         * kapsamını uygular. Filtreyi kapatıp yalnız TenantId'yi elle kontrol etmek, aynı kurumun
+         * BAŞKA ŞUBESİNE ait bir kart kimliği bilinirse o kartın gönderilmesine izin verirdi
+         * (BOLA). Kartı bulamamak = yetkisi yok; ayrı bir "yetkisiz" mesajı da kartın varlığını
+         * sızdırmamak için verilmez.
+         */
+        var card = await _db.GiftCards.AsNoTracking()
+            .FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == request.GiftCardId, ct);
         if (card is null) return Result<ReminderResultDto>.Failure(Error.NotFound("Hediye kartı bulunamadı."));
 
         // GEÇERSİZ KART GÖNDERİLMEZ: süresi dolmuş ya da bakiyesi bitmiş bir kartı müşteriye
@@ -338,12 +347,33 @@ public sealed class WhatsAppService : IWhatsAppService
         Customer? customer = null;
         if (card.CustomerId.HasValue)
         {
-            customer = await _db.Customers.IgnoreQueryFilters().AsNoTracking()
-                .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == card.CustomerId.Value && !c.IsDeleted, ct);
+            // Müşteri de kapsam içinden okunur (aynı gerekçe).
+            customer = await _db.Customers.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == card.CustomerId.Value, ct);
             if (phone.Length == 0) phone = customer?.Phone ?? string.Empty;
         }
         if (phone.Length == 0)
             return Result<ReminderResultDto>.Failure(Error.Validation("Gönderilecek telefon numarası yok."));
+
+        /*
+         * NUMARA KEYFİ OLAMAZ.
+         *
+         * Kart bir müşteriye bağlıysa gönderim YALNIZ o müşterinin kayıtlı numarasına yapılır:
+         * aksi hâlde uç, kurumun kontörüyle istenen numaraya belge gönderen bir kanala dönerdi
+         * (kartın kendisi de değerli bir belgedir). Kart müşterisizse serbest numara kabul edilir —
+         * o kart zaten kime verileceği belli olmayan basılı bir karttır.
+         */
+        if (customer is not null)
+        {
+            var registered = NormalizePhone(customer.Phone ?? string.Empty);
+            var requested = NormalizePhone(phone);
+            if (registered.Length == 0)
+                return Result<ReminderResultDto>.Failure(Error.Validation("Karta bağlı müşterinin kayıtlı telefonu yok."));
+            if (requested.Length > 0 && requested != registered)
+                return Result<ReminderResultDto>.Failure(Error.Validation(
+                    "Bu kart bir müşteriye tanımlı; yalnızca o müşterinin kayıtlı numarasına gönderilebilir."));
+            phone = registered;
+        }
 
         byte[] pdf;
         try
@@ -372,10 +402,21 @@ public sealed class WhatsAppService : IWhatsAppService
             .Replace("{salon}", salonName)
             .Replace("{gecerlilik}", validity);
 
-        var attachment = new OutboundAttachment(pdf, $"Hediye-Karti-{card.Code}.pdf");
+        // Ek ZORUNLU: mesaj kartın ekte olduğunu söylüyor, eksiz gitmesi anlamsız (bkz. OutboundAttachment).
+        var attachment = new OutboundAttachment(pdf, $"Hediye-Karti-{card.Code}.pdf", Required: true);
 
         var dispatch = await DispatchAsync(tenantId, card.BranchId, appointmentId: null, card.CustomerId, waitlistEntryId: null,
-            phone, body, WhatsAppMessageCategory.Marketing, templateName: GiftCardTemplateName, ct, attachment);
+            phone, body, WhatsAppMessageCategory.Marketing, templateName: GiftCardTemplateName, ct, attachment,
+            /*
+             * ŞABLON YEDEĞİ YOK — BİLEREK.
+             *
+             * Meta şablonları ONAYLI METİNLE gelir; KVKK ya da hatırlatma şablonunu hediye kartı
+             * yerine kullanmak, müşteriye tamamen alakasız bir metin göndermek olurdu. Hediye
+             * kartına özel onaylı şablon tanımlanana kadar, pencere kapalıyken gönderim
+             * denenmez ve kullanıcı sebebi açıkça görür (aşağıdaki bayrak).
+             */
+            templateFallback: null,
+            requireTemplateOutsideWindow: true);
 
         // Engellendi (paket kapalı / kontör yetersiz / sonucu bilinmeyen önceki deneme):
         // sebep kullanıcıya AYNEN aktarılır, "başarısız" diye yuvarlanmaz.
@@ -563,7 +604,8 @@ public sealed class WhatsAppService : IWhatsAppService
     private async Task<DispatchResult> DispatchAsync(
         Guid tenantId, Guid? branchId, Guid? appointmentId, Guid? customerId, Guid? waitlistEntryId,
         string phone, string body, WhatsAppMessageCategory category, string? templateName, CancellationToken ct,
-        OutboundAttachment? attachment = null, Func<WhatsAppSettings?, TemplateFallback?>? templateFallback = null)
+        OutboundAttachment? attachment = null, Func<WhatsAppSettings?, TemplateFallback?>? templateFallback = null,
+        bool requireTemplateOutsideWindow = false)
     {
         var toPhone = NormalizePhone(phone);
         if (toPhone.Length == 0) return DispatchResult.Skipped;
@@ -600,6 +642,26 @@ public sealed class WhatsAppService : IWhatsAppService
             return new DispatchResult(true,
                 "Önceki gönderim denemesinin sonucu bilinmiyor; mükerrer mesaj göndermemek için tekrar denenmedi.",
                 null, false, false, IsStaffViewer ? PhoneMask.Mask(toPhone) : toPhone, body, null, null);
+        }
+
+        /*
+         * 24 SAAT PENCERESİ KONTROLÜ — REZERVASYONDAN ÖNCE.
+         *
+         * Meta, müşteri son 24 saatte yazmadıysa serbest metni (ve ekini) İLETMEZ; yalnız
+         * onaylı şablon kabul eder. Şablon tanımlı değilken denemek, kontörü rezerve edip
+         * sağlayıcıdan anlaşılmaz bir hata almak demekti. Zorunlu-şablon isteyen akışlarda
+         * (hediye kartı) durum ÖNCEDEN anlaşılır bir sebeple engellenir.
+         */
+        if (requireTemplateOutsideWindow && ctx.Live)
+        {
+            var sessionOpen = await IsSessionOpenAsync(tenantId, toPhone, ct);
+            if (!sessionOpen && templateFallback?.Invoke(ctx.Settings) is null)
+            {
+                return new DispatchResult(true,
+                    "Müşteri son 24 saatte yazmadığı için WhatsApp yalnızca onaylı şablonla gönderime izin veriyor; " +
+                    "bu gönderim için tanımlı şablon yok. Müşteri size yazdıktan sonra tekrar deneyin.",
+                    null, false, false, IsStaffViewer ? PhoneMask.Mask(toPhone) : toPhone, body, null, null);
+            }
         }
 
         // ---- KONTÖR REZERVASYONU + "GÖNDERİLİYOR" İZİ: TEK ATOMİK ADIM ----
@@ -1037,7 +1099,17 @@ public sealed class WhatsAppService : IWhatsAppService
             // şablonun belge başlığında kullanılır.
             string? mediaId = null;
             if (attachment is not null)
+            {
                 mediaId = await UploadMediaAsync(phoneNumberId, accessToken, attachment, ct);
+                // FAIL-CLOSED: ek zorunluysa ve yüklenemediyse mesaj HİÇ gönderilmez. Yarım
+                // teslimat (eki olmayan "ekte" mesajı) sessiz başarıdan daha kötüdür; çağıran
+                // hata alır, rezerve kontör iade edilir (bkz. DispatchAsync sonuç bloğu).
+                if (mediaId is null && attachment.Required)
+                {
+                    _logger.LogWarning("[WhatsApp] Zorunlu ek yüklenemedi, gönderim iptal: {File}", attachment.FileName);
+                    return new WhatsAppSendOutcome(false, null, "Kart dosyası WhatsApp'a yüklenemedi; mesaj gönderilmedi.");
+                }
+            }
 
             object payload;
             if (template is not null)
@@ -1229,7 +1301,16 @@ public sealed class WhatsAppService : IWhatsAppService
     }
 
     /// <summary>Mesaja iliştirilecek belge (KVKK aydınlatma metni PDF'i).</summary>
-    private sealed record OutboundAttachment(byte[] Content, string FileName, string MimeType = "application/pdf");
+    /// <summary>
+    /// Giden mesaj eki.
+    ///
+    /// <para><b>Required</b>: ek olmadan mesajın ANLAMI BOZULUYORSA true verilir. Hediye kartı
+    /// mesajı "kart ekteki PDF'tedir" der; PDF yüklenemediğinde metin tek başına gidince müşteri
+    /// olmayan bir eki arar, personel ise "gönderildi" görür — üstelik kontör harcanmıştır.
+    /// KVKK aydınlatmasında ise metnin içinde ayrıca link vardır, ek olmadan da mesaj işini görür;
+    /// orada "hiç gitmemektense eksiz gitsin" tercihi korunur (false).</para>
+    /// </summary>
+    private sealed record OutboundAttachment(byte[] Content, string FileName, string MimeType = "application/pdf", bool Required = false);
 
     /// <summary>Meta belge açıklaması (caption) 1024 karakterle sınırlıdır.</summary>
     private static string Truncate(string value, int max) =>

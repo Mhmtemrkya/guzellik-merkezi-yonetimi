@@ -407,10 +407,24 @@ export default function PackageSaleDialog({
     }
   }, [loyaltyPoints, services, packages])
 
-  /** Müşteri değişince çekleri tazele; müşteri yoksa listeyi boşalt. */
+  /**
+   * Müşteri değişince çekleri tazele.
+   *
+   * ÖNCEKİ MÜŞTERİNİN İZİ SİLİNİR. Liste ve otomatik-seçim bayrağı temizlenmediğinde, A
+   * müşterisinin çekinden seçilmiş paket B müşterisine geçilince SEÇİLİ KALIYOR ve yanlış
+   * müşteriye yanlış kalem satılabiliyordu. Otomatik seçilmiş kalem de geri alınır; kullanıcının
+   * ELLE seçtiği kaleme dokunulmaz (autoPickedRef bunu ayırt eder).
+   */
   useEffect(() => {
     const cid = presetCustomer?.id || customerId
-    if (!open || !cid || !tenantId) { setGiftCards([]); autoPickedRef.current = false; return }
+    // Müşteri değişti: önce otomatik seçim geri alınır.
+    if (autoPickedRef.current) {
+      if (isServiceSale) setServiceId(presetService?.id || '')
+      else setPackageId(presetPackageId || '')
+      autoPickedRef.current = false
+    }
+    setGiftCards([])
+    if (!open || !cid || !tenantId) return
     let alive = true
     void (async () => {
       try {
@@ -422,6 +436,7 @@ export default function PackageSaleDialog({
       }
     })()
     return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, presetCustomer?.id, customerId, tenantId])
 
   /**

@@ -83,7 +83,7 @@ public sealed class BalanceRaceMySqlTests
         async Task<bool> RedeemAsync()
         {
             await using var db = database.NewContext();
-            var service = new GiftCardService(db, new NoopAuditLogger(), new AllowAllFeatureService());
+            var service = new GiftCardService(db, new NoopAuditLogger(), new AllowAllFeatureService(), new TestCurrentUser());
             var result = await service.RedeemAsync(seed.TenantId, cardId, new RedeemGiftCardRequest(100m));
             return result.IsSuccess;
         }

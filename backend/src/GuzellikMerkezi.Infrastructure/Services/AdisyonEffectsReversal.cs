@@ -187,7 +187,8 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
                     $"'{discount.Description}' indirimine bağlı hediye çeki/kupon bulunamadı; iptal durduruldu. " +
                     "Kod kalıcı olarak silinmişse önce kaydı düzeltin.");
             }
-            card.UndoRedeem(discount.LineTotal);
+            GiftCardLedger.Undo(_db, card, discount.LineTotal, nowUtc,
+                GiftCardLedger.SourceAdisyon, adisyon.Id, adisyon.CustomerId, null);
         }
 
         // 5) Paket kullanımı — bu adisyon BAŞKA bir paketin seansını tükettiyse geri kredile.
@@ -243,7 +244,8 @@ public sealed class AdisyonEffectsReversal : IAdisyonEffectsReversal
                 throw new DomainException(
                     $"'{discount.Description}' indirimine bağlı hediye çeki/kupon bulunamadı; geri alma durduruldu.");
             }
-            card.Redeem(discount.LineTotal, nowUtc);
+            GiftCardLedger.Redeem(_db, card, discount.LineTotal, nowUtc,
+                GiftCardLedger.SourceAdisyon, adisyon.Id, adisyon.CustomerId, null);
         }
 
         // 5) Geri kredilenen paket seanslarını yeniden tüket — AYNI seans kaydından, aynı adette.

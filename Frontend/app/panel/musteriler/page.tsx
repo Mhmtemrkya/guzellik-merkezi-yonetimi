@@ -21,7 +21,7 @@ import AppointmentEditor, { type AppointmentEditorValues } from '@/components/da
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { useStaffApproval, staffApprovalSuccessMessage } from '@/hooks/useStaffApproval'
-import { adminApi } from '@/lib/apiClient'
+import { adminApi, isPendingApprovalResult } from '@/lib/apiClient'
 import { apiItems, formatTL, guidOrUndefined, mapCancelledSale, normalizeAccount, normalizeAppointment, normalizeCustomer, normalizePackage, normalizeService, normalizeStaff } from '@/lib/apiMappers'
 import { downscaleImage } from '@/lib/imageUtils'
 import type { IdempotentWriteOptions } from '@/lib/idempotency'
@@ -265,9 +265,14 @@ function MusterilerPageInner() {
     setGiftScanBusy(true)
     setGiftScanError('')
     try {
-      await adminApi.assignGiftCardCustomer({ code, customerId: cid }, tenantId)
+      const res = await adminApi.assignGiftCardCustomer({ code, customerId: cid }, tenantId)
       setGiftScanOpen(false)
-      setActionMsg(`${code} kartı bu müşteriye tanımlandı.`)
+      // Onaya düştüyse "tanımlandı" DENMEZ (bkz. hediye çeki sayfasındaki aynı gerekçe).
+      setActionMsg(
+        isPendingApprovalResult(res)
+          ? `${code} kartının bu müşteriye tanımlanması onaya gönderildi.`
+          : `${code} kartı bu müşteriye tanımlandı.`,
+      )
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Eşleştirilemedi.'
       if (/başka bir müşteriye/i.test(message)) {
@@ -275,9 +280,13 @@ function MusterilerPageInner() {
 
 Bu kartı bu müşteriye devretmek istiyor musunuz?`)) {
           try {
-            await adminApi.assignGiftCardCustomer({ code, customerId: cid, allowReassign: true }, tenantId)
+            const res2 = await adminApi.assignGiftCardCustomer({ code, customerId: cid, allowReassign: true }, tenantId)
             setGiftScanOpen(false)
-            setActionMsg(`${code} kartı bu müşteriye devredildi.`)
+            setActionMsg(
+              isPendingApprovalResult(res2)
+                ? `${code} kartının devri onaya gönderildi.`
+                : `${code} kartı bu müşteriye devredildi.`,
+            )
             return
           } catch (e2) {
             setGiftScanError(e2 instanceof Error ? e2.message : 'Devredilemedi.')
@@ -318,6 +327,16 @@ Bu kartı bu müşteriye devretmek istiyor musunuz?`)) {
 
   const { selectedInstitutionId, selectedBranch, selectedInstitution } = useBranch()
   const tenantId = guidOrUndefined(selectedInstitutionId)
+
+  /**
+   * Kurum anahtarı — okunan QR'ın BU kuruma ait olduğunu doğrulamak için (bkz. GiftCardScanModal).
+   * Başka salonun QR'ı okutulduğunda kod bizde de varsa yanlış karta yazılıyordu.
+   */
+  const { data: giftProfile } = useApiQuery<{ slug?: string | null } | null>(
+    async () => (tenantId && canGiftCards ? adminApi.publicProfile<{ slug?: string | null }>().catch(() => null) : null),
+    [tenantId, canGiftCards],
+    { initialData: null },
+  )
   const branchId = guidOrUndefined(selectedBranch?.id || selectedBranch?.branchId)
   const { isStaff, performWrite } = useStaffApproval()
 
@@ -1093,6 +1112,7 @@ Bu kartı bu müşteriye devretmek istiyor musunuz?`)) {
           onScanned={(code) => void assignGiftCard(code)}
           busy={giftScanBusy}
           error={giftScanError}
+          expectedSlug={giftProfile?.slug ?? null}
           title="Hediye kartı tanımla"
           hint={selected ? `${selected.name} adlı müşteriye bağlanacak.` : undefined}
         />

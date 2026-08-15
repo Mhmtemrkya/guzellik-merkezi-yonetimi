@@ -1263,8 +1263,24 @@ export const adminApi = {
     apiRequest<T>('/api/admin/gift-cards/validate', { query: { code, tenantId } }),
   createGiftCard: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/gift-cards/', { method: 'POST', query: { tenantId }, body }),
-  redeemGiftCard: <T = unknown>(id: string, amount: number, tenantId?: string): Promise<T> =>
-    apiRequest<T>(`/api/admin/gift-cards/${id}/redeem`, { method: 'POST', query: { tenantId }, body: { amount } }),
+  /**
+   * PARA YAZAR → `Idempotency-Key` ZORUNLUDUR (bkz. lib/moneyWriteIdempotency.test.ts).
+   * Anahtarsız gönderilen bir kullanım, ağ hatasında tekrar denendiğinde çekten İKİNCİ KEZ
+   * bakiye düşer; müşteri parasını sessizce kaybeder.
+   */
+  redeemGiftCard: <T = unknown>(id: string, amount: number, tenantId?: string, idempotencyKey?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/gift-cards/${id}/redeem`, {
+      method: 'POST',
+      query: { tenantId },
+      body: { amount },
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    }),
+  /**
+   * Kart düzeltme. KOD/TÜR/DEĞER GÖNDERİLMEZ — sunucu da kabul etmez: kart basılıp müşterinin
+   * eline geçtiği için kodu değiştirmek dolaşımdaki kartı öldürür (bkz. UpdateGiftCardRequest).
+   */
+  updateGiftCard: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/gift-cards/${id}`, { method: 'PUT', query: { tenantId }, body }),
   setGiftCardActive: <T = unknown>(id: string, active: boolean, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/gift-cards/${id}/active`, { method: 'POST', query: { tenantId }, body: { active } }),
   deleteGiftCard: (id: string, tenantId?: string): Promise<unknown> =>

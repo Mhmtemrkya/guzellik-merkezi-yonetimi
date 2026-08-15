@@ -103,6 +103,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<StaffWorkingHour> StaffWorkingHours => Set<StaffWorkingHour>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<GiftCard> GiftCards => Set<GiftCard>();
+    public DbSet<GiftCardTransaction> GiftCardTransactions => Set<GiftCardTransaction>();
     public DbSet<WaitlistEntry> WaitlistEntries => Set<WaitlistEntry>();
     public DbSet<CashRegisterClosing> CashRegisterClosings => Set<CashRegisterClosing>();
     public DbSet<LoyaltyTransaction> LoyaltyTransactions => Set<LoyaltyTransaction>();
@@ -1269,6 +1270,24 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         g.HasIndex(x => new { x.TenantId, x.CustomerId });
         // Kurum + şube: şube seçiliyse o şubeye özel; "Tüm şubeler"de (BranchId null) kurum geneli görünür.
         g.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
+
+        /*
+         * HAREKET DEFTERİ. Çekin bakiyesi tek başına "ne oldu"yu anlatmaz; bu tablo her harcama ve
+         * geri almayı satır satır tutar (bkz. GiftCardTransaction). Silme YOK — geri alma yeni bir
+         * karşı satırdır.
+         */
+        var gt = modelBuilder.Entity<GiftCardTransaction>();
+        gt.ToTable("gift_card_transactions");
+        gt.HasKey(x => x.Id);
+        gt.Property(x => x.Direction).HasMaxLength(16).IsRequired();
+        gt.Property(x => x.SourceType).HasMaxLength(24).IsRequired();
+        gt.Property(x => x.Amount).HasPrecision(18, 2);
+        gt.Property(x => x.BalanceDelta).HasPrecision(18, 2);
+        gt.Property(x => x.BalanceAfter).HasPrecision(18, 2);
+        // Kart defteri (en sık sorgu) ve dönem raporu için iki indeks.
+        gt.HasIndex(x => new { x.TenantId, x.GiftCardId, x.OccurredAtUtc });
+        gt.HasIndex(x => new { x.TenantId, x.OccurredAtUtc });
+        gt.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
     }
 
     private void ConfigureWaitlist(ModelBuilder modelBuilder)
