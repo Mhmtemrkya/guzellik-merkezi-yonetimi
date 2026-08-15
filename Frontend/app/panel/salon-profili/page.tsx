@@ -58,8 +58,14 @@ function LogoUploader({ logo, onChanged }: { logo: string | null; onChanged: () 
     setError('')
     setBusy(true)
     try {
-      // Logo kare karoda görünür — 512px yeterli, DB'yi şişirmez.
-      const dataUrl = await downscaleImage(file, 512)
+      /*
+        * Logo kare karoda görünür — 512 px yeterli, DB'yi şişirmez. Aynı ölçü giriş bilgileri
+        * belgesinde de baskıya gidiyor (118 pt kutu ≈ 492 px @300 DPI).
+        *
+        * SAYDAMLIK KORUNUR: logolar neredeyse her zaman şeffaf PNG'dir; JPEG'e çevrilirse
+        * saydam alanlar siyah çıkardı (bkz. downscaleImage).
+        */
+      const dataUrl = await downscaleImage(file, 512, { keepTransparency: true })
       await adminApi.setSalonLogo(dataUrl)
       onChanged()
     } catch (err) {
@@ -89,7 +95,9 @@ function LogoUploader({ logo, onChanged }: { logo: string | null; onChanged: () 
         <ImagePlus className="h-4 w-4 text-[#A5556E]" /> Kurum Logosu
       </h2>
       <p className="mt-1 text-[11.5px] text-[#7c6170]">
-        Salon sayfanızda kapak fotoğrafının üzerindeki kare karoda görünür. Kare (1:1) bir görsel yükleyin.
+        Salon sayfanızda kapak fotoğrafının üzerindeki kare karoda görünür; giriş bilgileri
+        belgesine de basılır. <b>512 × 512 px kare</b> bir görsel yükleyin — şeffaf zeminli PNG
+        desteklenir, saydamlık korunur.
       </p>
       <div className="mt-4 flex items-center gap-4">
         <div className="grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-[18px] border-2 border-[#f0d9e2] bg-gradient-to-b from-[#fff1f6] to-[#fbdce8]">

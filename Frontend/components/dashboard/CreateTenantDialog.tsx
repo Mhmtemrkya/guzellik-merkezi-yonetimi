@@ -880,7 +880,8 @@ function LogoPicker({ value, onChange }: { value: string; onChange: (next: strin
     setError('')
     setBusy(true)
     try {
-      onChange(await downscaleImage(file, 512))
+      // Salon Profili'ndeki yükleyiciyle AYNI ölçü ve AYNI saydamlık davranışı.
+      onChange(await downscaleImage(file, 512, { keepTransparency: true }))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Logo okunamadı.')
     } finally {
@@ -896,7 +897,8 @@ function LogoPicker({ value, onChange }: { value: string; onChange: (next: strin
       </div>
       <div className="mt-1 text-[10px] leading-relaxed text-[#2A2027]/[0.40]">
         Giriş bilgileri belgesinin üst bandındaki beyaz kutuda görünür. Kurum yöneticisi sonradan
-        Salon Profili sayfasından değiştirebilir. Kare (1:1) bir görsel seçin.
+        Salon Profili sayfasından değiştirebilir. <b>512 × 512 px kare</b> bir görsel seçin —
+        şeffaf PNG desteklenir.
       </div>
       <div className="mt-3 flex items-center gap-3">
         <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden border border-[#EAD8DF]/[0.80] bg-white">
