@@ -97,9 +97,9 @@ export function credentialsFilename(data: CredentialsPdfData): string {
  * NEDEN KESTİRİM: yazdığımız değerler zeminde BASILI kutuların içine oturmak zorunda; kutuyu
  * büyütme şansımız yok. Uzun kurum adı / e-posta puntoyu kademeli küçülterek sığar.
  */
-function fitFontSize(text: string, maxWidth: number, base: number, min: number): number {
+function fitFontSize(text: string, maxWidth: number, base: number, min: number, factor = 0.52): number {
   let size = base
-  while (size > min && text.length * size * 0.52 > maxWidth) size -= 0.5
+  while (size > min && text.length * size * factor > maxWidth) size -= 0.5
   return size
 }
 
@@ -191,11 +191,13 @@ export function buildCredentialsDoc(
    * SOLA DAYALI: tasarımda metin kutunun sol kenarından 2 px içeriden başlıyor ve kutuyu
    * neredeyse dolduruyor. `alignment: 'center'` DENENDİ ve OLMADI — mutlak konumlu düğümde
    * pdfmake hizalamayı verdiğimiz kutuya değil sayfaya göre yapıp metni kutunun dışına attı.
-   * Uzun şifrede punto küçülerek sığar.
+   * KATSAYI 0.78: kalın Roboto'nun gerçek ortalama karakter genişliği ölçüldü. Varsayılan 0.52
+   * ile 11 karakterlik bir şifre 16 punto'da hiç küçülmeden çizilip çipi ~90 px aşıyordu (canlı
+   * çıktıda iki yandan kırpılmış görünüyordu). Sığmak, kutuyu doldurmaktan önce gelir.
    */
-  content.push(at(px(292), px(833), {
+  content.push(at(px(296), px(833), {
     text: data.initialPassword,
-    fontSize: fitFontSize(data.initialPassword, px(176), 16, 8.5),
+    fontSize: fitFontSize(data.initialPassword, px(177), 14, 7, 0.78),
     bold: true,
     color: WHITE,
   }))
