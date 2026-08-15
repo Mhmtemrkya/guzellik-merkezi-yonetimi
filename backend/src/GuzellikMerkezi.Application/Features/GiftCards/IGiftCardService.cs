@@ -5,6 +5,18 @@ namespace GuzellikMerkezi.Application.Features.GiftCards;
 public interface IGiftCardService
 {
     Task<Result<IReadOnlyCollection<GiftCardDto>>> ListAsync(Guid tenantId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Bir müşterinin BUGÜN KULLANILABİLİR çekleri. Satış ekranı müşteri seçilince bunu sorar ve
+    /// çeke bağlı hizmeti/paketi kendiliğinden seçer.
+    /// </summary>
+    Task<Result<IReadOnlyCollection<GiftCardDto>>> ListForCustomerAsync(Guid tenantId, Guid customerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// QR okutup çeki bir müşteriye bağlar. Kart başka müşteriye bağlıysa devir yalnızca
+    /// açık onayla (<c>AllowReassign</c>) yapılır — kart yanlışlıkla başkasının hesabına geçmemeli.
+    /// </summary>
+    Task<Result<GiftCardDto>> AssignCustomerAsync(Guid tenantId, AssignGiftCardCustomerRequest request, CancellationToken cancellationToken = default);
     Task<Result<GiftCardDto>> CreateAsync(Guid tenantId, CreateGiftCardRequest request, CancellationToken cancellationToken = default);
     /// <summary>Koda göre doğrula (satış/adisyon akışında uygulamadan önce).</summary>
     Task<Result<GiftCardDto>> GetByCodeAsync(Guid tenantId, string code, CancellationToken cancellationToken = default);

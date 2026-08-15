@@ -9,11 +9,13 @@ import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
-import { formatTL, guidOrUndefined, normalizeGiftCard } from '@/lib/apiMappers'
-import type { ApiGiftCard, GiftCard, GiftCardKind } from '@/lib/types'
+import { apiItems, formatTL, guidOrUndefined, normalizeGiftCard, normalizePackage, normalizeService } from '@/lib/apiMappers'
+import type { ApiGiftCard, ApiService, ApiServicePackage, GiftCard, GiftCardKind } from '@/lib/types'
 import GiftCardShareModal from '@/components/dashboard/GiftCardShareModal'
 import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
-import { CheckCircle2, Gift, Image as ImageIcon, Lock, Percent, Plus, Power, Sparkles, Ticket, Trash2, Wallet, XCircle } from 'lucide-react'
+import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPicker'
+import GiftCardScanModal from '@/components/dashboard/GiftCardScanModal'
+import { CheckCircle2, Gift, Image as ImageIcon, Link2, Lock, Percent, Plus, Power, QrCode, Sparkles, Ticket, Trash2, Wallet, XCircle } from 'lucide-react'
 
 type ScopeKey = 'all' | 'active' | 'stored' | 'coupon'
 
@@ -203,6 +205,39 @@ function HediyeCekPageInner() {
   )
   const cards = useMemo(() => (data || []).map((g, i) => normalizeGiftCard(g, i)), [data])
 
+  /*
+   * KATALOG (hizmet + paket). Çek serbest metne değil GERÇEK KAYDA bağlanır: satış ekranı
+   * müşterinin çekini görünce doğru hizmeti/paketi kendiliğinden seçebilsin diye. Serbest
+   * metinden eşleştirme denemek ("El ve Ayak Bakım" ≟ "El & Ayak Bakımı") kırılgan olurdu.
+   */
+  const { data: catalog } = useApiQuery<{ services: ApiService[]; packages: ApiServicePackage[] }>(
+    async () => {
+      if (!tenantId) return { services: [], packages: [] }
+      const [svc, pkg] = await Promise.all([
+        adminApi.services<ApiService>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
+        adminApi.packages<ApiServicePackage>({ tenantId, page: 1, pageSize: 500 }).catch(() => ({ items: [] })),
+      ])
+      return { services: apiItems(svc), packages: apiItems(pkg) }
+    },
+    [tenantId],
+    { initialData: { services: [], packages: [] } },
+  )
+
+  const serviceItems = useMemo<PickerItem[]>(
+    () => (catalog?.services || []).map((s, i) => {
+      const n = normalizeService(s, i)
+      return { id: n.id, name: n.name, price: n.price, cat: n.group || '', sub: n.subGroup || '', meta: `${n.duration} dk` }
+    }),
+    [catalog],
+  )
+  const packageItems = useMemo<PickerItem[]>(
+    () => (catalog?.packages || []).map((p, i) => {
+      const n = normalizePackage(p, i)
+      return { id: n.id, name: n.name, price: n.totalPrice, cat: n.category || '', sub: '', meta: `${n.items.length} hizmet` }
+    }),
+    [catalog],
+  )
+
   // Kart görseline basılacak kurum logosu. Hata YUTULUR: logo bulunamazsa kart yine çizilir,
   // sadece logonun yerine kurum adı yazılır (bkz. GiftCardArtwork).
   const { data: profile } = useApiQuery<{ logoData?: string | null; slug?: string | null } | null>(
@@ -232,6 +267,12 @@ function HediyeCekPageInner() {
   const [validFrom, setValidFrom] = useState('')
   const [maxUses, setMaxUses] = useState('')
   const [note, setNote] = useState('')
+  /**
+   * Çekin bağlandığı katalog kaydı — 'service' | 'package'. Seçilince kartın üzerine basılan
+   * kapsam metni de kendiliğinden dolar (kullanıcı isterse üzerine yazabilir).
+   */
+  const [targetKind, setTargetKind] = useState<'service' | 'package'>('service')
+  const [targetId, setTargetId] = useState('')
   /** Kartın üzerine basılan kapsam ve alıcı — ikisi de opsiyonel. */
   const [scopeLabel, setScopeLabel] = useState('')
   const [recipientName, setRecipientName] = useState('')
@@ -240,6 +281,23 @@ function HediyeCekPageInner() {
    * kendiliğinden gelir — gönderimde numara elle yazılmak zorunda kalmaz.
    */
   const [customer, setCustomer] = useState<CustomerPickerItem | null>(null)
+  /** Seçili katalog kaydı — kapsam metnini ve rozeti besler. */
+  const selectedTarget = useMemo(
+    () => (targetKind === 'service' ? serviceItems : packageItems).find((i) => i.id === targetId) ?? null,
+    [targetKind, targetId, serviceItems, packageItems],
+  )
+
+  /*
+   * QR İLE MÜŞTERİ EŞLEŞTİRME. Kart müşterisiz basılıp elden verilir; sonra işletme QR'ı
+   * okutup "bu kart şu müşterinin" der. Sıra ÖNEMLİ: önce müşteri seçilir, sonra okutulur —
+   * tersi olsaydı okunan kart bir yere iliştirilene kadar havada kalırdı.
+   */
+  const [assignCustomer, setAssignCustomer] = useState<CustomerPickerItem | null>(null)
+  const [scanOpen, setScanOpen] = useState(false)
+  const [scanBusy, setScanBusy] = useState(false)
+  const [scanError, setScanError] = useState('')
+  const [assignNotice, setAssignNotice] = useState('')
+
   /** Görseli açılan kart. */
   const [shareCard, setShareCard] = useState<GiftCard | null>(null)
   /**
@@ -261,6 +319,7 @@ function HediyeCekPageInner() {
     setScopeLabel('')
     setRecipientName('')
     setCustomer(null)
+    setTargetId('')
   }
 
   const handleCreate = async (): Promise<void> => {
@@ -286,7 +345,10 @@ function HediyeCekPageInner() {
           validUntilUtc: validUntil ? new Date(`${validUntil}T23:59:59`).toISOString() : null,
           maxUses: maxUses ? Number(maxUses) : 0,
           note: note.trim() || null,
-          scopeLabel: scopeLabel.trim() || null,
+          // Kapsam metni yazılmadıysa seçilen katalog kaydının adı karta basılır.
+          scopeLabel: scopeLabel.trim() || selectedTarget?.name || null,
+          serviceDefinitionId: targetKind === 'service' ? targetId || null : null,
+          servicePackageId: targetKind === 'package' ? targetId || null : null,
           // Alıcı adı yazılmadıysa seçilen müşterinin adı karta basılır.
           recipientName: recipientName.trim() || customer?.name || null,
           customerId: customer?.id ?? null,
@@ -319,6 +381,49 @@ function HediyeCekPageInner() {
       setActionError(e instanceof Error ? e.message : 'İşlem başarısız.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  /**
+   * Okunan kodu seçili müşteriye bağlar. Kart BAŞKA bir müşteriye tanımlıysa sunucu 409 döner;
+   * kullanıcıya sorulur ve onaylarsa devir açık izinle tekrarlanır (sessizce üzerine yazılmaz).
+   */
+  const assignScanned = async (code: string): Promise<void> => {
+    if (!assignCustomer) { setScanError('Önce müşteri seçin.'); return }
+    setScanBusy(true)
+    setScanError('')
+    try {
+      await adminApi.assignGiftCardCustomer({ code, customerId: assignCustomer.id }, tenantId)
+      setAssignNotice(`${code} kartı ${assignCustomer.name} adlı müşteriye tanımlandı.`)
+      setScanOpen(false)
+      setAssignCustomer(null)
+      await reload()
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Eşleştirilemedi.'
+      // 409 → devir onayı. Mesaj sunucudan geldiği gibi gösterilir, karar kullanıcınındır.
+      if (/başka bir müşteriye/i.test(message)) {
+        const ok = window.confirm(`${message}
+
+Bu kartı ${assignCustomer.name} adlı müşteriye devretmek istiyor musunuz?`)
+        if (ok) {
+          try {
+            await adminApi.assignGiftCardCustomer({ code, customerId: assignCustomer.id, allowReassign: true }, tenantId)
+            setAssignNotice(`${code} kartı ${assignCustomer.name} adlı müşteriye devredildi.`)
+            setScanOpen(false)
+            setAssignCustomer(null)
+            await reload()
+            return
+          } catch (e2) {
+            setScanError(e2 instanceof Error ? e2.message : 'Devredilemedi.')
+            return
+          }
+        }
+        setScanError('')
+        return
+      }
+      setScanError(message)
+    } finally {
+      setScanBusy(false)
     }
   }
 
@@ -481,12 +586,47 @@ function HediyeCekPageInner() {
               <span className="mt-1 block text-[10.5px] text-[#74616A]">Sadece iç kayıt notu — kartın üzerine basılmaz.</span>
             </label>
             {/* Aşağıdaki iki alan KARTIN ÜZERİNE BASILIR (iç not değil). */}
+            {/* KATALOG BAĞI — çekin hangi hizmet/paket için geçerli olduğu. */}
+            <div className="sm:col-span-2 lg:col-span-3">
+              <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold text-[#74616A]">Hangi hizmet / paket için? (ops.)</span>
+                <div className="inline-flex rounded-full border border-[#EAD8DF] bg-[#F7F6F6] p-0.5">
+                  {(['service', 'package'] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => { setTargetKind(k); setTargetId('') }}
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
+                        targetKind === k ? 'bg-[#A5556E] text-white' : 'text-[#5A4B53] hover:text-[#8C4460]'
+                      }`}
+                    >
+                      {k === 'service' ? 'Hizmet' : 'Paket'}
+                    </button>
+                  ))}
+                </div>
+                {selectedTarget && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[#8ED6B4] bg-[#DFF3EA] px-2.5 py-0.5 text-[10.5px] font-semibold text-[#15694A]">
+                    <Link2 className="h-3 w-3" /> {selectedTarget.name}
+                  </span>
+                )}
+              </div>
+              <CatalogPicker
+                items={targetKind === 'service' ? serviceItems : packageItems}
+                value={targetId}
+                clearable
+                onChange={setTargetId}
+                emptyText={targetKind === 'service' ? 'Hizmet bulunamadı.' : 'Paket bulunamadı.'}
+              />
+              <span className="mt-1 block text-[10.5px] text-[#74616A]">
+                Bağlarsanız satış ekranı, çeki olan müşteride bu hizmeti/paketi kendiliğinden seçer.
+              </span>
+            </div>
             <label className="block">
               <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Kartta yazacak kapsam (ops.)</span>
               <input
                 value={scopeLabel}
                 onChange={(e) => setScopeLabel(e.target.value)}
-                placeholder="örn. El ve Ayak Bakım"
+                placeholder={selectedTarget?.name || 'örn. El ve Ayak Bakım'}
                 className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40"
               />
               <span className="mt-1 block text-[10.5px] text-[#74616A]">Kartta “…geçerli <b>El ve Ayak Bakım</b> çekidir.” diye yazar. Boşsa “tüm hizmetlerde”.</span>
@@ -528,6 +668,64 @@ function HediyeCekPageInner() {
             </button>
           </div>
         </motion.div>
+
+        {/* QR İLE MÜŞTERİ EŞLEŞTİRME — basılı kartı müşteriye bağlama. */}
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.12 }}
+          className="rounded-[22px] border border-[#EAD8DF] bg-white/95 p-5 shadow-[0_14px_34px_-24px_rgba(200,87,118,0.5)] sm:p-6"
+        >
+          <div className="flex flex-wrap items-center gap-3 border-b border-[#EAD8DF] pb-4">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#A5556E] to-[#8C4460] text-white">
+              <QrCode className="h-4 w-4" strokeWidth={2.2} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="font-display text-lg font-bold text-[#241923]">Kartı müşteriye tanımla</h2>
+              <p className="text-[11.5px] text-[#74616A]">
+                Basılı kartı verdikten sonra: önce müşteriyi seçin, sonra kartın üzerindeki QR&apos;ı okutun.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <label className="block">
+              <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">1. Müşteri</span>
+              <CustomerPicker
+                items={assignCustomer ? [assignCustomer] : []}
+                value={assignCustomer?.id ?? ''}
+                onChange={(id) => { if (!id) setAssignCustomer(null) }}
+                onSelectItem={(item) => { setAssignCustomer(item); setAssignNotice('') }}
+                onSearch={customerSearchProvider(tenantId)}
+                placeholder="İsim veya telefonla ara…"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={!assignCustomer}
+              onClick={() => { setScanError(''); setScanOpen(true) }}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[14px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-5 text-[13px] font-semibold text-white shadow-[0_16px_30px_-16px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0"
+            >
+              <QrCode className="h-4 w-4" /> 2. QR okut
+            </button>
+          </div>
+
+          {assignNotice && (
+            <p className="mt-3 rounded-[12px] border border-[#8ED6B4] bg-[#DFF3EA] px-3 py-2 text-[12px] font-medium text-[#15694A]">
+              {assignNotice}
+            </p>
+          )}
+        </motion.div>
+
+        <GiftCardScanModal
+          open={scanOpen}
+          onClose={() => setScanOpen(false)}
+          onScanned={(code) => void assignScanned(code)}
+          busy={scanBusy}
+          error={scanError}
+          title="Kartı müşteriye tanımla"
+          hint={assignCustomer ? `${assignCustomer.name} adlı müşteriye bağlanacak.` : undefined}
+        />
 
         {/* Filtre sekmeleri */}
         <div className="flex flex-wrap items-center gap-1 border-b border-[#EAD8DF]">

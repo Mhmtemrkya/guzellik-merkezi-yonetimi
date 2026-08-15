@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Ban, Cake, CalendarPlus, Check, ChevronRight, Clock, Copy, CreditCard, Crown, FileText, Loader2, Mail,
-  Package, Phone, PieChart, ReceiptText, RotateCcw, Scissors, Search, Sparkles, Trash2, TrendingUp, User, Wallet, X,
+  Package, Phone, PieChart, QrCode, ReceiptText, RotateCcw, Scissors, Search, Sparkles, Trash2, TrendingUp, User, Wallet, X,
 } from 'lucide-react'
 import CustomerSessionsCard from '@/components/dashboard/CustomerSessionsCard'
 import AdisyonPanel from '@/components/dashboard/AdisyonPanel'
@@ -382,6 +382,7 @@ export default function CustomerDetailModal({
   onUploadPhoto,
   onCreateAppointment,
   onDelete,
+  onAssignGiftCard,
   editSlot,
   saleSlot,
   salesPanel,
@@ -416,6 +417,11 @@ export default function CustomerDetailModal({
   onUploadPhoto: (file: File) => unknown
   onCreateAppointment: () => void
   onDelete: () => void
+  /**
+   * "Hediye kartı tanımla" — QR okutup kartı BU müşteriye bağlar. Verilmezse düğme çizilmez
+   * (özellik kapalı ya da yetki yok).
+   */
+  onAssignGiftCard?: () => void
   editSlot?: ReactNode
   saleSlot?: ReactNode
   /** "Paket & Hizmet Satışları" listesi — kartta özet durur, tam liste ayrı modalde açılır. */
@@ -1207,6 +1213,17 @@ export default function CustomerDetailModal({
                           <span className="flex min-w-0 items-center gap-2"><FileText className="h-4 w-4 shrink-0 text-[#A5556E]" /> <span className="truncate">Not Ekle</span></span>
                           <ChevronRight className="h-4 w-4 shrink-0 text-[#c9b3bd]" />
                         </button>
+                        {/* Kart müşteriye ELDEN verilmiş olur; burada QR okutulup hesabına bağlanır. */}
+                        {onAssignGiftCard && (
+                          <button
+                            type="button"
+                            onClick={onAssignGiftCard}
+                            className="flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5 text-[12.5px] font-semibold text-[#2A2027] transition-colors hover:border-[#BE7690] hover:bg-[#F6DFE6]"
+                          >
+                            <span className="flex min-w-0 items-center gap-2"><QrCode className="h-4 w-4 shrink-0 text-[#A5556E]" /> <span className="truncate">Hediye Kartı Tanımla</span></span>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-[#c9b3bd]" />
+                          </button>
+                        )}
                         <CustomerVipToggle variant="row" customerId={customer.id} tenantId={tenantId} isVip={Boolean(customer.isVip)} onChanged={onReload} />
                         <button
                           type="button"

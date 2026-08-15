@@ -574,6 +574,8 @@ export function normalizeGiftCard(g: ApiGiftCard | null | undefined, index = 0):
     note: g?.note || '',
     customerId: g?.customerId ?? null,
     scopeLabel: g?.scopeLabel || '',
+    serviceDefinitionId: g?.serviceDefinitionId ?? null,
+    servicePackageId: g?.servicePackageId ?? null,
     recipientName: g?.recipientName || '',
     isValid: Boolean(g?.isValid),
   }

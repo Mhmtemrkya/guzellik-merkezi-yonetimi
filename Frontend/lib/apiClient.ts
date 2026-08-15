@@ -920,6 +920,18 @@ export const adminApi = {
    * Hediye kartını WhatsApp'tan PDF olarak gönderir. `pdfBase64` veri-URL öneki OLMADAN ham
    * base64'tür; sunucu kartın bu kuruma ait ve geçerli olduğunu doğrular.
    */
+  /** Bir müşterinin BUGÜN kullanılabilir hediye çekleri (satış ekranı otomatik seçimi için). */
+  giftCardsByCustomer: <T = unknown>(customerId: string, tenantId?: string): Promise<T[]> =>
+    apiRequest<T[]>(`/api/admin/gift-cards/by-customer/${customerId}`, { query: { tenantId } }),
+  /**
+   * QR okutup çeki müşteriye bağlar. Kart başka müşteriye bağlıysa sunucu 409 döner;
+   * kullanıcı onaylarsa `allowReassign: true` ile tekrar denenir.
+   */
+  assignGiftCardCustomer: <T = unknown>(
+    body: { code: string; customerId: string; allowReassign?: boolean },
+    tenantId?: string,
+  ): Promise<T> =>
+    apiRequest<T>('/api/admin/gift-cards/assign-customer', { method: 'POST', query: { tenantId }, body }),
   sendGiftCardWhatsapp: <T = unknown>(
     body: { giftCardId: string; phone: string | null; pdfBase64: string },
     tenantId?: string,

@@ -15,7 +15,9 @@ import {
   ReceiptText,
   ShieldCheck,
   ShoppingBag,
+  Gift,
   Sparkles,
+  Star,
   Trash2,
   Wallet,
   X,
@@ -29,6 +31,8 @@ import { useAuth } from '@/components/dashboard/AuthContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import ConsultationWarningBanner from '@/components/dashboard/ConsultationWarningBanner'
 import CustomerPicker, { customerSearchProvider } from '@/components/dashboard/CustomerPicker'
+import { normalizeGiftCard } from '@/lib/apiMappers'
+import type { ApiGiftCard, GiftCard } from '@/lib/types'
 import { adminApi } from '@/lib/apiClient'
 import {
   clearPersistentIdempotencySalt, idempotencyKey, newIdempotencySalt, persistentIdempotencySalt,
@@ -177,6 +181,26 @@ export default function PackageSaleDialog({
   const [cardCustomer, setCardCustomer] = useState<{ id: string; name: string } | null>(null)
   const [packageId, setPackageId] = useState('')
   const [serviceId, setServiceId] = useState('')
+
+  /*
+   * MÜŞTERİNİN HEDİYE ÇEKİ.
+   *
+   * Çek bir katalog kaydına bağlıysa (hizmet/paket) satış ekranı onu KENDİLİĞİNDEN seçer —
+   * kullanıcı listede aramak zorunda kalmasın. Seçim SESSİZ DEĞİLDİR: üstte bir şerit çıkar ve
+   * neyin neden seçildiğini söyler; aksi hâlde kullanıcı kendi seçmediği bir kalemi satmış olur.
+   *
+   * PARA BURADA İŞLENMEZ: indirim adisyonda, kod uygulanarak yapılır (ApplyGiftCardAsync).
+   * Burası yalnız doğru kalemi bulmayı kolaylaştırır.
+   */
+  const [giftCards, setGiftCards] = useState<GiftCard[]>([])
+  /**
+   * SADAKAT PUANI. Ek kalem bölümünde "bu müşteri kaç puanı var, bu puanla neyi hediye
+   * edebilir" sorusunu cevaplar. Puanla hediye etme İŞLEMİ adisyonda yapılır (kalem
+   * `coveredByPackage`/hediye olarak işlenir); burası yalnız hangi kalemlerin YETECEĞİNİ söyler.
+   */
+  const [loyaltyPoints, setLoyaltyPoints] = useState<number | null>(null)
+  /** Otomatik seçim yapıldı mı — kullanıcı sonradan değiştirirse tekrar üzerine yazmayız. */
+  const autoPickedRef = useRef(false)
   const [productId, setProductId] = useState('')
   const [price, setPrice] = useState<number | ''>('')
   const [quantity, setQuantity] = useState(1)
@@ -351,6 +375,75 @@ export default function PackageSaleDialog({
   const selectedService: { id: string; name: string; price: number } | null =
     presetService ?? (pickedService ? { id: pickedService.id, name: pickedService.name, price: pickedService.price } : null)
   const selectedProduct = products.find((p) => p.id === productId)
+
+  /** Müşteri değişince sadakat puanını tazele. Hata YUTULUR: satış akışı bu yüzden durmaz. */
+  useEffect(() => {
+    const cid = presetCustomer?.id || customerId
+    if (!open || !cid || !tenantId) { setLoyaltyPoints(null); return }
+    let alive = true
+    void (async () => {
+      try {
+        const res = await adminApi.loyaltyBalance<{ balance?: number; points?: number }>(cid, tenantId)
+        const value = Number(res?.balance ?? res?.points ?? 0)
+        if (alive) setLoyaltyPoints(Number.isFinite(value) ? value : 0)
+      } catch {
+        if (alive) setLoyaltyPoints(null)
+      }
+    })()
+    return () => { alive = false }
+  }, [open, presetCustomer?.id, customerId, tenantId])
+
+  /**
+   * Mevcut puanla HEDİYE EDİLEBİLECEK kalemler.
+   *
+   * Ölçüt kataloğun kendi alanıdır (`loyaltyPointCost` > 0 ve puana yetiyorsa) — bkz. hizmet/paket
+   * tanımı. Puanı 0 olan kayıt "hediye edilemez" demektir, listeye hiç girmez.
+   */
+  const giftableWithPoints = useMemo(() => {
+    if (loyaltyPoints === null || loyaltyPoints <= 0) return { services: [], packages: [] }
+    return {
+      services: services.filter((x) => x.loyaltyPointCost > 0 && x.loyaltyPointCost <= loyaltyPoints),
+      packages: packages.filter((x) => x.loyaltyPointCost > 0 && x.loyaltyPointCost <= loyaltyPoints),
+    }
+  }, [loyaltyPoints, services, packages])
+
+  /** Müşteri değişince çekleri tazele; müşteri yoksa listeyi boşalt. */
+  useEffect(() => {
+    const cid = presetCustomer?.id || customerId
+    if (!open || !cid || !tenantId) { setGiftCards([]); autoPickedRef.current = false; return }
+    let alive = true
+    void (async () => {
+      try {
+        const rows = await adminApi.giftCardsByCustomer<ApiGiftCard>(cid, tenantId)
+        if (alive) setGiftCards((rows || []).map((g, i) => normalizeGiftCard(g, i)))
+      } catch {
+        // Çek listesi alınamazsa satış akışı DURMAZ: bu yalnız bir kolaylık katmanı.
+        if (alive) setGiftCards([])
+      }
+    })()
+    return () => { alive = false }
+  }, [open, presetCustomer?.id, customerId, tenantId])
+
+  /**
+   * Çeke bağlı katalog kaydı satılacak türle uyuşuyorsa otomatik seçilir.
+   * Kullanıcının önceki seçimi EZİLMEZ: yalnız alan boşken ve bir kez.
+   */
+  const autoGift = useMemo(
+    () => giftCards.find((g) => (isServiceSale ? g.serviceDefinitionId : g.servicePackageId)) ?? null,
+    [giftCards, isServiceSale],
+  )
+
+  useEffect(() => {
+    if (!autoGift || autoPickedRef.current || isProductSale) return
+    if (isServiceSale) {
+      if (serviceId || !autoGift.serviceDefinitionId) return
+      setServiceId(autoGift.serviceDefinitionId)
+    } else {
+      if (packageId || !autoGift.servicePackageId) return
+      setPackageId(autoGift.servicePackageId)
+    }
+    autoPickedRef.current = true
+  }, [autoGift, isServiceSale, isProductSale, serviceId, packageId])
 
   const basePrice = isProductSale
     ? Number(selectedProduct?.salePrice || 0)
@@ -971,6 +1064,52 @@ export default function PackageSaleDialog({
                 )}
               </div>
 
+              {/* SADAKAT PUANI — ek kalem eklerken "puanla neyi hediye edebilirim" sorusu. */}
+              {loyaltyPoints !== null && loyaltyPoints > 0 && (
+                <div className="rounded-[16px] border border-[#e0d3f2] bg-[#faf6ff] p-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#6b4aa0]">
+                      <Star className="h-3.5 w-3.5" /> Sadakat puanı
+                    </span>
+                    <span className="font-display text-[17px] font-bold tabular-nums text-[#6b4aa0]">
+                      {loyaltyPoints.toLocaleString('tr-TR')} P
+                    </span>
+                  </div>
+
+                  {giftableWithPoints.services.length === 0 && giftableWithPoints.packages.length === 0 ? (
+                    <p className="mt-1.5 text-[11px] leading-snug text-[#5A4B53]">
+                      Bu puanla hediye edilebilecek bir hizmet/paket yok. (Katalogda &quot;sadakat puanı&quot; tanımlı kayıtlar gerekir.)
+                    </p>
+                  ) : (
+                    <>
+                      <p className="mt-1.5 text-[11px] leading-snug text-[#5A4B53]">
+                        Bu puanla hediye edilebilecekler — ek kalem olarak ekleyip adisyonda hediye işaretleyin:
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {giftableWithPoints.services.map((x) => (
+                          <span
+                            key={`gs-${x.id}`}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#d9c8ef] bg-white px-2.5 py-1 text-[10.5px] font-semibold text-[#4a3a44]"
+                          >
+                            <Sparkles className="h-3 w-3 text-[#6b4aa0]" /> {x.name}
+                            <span className="text-[#6b4aa0]">{x.loyaltyPointCost} P</span>
+                          </span>
+                        ))}
+                        {giftableWithPoints.packages.map((x) => (
+                          <span
+                            key={`gp-${x.id}`}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[#d9c8ef] bg-white px-2.5 py-1 text-[10.5px] font-semibold text-[#4a3a44]"
+                          >
+                            <Boxes className="h-3 w-3 text-[#6b4aa0]" /> {x.name}
+                            <span className="text-[#6b4aa0]">{x.loyaltyPointCost} P</span>
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* ---------- EK KALEMLER (adisyon kartındaki "Kalem ekle" ile aynı mantık) ---------- */}
               <div className="rounded-[16px] border border-[#f0e0e6] bg-[#F7F6F6] p-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1235,6 +1374,34 @@ export default function PackageSaleDialog({
               )}
 
               <ConsultationWarningBanner customerId={presetCustomer?.id || customerId} tenantId={tenantId} />
+
+              {/* HEDİYE ÇEKİ ŞERİDİ — otomatik seçim sessiz kalmaz. */}
+              {giftCards.length > 0 && (
+                <div className="rounded-[14px] border border-[#EFC98B] bg-[#FDF3E2] px-3.5 py-3">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#8A5A11]">
+                    <Gift className="h-3.5 w-3.5" /> Bu müşterinin hediye çeki var
+                  </div>
+                  <ul className="mt-1.5 space-y-1">
+                    {giftCards.map((g) => (
+                      <li key={g.id} className="text-[11.5px] leading-snug text-[#6b4a12]">
+                        <b className="font-semibold">{g.code}</b>
+                        {g.scopeLabel ? ` · ${g.scopeLabel}` : ''}
+                        {g.kind === 'Percentage'
+                          ? ` · %${g.value} indirim`
+                          : g.kind === 'StoredValue'
+                            ? ` · ${formatTL(Math.round(g.balance))} bakiye`
+                            : ` · ${formatTL(Math.round(g.value))} indirim`}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1.5 text-[10.5px] leading-snug text-[#8A5A11]">
+                    {autoGift
+                      ? 'Çeke bağlı kalem aşağıda seçildi. '
+                      : ''}
+                    İndirim, satıştan sonra <b>adisyonda</b> kart kodu girilerek uygulanır.
+                  </p>
+                </div>
+              )}
 
               {/* Satılan şey */}
               {isProductSale ? (

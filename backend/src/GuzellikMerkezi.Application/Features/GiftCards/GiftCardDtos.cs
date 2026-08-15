@@ -19,6 +19,10 @@ public sealed record GiftCardDto(
     Guid? CustomerId,
     /// <summary>Basılı kartta "geçerli ... çekidir" satırında yazan kapsam (serbest metin).</summary>
     string? ScopeLabel,
+    /// <summary>Çekin bağlandığı hizmet (varsa) — satış ekranı bunu otomatik seçer.</summary>
+    Guid? ServiceDefinitionId,
+    /// <summary>Çekin bağlandığı paket (varsa).</summary>
+    Guid? ServicePackageId,
     /// <summary>Kartın üzerine basılan alıcı adı; boşsa elle yazılmak üzere boş bırakılır.</summary>
     string? RecipientName,
     bool IsValid);
@@ -35,7 +39,16 @@ public sealed record CreateGiftCardRequest(
     Guid? BranchId,
     DateTime? ValidFromUtc = null,
     string? ScopeLabel = null,
-    string? RecipientName = null);
+    string? RecipientName = null,
+    Guid? ServiceDefinitionId = null,
+    Guid? ServicePackageId = null);
+
+/// <summary>QR okutularak çekin bir müşteriye bağlanması.</summary>
+public sealed record AssignGiftCardCustomerRequest(
+    string Code,
+    Guid CustomerId,
+    /// <summary>Kart başka müşteriye bağlıysa devretmeye izin ver (kullanıcı onayı sonrası).</summary>
+    bool AllowReassign = false);
 
 /// <summary>
 /// Hediye kartındaki QR okutulunca gösterilen HALKA AÇIK görünüm.

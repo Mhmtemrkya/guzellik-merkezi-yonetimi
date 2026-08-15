@@ -662,6 +662,8 @@ export interface ApiGiftCard {
   note?: string | null
   customerId?: string | null
   scopeLabel?: string | null
+  serviceDefinitionId?: string | null
+  servicePackageId?: string | null
   recipientName?: string | null
   isValid?: boolean
 }
@@ -682,6 +684,10 @@ export interface GiftCard {
   customerId: string | null
   /** Basılı kartta "geçerli ... çekidir" satırındaki kapsam (serbest metin). */
   scopeLabel: string
+  /** Çekin bağlandığı hizmet — satış ekranı bunu otomatik seçer. */
+  serviceDefinitionId: string | null
+  /** Çekin bağlandığı paket. */
+  servicePackageId: string | null
   /** Kartın üzerine basılan alıcı adı; boşsa elle yazılmak üzere boş bırakılır. */
   recipientName: string
   isValid: boolean

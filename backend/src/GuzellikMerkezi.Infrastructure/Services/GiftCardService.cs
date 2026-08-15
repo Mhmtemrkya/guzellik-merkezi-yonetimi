@@ -58,7 +58,8 @@ public sealed class GiftCardService : IGiftCardService
 
             var card = new GiftCard(tenantId, request.BranchId, code, request.Kind, request.Value,
                 request.ValidUntilUtc, request.MaxUses, request.Note, request.CustomerId,
-                request.ValidFromUtc, request.ScopeLabel, request.RecipientName);
+                request.ValidFromUtc, request.ScopeLabel, request.RecipientName,
+                request.ServiceDefinitionId, request.ServicePackageId);
             _db.GiftCards.Add(card);
             await _db.SaveChangesAsync(cancellationToken);
             await _audit.LogAsync(tenantId, card.BranchId, "Create", "GiftCard", card.Id, $"Hediye çeki/kupon: {card.Code}", null, cancellationToken);
@@ -68,6 +69,56 @@ public sealed class GiftCardService : IGiftCardService
         {
             return Result<GiftCardDto>.Failure(Error.Validation(ex.Message));
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<IReadOnlyCollection<GiftCardDto>>> ListForCustomerAsync(Guid tenantId, Guid customerId, CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var rows = await _db.GiftCards.AsNoTracking()
+            .Where(g => g.TenantId == tenantId && g.CustomerId == customerId && g.IsActive)
+            .OrderByDescending(g => g.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+        // Geçerlilik SUNUCUDA süzülür: satış ekranına süresi dolmuş çeki "kullanılabilir" diye
+        // göndermek, kullanıcıyı uygulanmayacak bir indirime hazırlardı.
+        var dtos = rows.Where(g => g.IsValid(now)).Select(g => ToDto(g, now)).ToArray();
+        return Result<IReadOnlyCollection<GiftCardDto>>.Success(dtos);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<GiftCardDto>> AssignCustomerAsync(Guid tenantId, AssignGiftCardCustomerRequest request, CancellationToken cancellationToken = default)
+    {
+        var normalized = (request.Code ?? string.Empty).Trim().ToUpperInvariant();
+        if (normalized.Length == 0) return Result<GiftCardDto>.Failure(Error.Validation("Kart kodu okunamadı."));
+
+        var card = await _db.GiftCards.FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Code == normalized, cancellationToken);
+        if (card is null) return Result<GiftCardDto>.Failure(Error.NotFound("Bu koda ait kart bulunamadı."));
+
+        // Müşteri gerçekten bu kuruma ait mi? Aksi hâlde uç, başka kurumun müşterisine kart
+        // bağlayan bir yol olurdu.
+        var customerExists = await _db.Customers.AsNoTracking()
+            .AnyAsync(c => c.TenantId == tenantId && c.Id == request.CustomerId && !c.IsDeleted, cancellationToken);
+        if (!customerExists) return Result<GiftCardDto>.Failure(Error.NotFound("Müşteri bulunamadı."));
+
+        // GEÇERSİZ KART EŞLEŞTİRİLMEZ: süresi dolmuş çeki müşteriye tanımlamak, satış ekranında
+        // kullanılamayacak bir hak varmış gibi görünmesine yol açar.
+        if (!card.IsValid(DateTime.UtcNow))
+            return Result<GiftCardDto>.Failure(Error.Validation("Kart geçerli değil (pasif, süresi dolmuş, hakkı bitmiş veya bakiyesi yok)."));
+
+        try
+        {
+            card.AssignCustomer(request.CustomerId, request.AllowReassign);
+        }
+        catch (DomainException ex)
+        {
+            // "Zaten başka müşteriye tanımlı" — istemci onay alıp AllowReassign ile tekrar dener.
+            return Result<GiftCardDto>.Failure(Error.Conflict(ex.Message));
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync(tenantId, card.BranchId, "AssignCustomer", "GiftCard", card.Id,
+            $"Hediye çeki müşteriye tanımlandı: {card.Code}", null, cancellationToken);
+        return Result<GiftCardDto>.Success(ToDto(card, DateTime.UtcNow));
     }
 
     public async Task<Result<GiftCardDto>> GetByCodeAsync(Guid tenantId, string code, CancellationToken cancellationToken = default)
@@ -262,5 +313,5 @@ public sealed class GiftCardService : IGiftCardService
     private static GiftCardDto ToDto(GiftCard g, DateTime nowUtc) => new(
         g.Id, g.TenantId, g.BranchId, g.Code, g.Kind, g.Value, g.Balance,
         g.ValidFromUtc, g.ValidUntilUtc, g.MaxUses, g.UsedCount, g.IsActive, g.Note, g.CustomerId,
-        g.ScopeLabel, g.RecipientName, g.IsValid(nowUtc));
+        g.ScopeLabel, g.ServiceDefinitionId, g.ServicePackageId, g.RecipientName, g.IsValid(nowUtc));
 }

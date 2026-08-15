@@ -7,6 +7,7 @@ import Topbar from '@/components/dashboard/Topbar'
 import CustomerFormDialog from '@/components/dashboard/CustomerFormDialog'
 import PackageSaleDialog from '@/components/dashboard/PackageSaleDialog'
 import ImportDialog from '@/components/dashboard/ImportDialog'
+import GiftCardScanModal from '@/components/dashboard/GiftCardScanModal'
 import CustomerDetailModal from '@/components/dashboard/CustomerDetailModal'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
@@ -247,6 +248,50 @@ function MusterilerPageInner() {
   const canBlacklist = useFeature('customers.blacklist')
   const canPassive = useFeature('customers.passive')
   const canAdisyon = useFeature('billing.adisyon')
+  const canGiftCards = useFeature('marketing.giftcards')
+
+  /*
+   * HEDİYE KARTI EŞLEŞTİRME. Kart müşteriye elden verilmiş olur; burada QR okutulup BU
+   * müşterinin hesabına bağlanır. Kart başkasına tanımlıysa sunucu 409 döner ve devir
+   * kullanıcı onayıyla yapılır — sessizce üzerine yazılmaz.
+   */
+  const [giftScanOpen, setGiftScanOpen] = useState(false)
+  const [giftScanBusy, setGiftScanBusy] = useState(false)
+  const [giftScanError, setGiftScanError] = useState('')
+
+  const assignGiftCard = async (code: string): Promise<void> => {
+    const cid = selected?.id
+    if (!cid) return
+    setGiftScanBusy(true)
+    setGiftScanError('')
+    try {
+      await adminApi.assignGiftCardCustomer({ code, customerId: cid }, tenantId)
+      setGiftScanOpen(false)
+      setActionMsg(`${code} kartı bu müşteriye tanımlandı.`)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Eşleştirilemedi.'
+      if (/başka bir müşteriye/i.test(message)) {
+        if (window.confirm(`${message}
+
+Bu kartı bu müşteriye devretmek istiyor musunuz?`)) {
+          try {
+            await adminApi.assignGiftCardCustomer({ code, customerId: cid, allowReassign: true }, tenantId)
+            setGiftScanOpen(false)
+            setActionMsg(`${code} kartı bu müşteriye devredildi.`)
+            return
+          } catch (e2) {
+            setGiftScanError(e2 instanceof Error ? e2.message : 'Devredilemedi.')
+            return
+          }
+        }
+        setGiftScanError('')
+        return
+      }
+      setGiftScanError(message)
+    } finally {
+      setGiftScanBusy(false)
+    }
+  }
   const visibleTabs = useMemo(() => TABS.filter((t) => (t.key !== 'blacklist' || canBlacklist) && (t.key !== 'passive' || canPassive)), [canBlacklist, canPassive])
   // Pakette olmayan bir sekmedeyse Tümü'ne dön.
   useEffect(() => {
@@ -1042,6 +1087,16 @@ function MusterilerPageInner() {
           )}
         </motion.section>
 
+        <GiftCardScanModal
+          open={giftScanOpen}
+          onClose={() => setGiftScanOpen(false)}
+          onScanned={(code) => void assignGiftCard(code)}
+          busy={giftScanBusy}
+          error={giftScanError}
+          title="Hediye kartı tanımla"
+          hint={selected ? `${selected.name} adlı müşteriye bağlanacak.` : undefined}
+        />
+
         {/* DETAIL MODAL — danışan kartı zengin, sekmeli modalda açılır */}
         <CustomerDetailModal
           open={modalOpen && Boolean(selected)}
@@ -1065,6 +1120,8 @@ function MusterilerPageInner() {
           onUploadPhoto={(file) => { if (selected) void uploadPhoto(selected, file) }}
           onCreateAppointment={() => setApptOpen(true)}
           onDelete={handleDeleteCustomer}
+          /* Hediye kartı tanımlama yalnız özellik açıkken sunulur. */
+          onAssignGiftCard={canGiftCards ? () => { setGiftScanError(''); setGiftScanOpen(true) } : undefined}
           // Hızlı işlemlerdeki "Tahsilat Al". Cari/tutar/yöntem modalde seçilir; kayıt
           // sonrası satış listesi + seans/istatistikler tazelenir (runSaleAction).
           onCollectPayment={async (payload) => {

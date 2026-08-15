@@ -1265,6 +1265,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         g.Property(x => x.ScopeLabel).HasMaxLength(120);
         g.Property(x => x.RecipientName).HasMaxLength(120);
         g.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        // Satış ekranı "bu müşterinin geçerli çeki var mı?" diye sorar — indeks o sorgu içindir.
+        g.HasIndex(x => new { x.TenantId, x.CustomerId });
         // Kurum + şube: şube seçiliyse o şubeye özel; "Tüm şubeler"de (BranchId null) kurum geneli görünür.
         g.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
     }

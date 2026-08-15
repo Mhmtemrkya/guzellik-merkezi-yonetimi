@@ -24,6 +24,20 @@ public static class GiftCardEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.GetByCodeAsync(resolvedTenantId, code, ct)).ToHttpResult(http);
         });
 
+        // Satış ekranı: "bu müşterinin kullanılabilir çeki var mı?"
+        group.MapGet("/by-customer/{customerId:guid}", async (Guid customerId, Guid? tenantId, ICurrentUser currentUser, IGiftCardService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.ListForCustomerAsync(resolvedTenantId, customerId, ct)).ToHttpResult(http);
+        });
+
+        // QR okutup çeki müşteriye bağlama.
+        group.MapPost("/assign-customer", async (AssignGiftCardCustomerRequest request, Guid? tenantId, ICurrentUser currentUser, IGiftCardService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.AssignCustomerAsync(resolvedTenantId, request, ct)).ToHttpResult(http);
+        });
+
         group.MapPost("/", async (CreateGiftCardRequest request, Guid? tenantId, ICurrentUser currentUser, IGiftCardService service, HttpContext http, CancellationToken ct) =>
         {
             var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);

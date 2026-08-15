@@ -23,7 +23,9 @@ public sealed class GiftCard : Entity
         Guid? customerId,
         DateTime? validFromUtc = null,
         string? scopeLabel = null,
-        string? recipientName = null)
+        string? recipientName = null,
+        Guid? serviceDefinitionId = null,
+        Guid? servicePackageId = null)
     {
         TenantId = tenantId;
         BranchId = branchId;
@@ -37,6 +39,7 @@ public sealed class GiftCard : Entity
         CustomerId = customerId;
         ScopeLabel = Clean(scopeLabel);
         RecipientName = Clean(recipientName);
+        SetCatalogTarget(serviceDefinitionId, servicePackageId);
         IsActive = true;
     }
 
@@ -69,6 +72,17 @@ public sealed class GiftCard : Entity
     public string? ScopeLabel { get; private set; }
     /// <summary>Kartın üzerine basılan alıcı adı ("Bu çek, ... size"). Boşsa elle yazılmak üzere boş bırakılır.</summary>
     public string? RecipientName { get; private set; }
+
+    /*
+     * KATALOG BAĞI (opsiyonel). <see cref="ScopeLabel"/> kartın üzerine BASILAN metindir;
+     * bunlar ise makinenin anladığı bağdır: satış ekranı müşterinin çekini görünce doğru
+     * hizmeti/paketi kendiliğinden seçebilsin diye. Serbest metinden hizmet eşleştirmeye
+     * çalışmak ("El ve Ayak Bakım" ≟ "El & Ayak Bakımı") kırılgan olurdu.
+     *
+     * İKİSİ AYNI ANDA DOLU OLAMAZ: bir çek ya bir hizmete ya bir pakete bağlıdır.
+     */
+    public Guid? ServiceDefinitionId { get; private set; }
+    public Guid? ServicePackageId { get; private set; }
 
     public void SetCode(string code)
     {
@@ -151,6 +165,28 @@ public sealed class GiftCard : Entity
             (fromUtc, untilUtc) = (untilUtc, fromUtc);
         ValidFromUtc = fromUtc;
         ValidUntilUtc = untilUtc;
+        Touch();
+    }
+
+    /// <summary>Çekin bağlandığı katalog kaydı. İkisi birden verilirse hata — bir çek tek şeye bağlanır.</summary>
+    public void SetCatalogTarget(Guid? serviceDefinitionId, Guid? servicePackageId)
+    {
+        if (serviceDefinitionId.HasValue && servicePackageId.HasValue)
+            throw new DomainException("Hediye çeki ya bir hizmete ya bir pakete bağlanabilir, ikisine birden değil.");
+        ServiceDefinitionId = serviceDefinitionId;
+        ServicePackageId = servicePackageId;
+        Touch();
+    }
+
+    /// <summary>
+    /// Çeki bir müşteriye bağlar (QR okutup eşleştirme). Zaten BAŞKA bir müşteriye bağlıysa
+    /// sessizce üzerine yazılmaz: kart yanlışlıkla başkasının hesabına geçmemeli.
+    /// </summary>
+    public void AssignCustomer(Guid customerId, bool allowReassign)
+    {
+        if (CustomerId.HasValue && CustomerId.Value != customerId && !allowReassign)
+            throw new DomainException("Bu kart zaten başka bir müşteriye tanımlı.");
+        CustomerId = customerId;
         Touch();
     }
 
