@@ -249,6 +249,26 @@ public sealed class TenantService : ITenantService
         }
 
         _db.Tenants.Add(tenant);
+
+        /*
+         * LOGO (opsiyonel) — vitrin profiline yazılır, kurumun kendi yüklediğiyle AYNI alana.
+         *
+         * Doğrulama SetLogoAsync ile birebir aynıdır; ayrı bir yol açıp gevşek kabul etmek,
+         * platform ucunu aynı alana kural tanımadan yazan bir arka kapıya çevirirdi.
+         */
+        var logo = request.LogoData?.Trim();
+        if (!string.IsNullOrWhiteSpace(logo))
+        {
+            if (!logo.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+                return Result<TenantWithCredentialsDto>.Failure(Error.Validation("Logo base64 data-URL biçiminde olmalı."));
+            if (logo.Length > TenantProfileService.MaxImageDataLength)
+                return Result<TenantWithCredentialsDto>.Failure(Error.Validation("Logo çok büyük. Lütfen daha küçük bir görsel yükleyin."));
+
+            var profile = new TenantPublicProfile(tenant.Id);
+            profile.SetLogo(logo);
+            _db.TenantPublicProfiles.Add(profile);
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         return Result<TenantWithCredentialsDto>.Success(new TenantWithCredentialsDto(
             tenant.ToDto(),

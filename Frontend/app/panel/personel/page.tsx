@@ -265,6 +265,20 @@ function PersonelPageInner() {
     [tenantBranches],
   )
 
+  /**
+   * Kurum logosu — giriş bilgileri belgesinin üst bandına basılır.
+   * YAN YOLDUR: alınamazsa belge logosuz üretilir, personel oluşturma akışı etkilenmez.
+   */
+  const { data: tenantLogo } = useApiQuery<string | null>(
+    async () => {
+      if (!tenantId) return null
+      const profile = await adminApi.publicProfile<{ logoData?: string | null }>().catch(() => null)
+      return profile?.logoData || null
+    },
+    [tenantId],
+    { initialData: null },
+  )
+
   const { data, loading, error, reload } = useApiQuery<{
     staff: PagedResult<ApiStaff>
     appts: ApiAppointment[]
@@ -505,6 +519,7 @@ function PersonelPageInner() {
           <div className="flex flex-wrap items-center gap-2">
             <StaffFormDialog
               mode="create" branches={branchOptions} tenantId={tenantId} tenantName={selectedInstitution?.name}
+              tenantLogoDataUrl={tenantLogo ?? null}
               onSubmitted={async () => { await reload() }}
               trigger={
                 <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-[12px] bg-gradient-to-r from-[#e0617f] to-[#A5556E] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_12px_26px_-16px_rgba(200,87,118,0.95)] transition-transform hover:-translate-y-0.5">
@@ -1179,7 +1194,7 @@ function PersonelPageInner() {
                           {/* aksiyonlar */}
                           <div className="flex flex-wrap gap-2">
                             <StaffFormDialog
-                              mode="edit" branches={branchOptions} tenantId={tenantId} tenantName={selectedInstitution?.name} staffId={selected.id}
+                              mode="edit" branches={branchOptions} tenantId={tenantId} tenantName={selectedInstitution?.name} tenantLogoDataUrl={tenantLogo ?? null} staffId={selected.id}
                               initialValues={{
                                 branchId: selected.branchId || branchId || branchOptions[0]?.id || '',
                                 fullName: selected.name, title: selected.role || '', phone: selected.phone || '',
@@ -1333,6 +1348,7 @@ function PersonelPageInner() {
         description="Yeni geçici şifre üretildi; personelin aktif oturumları kapatıldı. Bu bilgiler yalnızca bir kez gösterilir."
         pdfHeading="PERSONEL GİRİŞ BİLGİLERİ"
         pdfSubjectLabel="PERSONEL"
+        logoDataUrl={tenantLogo ?? null}
       />
 
       <ImportDialog

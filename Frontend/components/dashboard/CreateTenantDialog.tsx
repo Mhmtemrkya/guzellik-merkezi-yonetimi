@@ -10,7 +10,8 @@ import {
 } from '@/components/ui/dialog'
 import { platformApi } from '@/lib/apiClient'
 import type { ApiTenantAvailability, ApiTenantCredentials, ApiTenantWithCredentials } from '@/lib/types'
-import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, Plus, Sparkles, Trash2, UserPlus } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown, ImagePlus, Loader2, Plus, Sparkles, Trash2, UserPlus } from 'lucide-react'
+import { downscaleImage } from '@/lib/imageUtils'
 
 /** Opsiyonel ek kurum yöneticisi satırı. E-posta boşsa backend ad + domainden üretir. */
 export interface AdditionalOwnerInput {
@@ -34,6 +35,14 @@ export interface CreateTenantFormValues {
   email: string
   /** Opsiyonel ek kurum yöneticileri — her biri ayrı InstitutionOwner hesabı + geçici şifre alır. */
   additionalOwners: AdditionalOwnerInput[]
+  /**
+   * Kurum logosu (base64 data-URL) — opsiyonel.
+   *
+   * Logoyu normalde kurum yöneticisi Salon Profili'nden yükler. Burada da istenmesinin sebebi
+   * GİRİŞ BİLGİLERİ BELGESİDİR: kurum oluşturulur oluşturulmaz üretilen PDF'in üst bandında
+   * kurumun logosu bulunsun. Kurum sonradan değiştirebilir.
+   */
+  logoData: string
 }
 
 /** Plan seçeneği — dönem bazlı tutar gösterimi için aylık/yıllık fiyatları taşır. */
@@ -80,6 +89,7 @@ function initialValues(plan: string): CreateTenantFormValues {
     phone: '',
     email: '',
     additionalOwners: [],
+    logoData: '',
   }
 }
 
@@ -646,6 +656,12 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
                   />
                 </div>
 
+                {/* Kurum logosu — giriş bilgileri belgesinin üst bandına basılır. */}
+                <LogoPicker
+                  value={values.logoData}
+                  onChange={(next) => updateField('logoData', next)}
+                />
+
                 {/* Ek kurum yöneticileri (opsiyonel) */}
                 <div className="border border-[#EAD8DF]/[0.70] bg-white/[0.62] p-4">
                   <div className="flex items-center justify-between gap-3">
@@ -845,6 +861,80 @@ export default function CreateTenantDialog({ plans, onCreate, onCredentials }: C
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * KURUM LOGOSU SEÇİCİ.
+ *
+ * Aynı görsel Salon Profili'ndeki yükleyiciyle AYNI alana gider (`tenant_public_profiles.LogoData`)
+ * ve aynı şekilde 512 px'e küçültülür — iki yol farklı boyut üretirse belge ile vitrin farklı
+ * görünürdü. Zorunlu değildir: yoksa belgedeki beyaz kutu hiç çizilmez.
+ */
+function LogoPicker({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const fileRef = useRef<HTMLInputElement | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const pick = async (file: File): Promise<void> => {
+    setError('')
+    setBusy(true)
+    try {
+      onChange(await downscaleImage(file, 512))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Logo okunamadı.')
+    } finally {
+      setBusy(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  return (
+    <div className="border border-[#EAD8DF]/[0.70] bg-white/[0.62] p-4">
+      <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#2A2027]/[0.65]">
+        Kurum logosu <span className="text-[#2A2027]/[0.35]">(opsiyonel)</span>
+      </div>
+      <div className="mt-1 text-[10px] leading-relaxed text-[#2A2027]/[0.40]">
+        Giriş bilgileri belgesinin üst bandındaki beyaz kutuda görünür. Kurum yöneticisi sonradan
+        Salon Profili sayfasından değiştirebilir. Kare (1:1) bir görsel seçin.
+      </div>
+      <div className="mt-3 flex items-center gap-3">
+        <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden border border-[#EAD8DF]/[0.80] bg-white">
+          {value ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={value} alt="Kurum logosu önizleme" className="h-full w-full object-contain" />
+          ) : (
+            <ImagePlus className="h-5 w-5 text-[#BE7690]" />
+          )}
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) void pick(f) }}
+        />
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => fileRef.current?.click()}
+          className="inline-flex items-center gap-1.5 border border-[#BE7690]/[0.75] bg-[#F7F6F6] px-3 py-2 text-[9.5px] font-mono uppercase tracking-widest text-[#A5556E] transition-colors hover:bg-[#ffd3df]/[0.45] disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
+          {value ? 'Logoyu değiştir' : 'Logo seç'}
+        </button>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="inline-flex items-center gap-1.5 border border-[#EAD8DF]/[0.70] bg-white/[0.72] px-3 py-2 text-[9.5px] font-mono uppercase tracking-widest text-[#7e5f6e] transition-colors hover:border-rose-300/[0.60] hover:text-rose-600"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Kaldır
+          </button>
+        )}
+      </div>
+      {error && <div className="mt-2 text-[10px] text-rose-600">{error}</div>}
+    </div>
   )
 }
 

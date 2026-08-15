@@ -33,7 +33,15 @@ public sealed record TenantDto(
 /// "Monthly"/"Yearly" seçilirse <see cref="Plan"/> adına karşılık gelen aktif paketle ücretli abonelik
 /// hemen başlatılır (durum Aktif, süre = oluşturma + 1 ay/yıl); "Trial" ise 14 günlük deneme akışı işler.
 /// </summary>
-public sealed record CreateTenantRequest(string Name, string Slug, string Plan, string? Domain, string? OwnerName, string? OwnerEmail, string? InitialPassword, string? DefaultBranchName, string? DefaultBranchCity, string? Phone = null, string? Email = null, string? BillingPeriod = null, IReadOnlyList<TenantAdditionalOwnerInput>? AdditionalOwners = null);
+public sealed record CreateTenantRequest(string Name, string Slug, string Plan, string? Domain, string? OwnerName, string? OwnerEmail, string? InitialPassword, string? DefaultBranchName, string? DefaultBranchCity, string? Phone = null, string? Email = null, string? BillingPeriod = null, IReadOnlyList<TenantAdditionalOwnerInput>? AdditionalOwners = null,
+    /// <summary>
+    /// Kurum logosu (base64 data-URL) — vitrin profiline yazılır.
+    ///
+    /// <para>Logoyu normalde kurum yöneticisi Salon Profili'nden yükler; burada da verilebilmesinin
+    /// sebebi, kurum oluşturulur oluşturulmaz üretilen GİRİŞ BİLGİLERİ BELGESİNİN logolu çıkması.
+    /// Kurum isterse sonradan değiştirir — bu alan bir başlangıç değeridir, kilit değil.</para>
+    /// </summary>
+    string? LogoData = null);
 
 /// <summary>
 /// Kurum oluşturulurken eklenen ek kurum yöneticisi. E-posta boş bırakılırsa

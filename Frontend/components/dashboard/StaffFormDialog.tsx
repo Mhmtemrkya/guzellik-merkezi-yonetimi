@@ -63,6 +63,8 @@ export interface StaffFormDialogProps {
   branches: Array<{ id: string; name: string }>
   tenantId?: string
   tenantName?: string
+  /** Kurum logosu (data-URL) — giriş bilgileri belgesinin üst bandına basılır. */
+  tenantLogoDataUrl?: string | null
   initialValues?: Partial<StaffFormValues>
   staffId?: string
   onSubmitted?: () => void | Promise<void>
@@ -102,6 +104,7 @@ export default function StaffFormDialog({
   branches,
   tenantId,
   tenantName,
+  tenantLogoDataUrl = null,
   initialValues,
   staffId,
   onSubmitted,
@@ -123,6 +126,7 @@ export default function StaffFormDialog({
   // Credentials (sadece create mode'da, response sonrası)
   const [credentials, setCredentials] = useState<ApiStaffCredentials | null>(null)
   const [copiedField, setCopiedField] = useState<'email' | 'pwd' | null>(null)
+  const [pdfBusy, setPdfBusy] = useState(false)
 
   const defaults: StaffFormValues = {
     fullName: '',
@@ -315,18 +319,28 @@ export default function StaffFormDialog({
     }
   }
 
-  const handleDownloadPdf = (): void => {
-    if (!credentials || !credentials.email || !credentials.initialPassword) return
+  /**
+   * Belge üretimi ASENKRON (marka görselleri data-URL'e çevriliyor). Meşgul bayrağı olmadan
+   * çift tıklama iki dosya birden indirirdi.
+   */
+  const handleDownloadPdf = async (): Promise<void> => {
+    if (!credentials || !credentials.email || !credentials.initialPassword || pdfBusy) return
     const permMeta = visiblePermissions.filter((p) => values.permissions.includes(p.key))
-    generateStaffCredentialsPdf({
-      staffName: credentials.fullName || values.fullName,
-      email: credentials.email || '',
-      initialPassword: credentials.initialPassword || '',
-      tenantName: credentials.tenantName || tenantName || 'Kurum',
-      branchName: credentials.branchName || branches.find((b) => b.id === values.branchId)?.name || null,
-      title: values.title,
-      permissions: permMeta.map((p) => ({ key: p.key, label: p.label })),
-    })
+    setPdfBusy(true)
+    try {
+      await generateStaffCredentialsPdf({
+        staffName: credentials.fullName || values.fullName,
+        email: credentials.email || '',
+        initialPassword: credentials.initialPassword || '',
+        tenantName: credentials.tenantName || tenantName || 'Kurum',
+        branchName: credentials.branchName || branches.find((b) => b.id === values.branchId)?.name || null,
+        title: values.title,
+        permissions: permMeta.map((p) => ({ key: p.key, label: p.label })),
+        logoDataUrl: tenantLogoDataUrl,
+      })
+    } finally {
+      setPdfBusy(false)
+    }
   }
 
   const copyToClipboard = async (text: string, field: 'email' | 'pwd'): Promise<void> => {
@@ -576,12 +590,12 @@ export default function StaffFormDialog({
                         )}
                         <button
                           type="button"
-                          onClick={handleDownloadPdf}
-                          disabled={!hasStaffCredentialValues}
+                          onClick={() => void handleDownloadPdf()}
+                          disabled={!hasStaffCredentialValues || pdfBusy}
                           className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-4 py-2.5 text-sm font-medium text-white shadow-[0_8px_20px_-12px_rgba(200,87,118,0.35)] transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          <Download className="h-4 w-4" />
-                          Giriş bilgileri PDF&apos;i indir
+                          {pdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                          {pdfBusy ? 'Belge hazırlanıyor…' : "Giriş bilgileri PDF'i indir"}
                         </button>
                       </>
                     )}

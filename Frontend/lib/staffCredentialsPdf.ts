@@ -1,5 +1,5 @@
-// Personel "kimlik kartı" PDF'i. Artık generic credentialsPdf'e delege eder.
-// Geriye dönük uyumluluk için bu dosya ve imzası korunuyor.
+// Personel giriş bilgileri belgesi. Kurum yöneticisi belgesiyle AYNI tasarımı kullanır —
+// tek fark başlık, kişi etiketi ve yetki kartıdır (bkz. credentialsPdf.ts).
 import { generateCredentialsPdf } from './credentialsPdf'
 
 export interface StaffCredentialsPdfData {
@@ -10,10 +10,12 @@ export interface StaffCredentialsPdfData {
   branchName?: string | null
   title?: string
   permissions?: Array<{ key: string; label: string }>
+  /** Kurum logosu (data-URL) — belgenin üst bandındaki beyaz kutuya basılır. */
+  logoDataUrl?: string | null
 }
 
-export function generateStaffCredentialsPdf(data: StaffCredentialsPdfData): void {
-  generateCredentialsPdf({
+export function generateStaffCredentialsPdf(data: StaffCredentialsPdfData): Promise<void> {
+  return generateCredentialsPdf({
     heading: 'PERSONEL GİRİŞ BİLGİLERİ',
     subjectLabel: 'PERSONEL',
     personName: data.staffName,
@@ -21,9 +23,9 @@ export function generateStaffCredentialsPdf(data: StaffCredentialsPdfData): void
     initialPassword: data.initialPassword,
     tenantName: data.tenantName,
     branchName: data.branchName,
-    roleLineLabel: 'GÖREV',
     roleLine: data.title,
     permissions: data.permissions,
+    logoDataUrl: data.logoDataUrl,
     filenameBase: data.staffName,
   })
 }

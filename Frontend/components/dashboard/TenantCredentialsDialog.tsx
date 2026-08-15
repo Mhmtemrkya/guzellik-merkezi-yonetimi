@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { motion } from 'framer-motion'
-import { CheckCircle2, Copy, Download, KeyRound, Mail, ShieldAlert, Sparkles, X } from 'lucide-react'
+import { CheckCircle2, Copy, Download, KeyRound, Loader2, Mail, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { generateCredentialsPdf } from '@/lib/credentialsPdf'
 import type { ApiTenantCredentials } from '@/lib/types'
 
@@ -17,6 +17,13 @@ interface TenantCredentialsDialogProps {
   description?: string
   pdfHeading?: string
   pdfSubjectLabel?: string
+  /**
+   * Kurum logosu (data-URL) — belgenin üst bandındaki beyaz kutuya basılır.
+   *
+   * TEK KOPYA, KAYIT BAŞINA DEĞİL: çoklu yöneticide N kayıt döner ve logoyu her kaydın içine
+   * koymak aynı base64'ü N kez taşımak olurdu. Kurum başına bir kez verilir.
+   */
+  logoDataUrl?: string | null
 }
 
 /**
@@ -31,8 +38,14 @@ export default function TenantCredentialsDialog({
   description = 'Şifre girilmediği için otomatik geçici şifre üretildi. Bu bilgiler yalnızca bir kez gösterilir.',
   pdfHeading = 'KURUM YÖNETİCİSİ GİRİŞ BİLGİLERİ',
   pdfSubjectLabel = 'YÖNETİCİ',
+  logoDataUrl = null,
 }: TenantCredentialsDialogProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null)
+  /**
+   * PDF üretimi ASENKRON (marka görselleri data-URL'e çevriliyor). Meşgul bayrağı olmadan
+   * çift tıklama iki dosya birden indirirdi.
+   */
+  const [pdfBusy, setPdfBusy] = useState(false)
   const credentialsList: ApiTenantCredentials[] = Array.isArray(credentials) ? credentials : credentials ? [credentials] : []
   const open = credentialsList.length > 0
   const multi = credentialsList.length > 1
@@ -52,8 +65,7 @@ export default function TenantCredentialsDialog({
   const canPdf = (cred: ApiTenantCredentials): boolean => Boolean(cred.email && cred.initialPassword)
   const anyPdf = credentialsList.some(canPdf)
 
-  const downloadPdfFor = (cred: ApiTenantCredentials, index: number): void => {
-    if (!canPdf(cred)) return
+  const buildPdfFor = (cred: ApiTenantCredentials, index: number): Promise<void> =>
     generateCredentialsPdf({
       heading: pdfHeading,
       subjectLabel: pdfSubjectLabel,
@@ -62,15 +74,34 @@ export default function TenantCredentialsDialog({
       initialPassword: cred.initialPassword || '',
       tenantName: cred.tenantName || 'Kurum',
       branchName: cred.branchName || null,
+      logoDataUrl,
       // Çoklu yöneticide dosya adı kişiye göre ayrışsın ki PDF'ler üst üste binmesin.
       filenameBase: multi
         ? `${cred.tenantName || 'kurum'}-${cred.ownerName || cred.email || `yonetici-${index + 1}`}`
         : cred.tenantName || cred.ownerName || 'kurum-yoneticisi',
     })
+
+  const downloadPdfFor = async (cred: ApiTenantCredentials, index: number): Promise<void> => {
+    if (!canPdf(cred) || pdfBusy) return
+    setPdfBusy(true)
+    try {
+      await buildPdfFor(cred, index)
+    } finally {
+      setPdfBusy(false)
+    }
   }
 
-  const handleDownloadAll = (): void => {
-    credentialsList.forEach((cred, index) => downloadPdfFor(cred, index))
+  const handleDownloadAll = async (): Promise<void> => {
+    if (pdfBusy) return
+    setPdfBusy(true)
+    try {
+      // SIRAYLA: aynı anda N indirme tetiklemek tarayıcıda bazı dosyaları sessizce yutuyor.
+      for (let i = 0; i < credentialsList.length; i++) {
+        if (canPdf(credentialsList[i])) await buildPdfFor(credentialsList[i], i)
+      }
+    } finally {
+      setPdfBusy(false)
+    }
   }
 
   return (
@@ -132,8 +163,8 @@ export default function TenantCredentialsDialog({
                       </div>
                       <button
                         type="button"
-                        onClick={() => downloadPdfFor(cred, index)}
-                        disabled={!canPdf(cred)}
+                        onClick={() => void downloadPdfFor(cred, index)}
+                        disabled={!canPdf(cred) || pdfBusy}
                         className="inline-flex items-center gap-1.5 rounded-full border border-[#BE7690]/[0.80] bg-white/[0.85] px-3 py-1.5 text-[9px] font-mono uppercase tracking-widest text-[#A5556E] transition-colors hover:bg-[#F6DFE6] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Download className="h-3 w-3" /> PDF
@@ -203,12 +234,14 @@ export default function TenantCredentialsDialog({
             )}
             <button
               type="button"
-              onClick={handleDownloadAll}
-              disabled={!anyPdf}
+              onClick={() => void handleDownloadAll()}
+              disabled={!anyPdf || pdfBusy}
               className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#BE7690]/[0.80] bg-gradient-to-r from-[#fff7fa] via-[#ffdbe7] to-[#f4a9c4] px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-[#2f1724] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Download className="h-3.5 w-3.5" />
-              {multi ? `Tüm giriş bilgisi PDF'lerini indir (${credentialsList.length})` : "Giriş bilgileri PDF'ini indir"}
+              {pdfBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              {pdfBusy
+                ? 'Belge hazırlanıyor…'
+                : multi ? `Tüm giriş bilgisi PDF'lerini indir (${credentialsList.length})` : "Giriş bilgileri PDF'ini indir"}
             </button>
           </div>
 

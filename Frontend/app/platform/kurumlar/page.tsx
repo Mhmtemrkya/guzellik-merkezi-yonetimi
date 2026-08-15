@@ -215,6 +215,14 @@ export default function PlatformKurumlarPage() {
   const [page, setPage] = useState<number>(1)
   const [ownerCredentials, setOwnerCredentials] = useState<ApiTenantCredentials[] | null>(null)
   const [resetCredentials, setResetCredentials] = useState<ApiTenantCredentials | null>(null)
+  /**
+   * Giriş bilgileri belgesine basılacak kurum logosu.
+   *
+   * TEK KOPYA: çoklu yöneticide N kayıt döner; logoyu her kaydın içine koymak aynı base64'ü N kez
+   * taşımak olurdu. Oluşturmada formdaki logo doğrudan kullanılır (sunucuya sormaya gerek yok),
+   * şifre sıfırlamada kurumun kayıtlı logosu çekilir.
+   */
+  const [credentialsLogo, setCredentialsLogo] = useState<string | null>(null)
   const [guideResetMsg, setGuideResetMsg] = useState<string | null>(null)
 
   // Sidebar alt linkleri (?scope=active/trial/paused) filtreyi senkronlar
@@ -305,6 +313,7 @@ export default function PlatformKurumlarPage() {
     additionalOwners: values.additionalOwners.length
       ? values.additionalOwners.map((o) => ({ name: o.name || null, email: o.email || null }))
       : null,
+    logoData: values.logoData || null,
   })
   const updateTenantPayload = (values: UpdateTenantFormValues): Record<string, unknown> => ({
     name: values.name,
@@ -417,6 +426,8 @@ export default function PlatformKurumlarPage() {
                   plans={createPlanOptions}
                   onCreate={async (values) => {
                     const res = await platformApi.createTenant<ApiTenantWithCredentials>(createTenantPayload(values))
+                    // Belge logosu formdan gelir — kurum daha yeni oluştu, sunucuya sormak gereksiz.
+                    setCredentialsLogo(values.logoData || null)
                     await reload()
                     return res
                   }}
@@ -621,6 +632,11 @@ export default function PlatformKurumlarPage() {
                               cancelLabel="Vazgeç"
                               onConfirm={async () => {
                                 const creds = await platformApi.resetTenantOwnerPassword<ApiTenantCredentials>(t.id)
+                                // Logo YAN YOLDUR: alınamazsa belge logosuz üretilir, şifre yine gösterilir.
+                                const profile = await platformApi
+                                  .tenantPublicProfile<{ logoData?: string | null }>(t.id)
+                                  .catch(() => null)
+                                setCredentialsLogo(profile?.logoData || null)
                                 setResetCredentials(creds)
                               }}
                               trigger={
@@ -728,11 +744,16 @@ export default function PlatformKurumlarPage() {
         </div>
       )}
 
-      <TenantCredentialsDialog credentials={ownerCredentials} onClose={() => setOwnerCredentials(null)} />
+      <TenantCredentialsDialog
+        credentials={ownerCredentials}
+        logoDataUrl={credentialsLogo}
+        onClose={() => { setOwnerCredentials(null); setCredentialsLogo(null) }}
+      />
 
       <TenantCredentialsDialog
         credentials={resetCredentials}
-        onClose={() => setResetCredentials(null)}
+        logoDataUrl={credentialsLogo}
+        onClose={() => { setResetCredentials(null); setCredentialsLogo(null) }}
         kicker="Şifre sıfırlandı"
         title="Yeni yetkili giriş bilgileri"
         description="Yeni geçici şifre üretildi; yetkilinin aktif oturumları kapatıldı. Bu bilgiler yalnızca bir kez gösterilir."
