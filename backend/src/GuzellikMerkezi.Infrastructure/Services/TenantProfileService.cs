@@ -31,7 +31,9 @@ public sealed class TenantProfileService : ITenantProfileService
     {
         var profile = await _db.TenantPublicProfiles.AsNoTracking()
             .FirstOrDefaultAsync(p => p.TenantId == tenantId, cancellationToken);
-        return Result<TenantPublicProfileDto>.Success(ToDto(profile));
+        var slug = await _db.Tenants.AsNoTracking()
+            .Where(t => t.Id == tenantId).Select(t => t.Slug).FirstOrDefaultAsync(cancellationToken);
+        return Result<TenantPublicProfileDto>.Success(ToDto(profile, slug));
     }
 
     public async Task<Result<TenantPublicProfileDto>> UpdateProfileAsync(Guid tenantId, UpdateTenantPublicProfileRequest request, CancellationToken cancellationToken = default)
@@ -179,9 +181,9 @@ public sealed class TenantProfileService : ITenantProfileService
         return Result<TenantPublicProfileDto>.Success(ToDto(profile));
     }
 
-    private static TenantPublicProfileDto ToDto(TenantPublicProfile? p) =>
+    private static TenantPublicProfileDto ToDto(TenantPublicProfile? p, string? slug = null) =>
         new(p?.IsPublished ?? false, p?.LogoData, p?.Description, p?.Address, p?.City, p?.Instagram,
-            p?.PublicEmail, p?.PublicPhone, p?.WorkingHoursText, p?.MapUrl, p?.KvkkConsentText);
+            p?.PublicEmail, p?.PublicPhone, p?.WorkingHoursText, p?.MapUrl, p?.KvkkConsentText, slug);
 
     private static bool TryParseKind(string? kind, out GalleryPhotoKind parsed)
     {

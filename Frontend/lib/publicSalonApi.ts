@@ -194,3 +194,31 @@ export function submitSalonReview(
     body: input,
   })
 }
+
+/* ------------------------------------------------------------------ */
+/* HEDİYE KARTI DOĞRULAMA                                              */
+/* ------------------------------------------------------------------ */
+
+export interface PublicGiftCard {
+  code: string
+  salonName: string
+  kind: 'Percentage' | 'FixedAmount' | 'StoredValue'
+  /** Hediye çekinde KALAN bakiye; kuponlarda indirim değeri. */
+  amount: number
+  validFromUtc: string | null
+  validUntilUtc: string | null
+  scopeLabel: string | null
+  isValid: boolean
+  /** Geçersizse sebebi — "süresi doldu", "bakiyesi kalmadı" gibi. */
+  invalidReason: string | null
+}
+
+/**
+ * Kartın üzerindeki QR'ın hedefi. Kurum anahtarı ZORUNLUDUR: hediye kartı kodları yalnız
+ * kurum içinde benzersizdir, tek başına kodla arama iki kurumun kartını karıştırırdı.
+ */
+export function getPublicGiftCard(slug: string, code: string): Promise<PublicGiftCard> {
+  return publicRequest<PublicGiftCard>(
+    `/api/public/salons/${encodeURIComponent(slug)}/gift-cards/${encodeURIComponent(code)}`,
+  )
+}

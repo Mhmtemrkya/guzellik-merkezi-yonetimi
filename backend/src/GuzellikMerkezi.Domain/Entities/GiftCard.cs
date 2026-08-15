@@ -20,7 +20,10 @@ public sealed class GiftCard : Entity
         DateTime? validUntilUtc,
         int maxUses,
         string? note,
-        Guid? customerId)
+        Guid? customerId,
+        DateTime? validFromUtc = null,
+        string? scopeLabel = null,
+        string? recipientName = null)
     {
         TenantId = tenantId;
         BranchId = branchId;
@@ -28,10 +31,12 @@ public sealed class GiftCard : Entity
         SetValue(kind, value);
         // Hediye çekinde başlangıç bakiyesi = yüklenen değer; kuponlarda bakiye kullanılmaz.
         Balance = kind == GiftCardKind.StoredValue ? value : 0m;
-        ValidUntilUtc = validUntilUtc;
+        SetValidity(validFromUtc, validUntilUtc);
         MaxUses = maxUses < 0 ? 0 : maxUses;
         Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
         CustomerId = customerId;
+        ScopeLabel = Clean(scopeLabel);
+        RecipientName = Clean(recipientName);
         IsActive = true;
     }
 
@@ -43,6 +48,11 @@ public sealed class GiftCard : Entity
     public decimal Value { get; private set; }
     /// <summary>Hediye çekinde kalan bakiye (kuponlarda 0).</summary>
     public decimal Balance { get; private set; }
+    /// <summary>
+    /// Geçerlilik BAŞLANGICI (opsiyonel). Oluşturulma tarihiyle KARIŞTIRILMAMALIDIR: çek bugün
+    /// basılıp gelecek bir kampanya için ileri tarihli verilebilir. Boşsa kısıt yoktur.
+    /// </summary>
+    public DateTime? ValidFromUtc { get; private set; }
     public DateTime? ValidUntilUtc { get; private set; }
     /// <summary>0 = sınırsız kullanım.</summary>
     public int MaxUses { get; private set; }
@@ -51,6 +61,14 @@ public sealed class GiftCard : Entity
     public string? Note { get; private set; }
     /// <summary>Belirli bir müşteriye atanmışsa (opsiyonel).</summary>
     public Guid? CustomerId { get; private set; }
+    /// <summary>
+    /// Çekin kapsamı — basılı kartta "geçerli <b>El ve Ayak Bakım</b> çekidir" diye yazılır.
+    /// SERBEST METİNDİR, hizmet kaydına bağlı değildir: kurum "Tüm hizmetler" de yazabilir.
+    /// `Note`tan ayrıdır; Note iç kayıt notu, bu ise müşterinin gördüğü ibaredir.
+    /// </summary>
+    public string? ScopeLabel { get; private set; }
+    /// <summary>Kartın üzerine basılan alıcı adı ("Bu çek, ... size"). Boşsa elle yazılmak üzere boş bırakılır.</summary>
+    public string? RecipientName { get; private set; }
 
     public void SetCode(string code)
     {
@@ -68,9 +86,13 @@ public sealed class GiftCard : Entity
         Touch();
     }
 
-    /// <summary>Bugün için geçerli mi (aktif, süresi dolmamış, kullanım hakkı var, hediye çekinde bakiye var)?</summary>
+    /// <summary>
+    /// Bugün için geçerli mi (aktif, süresi dolmamış, HENÜZ BAŞLAMAMIŞ DEĞİL, kullanım hakkı var,
+    /// hediye çekinde bakiye var)?
+    /// </summary>
     public bool IsValid(DateTime nowUtc) =>
         IsActive
+        && (!ValidFromUtc.HasValue || ValidFromUtc.Value <= nowUtc)
         && (!ValidUntilUtc.HasValue || ValidUntilUtc.Value >= nowUtc)
         && (MaxUses <= 0 || UsedCount < MaxUses)
         && (Kind != GiftCardKind.StoredValue || Balance > 0m);
@@ -110,7 +132,27 @@ public sealed class GiftCard : Entity
 
     public void SetNote(string? note)
     {
-        Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        Note = Clean(note);
         Touch();
     }
+
+    /// <summary>Kartın üzerine basılan kapsam ve alıcı bilgisi (ikisi de opsiyonel).</summary>
+    public void SetPrintDetails(string? scopeLabel, string? recipientName)
+    {
+        ScopeLabel = Clean(scopeLabel);
+        RecipientName = Clean(recipientName);
+        Touch();
+    }
+
+    /// <summary>Geçerlilik penceresi. Ters aralık kullanıcı hatasıdır, hata mesajı değil düzeltme hak eder.</summary>
+    public void SetValidity(DateTime? fromUtc, DateTime? untilUtc)
+    {
+        if (fromUtc.HasValue && untilUtc.HasValue && fromUtc.Value > untilUtc.Value)
+            (fromUtc, untilUtc) = (untilUtc, fromUtc);
+        ValidFromUtc = fromUtc;
+        ValidUntilUtc = untilUtc;
+        Touch();
+    }
+
+    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

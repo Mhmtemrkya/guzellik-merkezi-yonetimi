@@ -566,12 +566,15 @@ export function normalizeGiftCard(g: ApiGiftCard | null | undefined, index = 0):
     kind,
     value: Number(g?.value ?? 0),
     balance: Number(g?.balance ?? 0),
+    validFrom: g?.validFromUtc ?? null,
     validUntil: g?.validUntilUtc ?? null,
     maxUses: Number(g?.maxUses ?? 0),
     usedCount: Number(g?.usedCount ?? 0),
     isActive: Boolean(g?.isActive),
     note: g?.note || '',
     customerId: g?.customerId ?? null,
+    scopeLabel: g?.scopeLabel || '',
+    recipientName: g?.recipientName || '',
     isValid: Boolean(g?.isValid),
   }
 }

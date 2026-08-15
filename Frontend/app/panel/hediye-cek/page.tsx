@@ -11,7 +11,8 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
 import { formatTL, guidOrUndefined, normalizeGiftCard } from '@/lib/apiMappers'
 import type { ApiGiftCard, GiftCard, GiftCardKind } from '@/lib/types'
-import { CheckCircle2, Gift, Lock, Percent, Plus, Power, Sparkles, Ticket, Trash2, Wallet, XCircle } from 'lucide-react'
+import GiftCardShareModal from '@/components/dashboard/GiftCardShareModal'
+import { CheckCircle2, Gift, Image as ImageIcon, Lock, Percent, Plus, Power, Sparkles, Ticket, Trash2, Wallet, XCircle } from 'lucide-react'
 
 type ScopeKey = 'all' | 'active' | 'stored' | 'coupon'
 
@@ -34,12 +35,15 @@ function GiftCardTile({
   busy,
   onToggleActive,
   onDelete,
+  onShow,
 }: {
   card: GiftCard
   index: number
   busy: boolean
   onToggleActive: () => void
   onDelete: () => void
+  /** Basılabilir/gönderilebilir kart görselini açar. */
+  onShow: () => void
 }) {
   const meta = kindMeta[card.kind]
   const Icon = meta.icon
@@ -152,7 +156,15 @@ function GiftCardTile({
     >
       {visual}
       {/* Aksiyon barı */}
-      <div className="flex gap-2 rounded-b-[22px] border border-t-0 border-[#EAD8DF] bg-white/96 p-3">
+      <div className="flex flex-wrap gap-2 rounded-b-[22px] border border-t-0 border-[#EAD8DF] bg-white/96 p-3">
+        {/* Asıl eylem: kartın müşteriye gidecek hâlini aç (indir / yazdır / paylaş). */}
+        <button
+          type="button"
+          onClick={onShow}
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-2.5 py-2 text-[11.5px] font-semibold text-white transition-transform hover:-translate-y-0.5"
+        >
+          <ImageIcon className="h-3.5 w-3.5" /> Kartı göster
+        </button>
         <button
           type="button"
           disabled={busy}
@@ -190,6 +202,14 @@ function HediyeCekPageInner() {
   )
   const cards = useMemo(() => (data || []).map((g, i) => normalizeGiftCard(g, i)), [data])
 
+  // Kart görseline basılacak kurum logosu. Hata YUTULUR: logo bulunamazsa kart yine çizilir,
+  // sadece logonun yerine kurum adı yazılır (bkz. GiftCardArtwork).
+  const { data: profile } = useApiQuery<{ logoData?: string | null; slug?: string | null } | null>(
+    async () => (tenantId ? adminApi.publicProfile<{ logoData?: string | null; slug?: string | null }>().catch(() => null) : null),
+    [tenantId],
+    { initialData: null },
+  )
+
   const filtered = useMemo(() => {
     switch (scope) {
       case 'active':
@@ -208,17 +228,26 @@ function HediyeCekPageInner() {
   const [value, setValue] = useState('')
   const [code, setCode] = useState('')
   const [validUntil, setValidUntil] = useState('')
+  const [validFrom, setValidFrom] = useState('')
   const [maxUses, setMaxUses] = useState('')
   const [note, setNote] = useState('')
+  /** Kartın üzerine basılan kapsam ve alıcı — ikisi de opsiyonel. */
+  const [scopeLabel, setScopeLabel] = useState('')
+  const [recipientName, setRecipientName] = useState('')
+  /** Görseli açılan kart. */
+  const [shareCard, setShareCard] = useState<GiftCard | null>(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
 
   const resetForm = (): void => {
     setValue('')
     setCode('')
+    setValidFrom('')
     setValidUntil('')
     setMaxUses('')
     setNote('')
+    setScopeLabel('')
+    setRecipientName('')
   }
 
   const handleCreate = async (): Promise<void> => {
@@ -239,9 +268,13 @@ function HediyeCekPageInner() {
           code: code.trim() || null,
           kind,
           value: numericValue,
+          // Başlangıç günün BAŞI, bitiş günün SONU: iki tarih de dahildir (kartta öyle yazar).
+          validFromUtc: validFrom ? new Date(`${validFrom}T00:00:00`).toISOString() : null,
           validUntilUtc: validUntil ? new Date(`${validUntil}T23:59:59`).toISOString() : null,
           maxUses: maxUses ? Number(maxUses) : 0,
           note: note.trim() || null,
+          scopeLabel: scopeLabel.trim() || null,
+          recipientName: recipientName.trim() || null,
           customerId: null,
           branchId: branchId ?? null,
         },
@@ -387,6 +420,15 @@ function HediyeCekPageInner() {
               />
             </label>
             <label className="block">
+              <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Geçerlilik başlangıcı (ops.)</span>
+              <input
+                type="date"
+                value={validFrom}
+                onChange={(e) => setValidFrom(e.target.value)}
+                className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40"
+              />
+            </label>
+            <label className="block">
               <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Son geçerlilik (ops.)</span>
               <input
                 type="date"
@@ -414,6 +456,28 @@ function HediyeCekPageInner() {
                 placeholder="örn. Yılbaşı kampanyası"
                 className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40"
               />
+              <span className="mt-1 block text-[10.5px] text-[#74616A]">Sadece iç kayıt notu — kartın üzerine basılmaz.</span>
+            </label>
+            {/* Aşağıdaki iki alan KARTIN ÜZERİNE BASILIR (iç not değil). */}
+            <label className="block">
+              <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Kartta yazacak kapsam (ops.)</span>
+              <input
+                value={scopeLabel}
+                onChange={(e) => setScopeLabel(e.target.value)}
+                placeholder="örn. El ve Ayak Bakım"
+                className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40"
+              />
+              <span className="mt-1 block text-[10.5px] text-[#74616A]">Kartta “…geçerli <b>El ve Ayak Bakım</b> çekidir.” diye yazar. Boşsa “tüm hizmetlerde”.</span>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Kartta yazacak alıcı (ops.)</span>
+              <input
+                value={recipientName}
+                onChange={(e) => setRecipientName(e.target.value)}
+                placeholder="örn. Ayşe Yılmaz"
+                className="w-full rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition focus:border-[#ef9ab5] focus:ring-2 focus:ring-[#f4b6cb]/40"
+              />
+              <span className="mt-1 block text-[10.5px] text-[#74616A]">Boş bırakılırsa kartta noktalı boşluk kalır, elle yazılır.</span>
             </label>
           </div>
           {actionError && <div className="mt-4 rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">{actionError}</div>}
@@ -454,6 +518,16 @@ function HediyeCekPageInner() {
           emptyMessage="Bu filtrede kayıt yok. Yukarıdan yeni bir hediye çeki/kupon oluşturabilirsin."
         />
 
+        {/* Kartın müşteriye gidecek hâli — indir / yazdır / paylaş. */}
+        <GiftCardShareModal
+          card={shareCard}
+          open={shareCard !== null}
+          onClose={() => setShareCard(null)}
+          salonName={selectedInstitution?.name || 'Güzellik Merkezi'}
+          salonSlug={profile?.slug ?? null}
+          logoDataUrl={profile?.logoData ?? null}
+        />
+
         {/* Kart ızgarası */}
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((g, i) => (
@@ -464,6 +538,7 @@ function HediyeCekPageInner() {
               busy={busy}
               onToggleActive={() => runAction(() => adminApi.setGiftCardActive(g.id, !g.isActive, tenantId))}
               onDelete={() => runAction(() => adminApi.deleteGiftCard(g.id, tenantId))}
+              onShow={() => setShareCard(g)}
             />
           ))}
         </div>

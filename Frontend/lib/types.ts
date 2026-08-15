@@ -654,12 +654,15 @@ export interface ApiGiftCard {
   kind?: GiftCardKind
   value?: number
   balance?: number
+  validFromUtc?: string | null
   validUntilUtc?: string | null
   maxUses?: number
   usedCount?: number
   isActive?: boolean
   note?: string | null
   customerId?: string | null
+  scopeLabel?: string | null
+  recipientName?: string | null
   isValid?: boolean
 }
 
@@ -669,12 +672,18 @@ export interface GiftCard {
   kind: GiftCardKind
   value: number
   balance: number
+  /** Geçerlilik başlangıcı (opsiyonel) — oluşturulma tarihi DEĞİLDİR, ileri tarihli çek olabilir. */
+  validFrom: string | null
   validUntil: string | null
   maxUses: number
   usedCount: number
   isActive: boolean
   note: string
   customerId: string | null
+  /** Basılı kartta "geçerli ... çekidir" satırındaki kapsam (serbest metin). */
+  scopeLabel: string
+  /** Kartın üzerine basılan alıcı adı; boşsa elle yazılmak üzere boş bırakılır. */
+  recipientName: string
   isValid: boolean
 }
 

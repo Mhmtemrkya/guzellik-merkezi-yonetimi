@@ -57,7 +57,8 @@ public sealed class GiftCardService : IGiftCardService
             if (exists) return Result<GiftCardDto>.Failure(Error.Conflict("Bu kod zaten kullanılıyor."));
 
             var card = new GiftCard(tenantId, request.BranchId, code, request.Kind, request.Value,
-                request.ValidUntilUtc, request.MaxUses, request.Note, request.CustomerId);
+                request.ValidUntilUtc, request.MaxUses, request.Note, request.CustomerId,
+                request.ValidFromUtc, request.ScopeLabel, request.RecipientName);
             _db.GiftCards.Add(card);
             await _db.SaveChangesAsync(cancellationToken);
             await _audit.LogAsync(tenantId, card.BranchId, "Create", "GiftCard", card.Id, $"Hediye çeki/kupon: {card.Code}", null, cancellationToken);
@@ -213,7 +214,53 @@ public sealed class GiftCardService : IGiftCardService
         return new string(buffer);
     }
 
+    /// <summary>
+    /// Anonim doğrulama. Tenant filtresi devre dışıdır (istekte oturum yok), bu yüzden kurum
+    /// slug'dan çözülür ve sorgu AÇIKÇA o kuruma bağlanır — filtreyi kapatıp kapsamı da
+    /// bırakmak tüm kurumların kodlarını tek havuz yapardı.
+    /// </summary>
+    public async Task<Result<PublicGiftCardDto>> GetPublicByCodeAsync(string slug, string code, CancellationToken cancellationToken = default)
+    {
+        var normalizedSlug = (slug ?? string.Empty).Trim().ToLowerInvariant();
+        var normalizedCode = (code ?? string.Empty).Trim().ToUpperInvariant();
+        if (normalizedSlug.Length == 0 || normalizedCode.Length == 0)
+            return Result<PublicGiftCardDto>.Failure(Error.NotFound("Kart bulunamadı."));
+
+        var tenant = await _db.Tenants.IgnoreQueryFilters().AsNoTracking()
+            .Where(t => !t.IsDeleted && t.Slug == normalizedSlug)
+            .Select(t => new { t.Id, t.Name })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (tenant is null) return Result<PublicGiftCardDto>.Failure(Error.NotFound("Kart bulunamadı."));
+
+        var card = await _db.GiftCards.IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(g => !g.IsDeleted && g.TenantId == tenant.Id && g.Code == normalizedCode, cancellationToken);
+        if (card is null) return Result<PublicGiftCardDto>.Failure(Error.NotFound("Kart bulunamadı."));
+
+        var now = DateTime.UtcNow;
+        var valid = card.IsValid(now);
+        // Sebep TEK TEK yazılır: "geçersiz" demek müşteriye hiçbir şey anlatmıyor.
+        var reason = valid ? null
+            : !card.IsActive ? "Bu kart pasife alınmış."
+            : card.ValidFromUtc.HasValue && card.ValidFromUtc.Value > now ? "Bu kartın geçerlilik süresi henüz başlamadı."
+            : card.ValidUntilUtc.HasValue && card.ValidUntilUtc.Value < now ? "Bu kartın geçerlilik süresi doldu."
+            : card.MaxUses > 0 && card.UsedCount >= card.MaxUses ? "Bu kartın kullanım hakkı doldu."
+            : card.Kind == GiftCardKind.StoredValue && card.Balance <= 0m ? "Bu hediye çekinin bakiyesi kalmadı."
+            : "Bu kart şu anda kullanılamıyor.";
+
+        return Result<PublicGiftCardDto>.Success(new PublicGiftCardDto(
+            card.Code,
+            tenant.Name,
+            card.Kind,
+            card.Kind == GiftCardKind.StoredValue ? card.Balance : card.Value,
+            card.ValidFromUtc,
+            card.ValidUntilUtc,
+            card.ScopeLabel,
+            valid,
+            reason));
+    }
+
     private static GiftCardDto ToDto(GiftCard g, DateTime nowUtc) => new(
         g.Id, g.TenantId, g.BranchId, g.Code, g.Kind, g.Value, g.Balance,
-        g.ValidUntilUtc, g.MaxUses, g.UsedCount, g.IsActive, g.Note, g.CustomerId, g.IsValid(nowUtc));
+        g.ValidFromUtc, g.ValidUntilUtc, g.MaxUses, g.UsedCount, g.IsActive, g.Note, g.CustomerId,
+        g.ScopeLabel, g.RecipientName, g.IsValid(nowUtc));
 }

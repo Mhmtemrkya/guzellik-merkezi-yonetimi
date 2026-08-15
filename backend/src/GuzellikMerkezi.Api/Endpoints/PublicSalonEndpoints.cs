@@ -1,5 +1,6 @@
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.GiftCards;
 using GuzellikMerkezi.Application.Features.PublicSalons;
 
 namespace GuzellikMerkezi.Api.Endpoints;
@@ -45,6 +46,12 @@ public static class PublicSalonEndpoints
             var pdf = await service.BuildPdfAsync(tenantId.Value, null, ct);
             return pdf is null ? Results.NotFound() : Results.File(pdf, "application/pdf", $"KVKK-Aydinlatma-Metni-{slug}.pdf");
         });
+
+        // HEDİYE KARTI DOĞRULAMA — kartın üzerindeki QR buraya gelir. Anonimdir: kartı eline
+        // geçiren müşterinin giriş yapması beklenemez. Yanıt dardır (bkz. PublicGiftCardDto)
+        // ve kurum anahtarı zorunludur — kodlar yalnız kurum içinde benzersizdir.
+        pub.MapGet("/{slug}/gift-cards/{code}", async (string slug, string code, IGiftCardService service, HttpContext http, CancellationToken ct) =>
+            (await service.GetPublicByCodeAsync(slug, code, ct)).ToHttpResult(http));
 
         return app;
     }

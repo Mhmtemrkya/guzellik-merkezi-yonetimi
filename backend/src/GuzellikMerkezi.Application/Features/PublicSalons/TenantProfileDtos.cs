@@ -12,7 +12,9 @@ public sealed record TenantPublicProfileDto(
     string? PublicPhone,
     string? WorkingHoursText,
     string? MapUrl,
-    string? KvkkConsentText);
+    string? KvkkConsentText,
+    /// <summary>Kurumun herkese açık adres anahtarı — hediye kartı QR'ının hedefi bunu kullanır.</summary>
+    string? Slug = null);
 
 public sealed record UpdateTenantPublicProfileRequest(
     bool IsPublished,

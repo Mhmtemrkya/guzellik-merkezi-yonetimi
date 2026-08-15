@@ -1260,6 +1260,10 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         g.Property(x => x.Value).HasPrecision(18, 2);
         g.Property(x => x.Balance).HasPrecision(18, 2);
         g.Property(x => x.Note).HasMaxLength(300);
+        // Basılı kartta görünen iki serbest metin. ŞİFRELENMEZ: kartın kendisi müşteriye
+        // gönderilen bir belgedir, gizli veri taşımaz (alıcı adı da kartın üstünde yazılıdır).
+        g.Property(x => x.ScopeLabel).HasMaxLength(120);
+        g.Property(x => x.RecipientName).HasMaxLength(120);
         g.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         // Kurum + şube: şube seçiliyse o şubeye özel; "Tüm şubeler"de (BranchId null) kurum geneli görünür.
         g.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
