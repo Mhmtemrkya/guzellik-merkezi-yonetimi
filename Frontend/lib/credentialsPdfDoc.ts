@@ -1,67 +1,46 @@
 // Giriş bilgileri belgesinin YERLEŞİMİ — pdfmake çalışma zamanından bağımsız.
 //
-// TASARIM KAYNAĞI: `FORM BA.png` / `FORM 2.png` (dolu + boş şablon). Belge şablonun ÜZERİNE
-// çizilmez, yeniden kurulur. Sebep: şablondaki "KURUM YÖNETİCİSİ GİRİŞ BİLGİLERİ" başlığı
-// görsele gömülü; personel varyantı için metnin değişebilir olması gerekiyor. Ayrıca e-posta ve
-// şifrenin PDF'ten KOPYALANABİLMESİ isteniyor — görsel basılan bir sayfada metin seçilemezdi.
+// ŞABLON ZEMİNDİR, YENİDEN ÇİZİLMEZ.
 //
-// Şablondan yalnız iki marka izi görsel olarak taşınır (serif logotip ve Maydanoz Yazılım
-// logosu); ikisi de projede yazı tipi/vektör olarak yok.
+// Belge önce pdfmake ile "tasarıma benzer" biçimde yeniden kuruluyordu; bant, kartlar, çizgiler
+// ve alt bant elle çiziliyordu. Sonuç yaklaşıktı: sayfa oranı A4 (0.707) iken tasarım 0.683,
+// başlık fontu tasarımda başka bir sans iken elimizde yalnız Roboto var, kart yuvarlaklıkları ve
+// alt bant ölçüleri gözle görülür biçimde kayıyordu. Belgenin tasarımın BİREBİR aynısı olması
+// istendiği için tasarım dosyasının KENDİSİ tam sayfa zemin olarak basılır; üzerine yalnız
+// değişken alanlar yazılır. Bant, kartlar, çizgiler, şifre kutusu, Maydanoz ve Ba logoları,
+// serif logotip — hepsi tasarımın kendisidir, dolayısıyla birebirdir.
 //
-// Ölçüler kaynak görselden (1062×1555 px) ölçülüp A4 punto'suna çevrildi: 1 px = 0.5605 pt.
-// Yorumlardaki px değerleri o ölçümlerdir; sayıları değiştirirken kaynağa bakın.
+// SAYFA BOYUTU TASARIMIN ORANIDIR (A4 DEĞİL): 1062 × 1555 px → 595.28 × 871.4 pt. A4'e
+// sığdırmak zemini ya kırpardı ya da kenarlarda beyaz bırakırdı; ikisi de "birebir" değil.
 //
-// NEDEN AYRI DOSYA: yerleşim tarayıcı olmadan da üretilebilsin — tasarımın şablona uyduğu
-// gerçek bir PDF render edilerek doğrulandı (bkz. tools/render-credentials-pdf.mjs).
+// İKİ ŞABLON:
+//   • form-yonetici.png — "KURUM YÖNETİCİSİ GİRİŞ BİLGİLERİ" ve "YÖNETİCİ" zemine BASILI.
+//   • form-personel.png — başlık ve kişi etiketi YOK; personel varyantında bu ikisini biz yazarız.
 //
-// ⚠️ `relativePosition` KULLANILMAZ. pdfmake onunla yalnız ÇİZİMİ kaydırır; ölçüm ve sayfalama
-// düğümün ESKİ yerinde kalır. İlk denemede kart içerikleri kartın altına ölçülüp ikinci sayfaya
-// taştı, tablo dolguları ve görseller hiç çizilmedi. Doğru araç NEGATİF ÜST BOŞLUK: akış imleci
-// gerçekten yukarı çekilir, ölçüm ile çizim aynı yeri gösterir.
-import type { TDocumentDefinitions, Content, Margins } from 'pdfmake/interfaces'
+// E-posta ve şifre GERÇEK METİNDİR (zemine gömülü değil): PDF'ten seçilip kopyalanabilir.
+//
+// Koordinatlar 1062 × 1555 px'lik tasarımdan piksel ölçülüp `px()` ile punto'ya çevrilir;
+// değiştirmeden önce `design/credentials/` altındaki kaynaklara bakın.
+import type { TDocumentDefinitions, Content } from 'pdfmake/interfaces'
 
-// Kaynak tasarımdan pipetle alınan renkler.
-const COLORS = {
-  /** Üst bandın pembesi. Serif logotip görseli bu zeminle birlikte kırpıldı — renk DEĞİŞTİRİLEMEZ. */
-  band: '#E093A6',
-  cardFill: '#FFEBEB',
-  cardBorder: '#E093A6',
-  ink: '#381628',
-  inkSoft: '#6E5460',
-  navy: '#001C35',
-  white: '#FFFFFF',
-}
+/** Tasarım tuvali (px) ve sayfa ölçüsü (pt). */
+const DESIGN_W = 1062
+const DESIGN_H = 1555
+export const PAGE_W = 595.28
+export const PAGE_H = Math.round((DESIGN_H / DESIGN_W) * PAGE_W * 10) / 10 // 871.4
 
-// pdfmake margin formatı: [left, top, right, bottom]
-const m = (left: number, top: number, right: number, bottom: number): Margins => [left, top, right, bottom]
+/** Tasarım pikselini sayfa punto'suna çevirir (1 px = 0.5605 pt). */
+const px = (v: number): number => Math.round((v * PAGE_W / DESIGN_W) * 10) / 10
 
-// ---- Sayfa geometrisi (pt) ---------------------------------------------------------------
-const PAGE_W = 595.28
-
-/** Pembe bandın yüksekliği (395 px). Beyaz logo kutusu bunun ALTINA taşar — tasarımın imzası. */
-const BAND_H = 221
-/** Bant içeriğinin üstten boşluğu (74 px) ve sabit blok yüksekliği (kutunun taşmasıyla birlikte). */
-const BAND_PAD_T = 41.5
-const BAND_BLOCK_H = 193.2
-
-const CARD_X = 24.7 // 44 px
-const CARD_W = 472 // 886−44 px
-const CARD_PAD_X = 20
-const CARD_PAD_T = 20
-const CARD_PAD_B = 18
-const INNER_W = CARD_W - CARD_PAD_X * 2
-
-/**
- * Alt bant: kaynakta 98 px (54.9 pt); tasarım A4'ten ~30 pt uzun olduğu için biraz sıkıştırıldı.
- * Sayfanın alt kenar boşluğuna TAM oturur (bkz. pageMargins) — böylece bant sayfa sonuna kadar
- * iner ve son kartla arasında beyaz bir şerit kalmaz.
- */
-const FOOTER_H = 56
+/** Şablondan pipetle alınan renkler — üzerine yazdığımız metinler bunlarla uyumlu olmalı. */
+const INK = '#381628'
+const INK_SOFT = '#6E5460'
+const WHITE = '#FFFFFF'
 
 export interface CredentialsPdfData {
-  /** Banda basılan ana başlık, örn. 'KURUM YÖNETİCİSİ GİRİŞ BİLGİLERİ' */
+  /** Banda basılan ana başlık. Yönetici şablonunda ZEMİNDE basılıdır, yazılmaz. */
   heading: string
-  /** Kişi bloğunun üst etiketi, örn. 'YÖNETİCİ' / 'PERSONEL' */
+  /** Kişi bloğunun üst etiketi ('YÖNETİCİ' / 'PERSONEL'). Yönetici şablonunda zemindedir. */
   subjectLabel: string
   personName: string
   email: string
@@ -73,23 +52,24 @@ export interface CredentialsPdfData {
   permissions?: Array<{ key: string; label: string }>
   /**
    * Kurum logosu (data-URL). Salon Profili'nden yüklenir; yeni kurum formunda da verilebilir.
-   * Yoksa beyaz kutu HİÇ çizilmez — boş bir dikdörtgen "bozuk" görünürdü.
+   * Yoksa şablondaki beyaz kutu boş kalır (kutu zeminde basılı olduğu için gizlenemez).
    */
   logoDataUrl?: string | null
   /**
    * Panele giriş adresi. Varsayılan yayın adresidir; `window.location.origin` KULLANILMAZ —
-   * belge indirilip aylarca saklanır, panelin o anki adresi (localhost, önizleme) ölü bağlantı olurdu.
+   * belge indirilip aylarca saklanır, panelin o anki adresi (localhost) ölü bağlantı olurdu.
    */
   loginUrl?: string
   /** İndirilen dosya adının kök kısmı (varsayılan: personName) */
   filenameBase?: string
 }
 
-/** Belgeye gömülecek marka görselleri (data-URL). Hepsi opsiyoneldir — inmezse belge yine üretilir. */
+/** Belgeye gömülecek şablonlar (data-URL). Şablon inmezse belge zeminsiz çıkar. */
 export interface CredentialsPdfAssets {
-  wordmark?: string | null
-  maydanoz?: string | null
-  badge?: string | null
+  /** Kurum yöneticisi şablonu (`/credentials/form-yonetici.png`). */
+  templateOwner?: string | null
+  /** Personel şablonu (`/credentials/form-personel.png`). */
+  templateStaff?: string | null
 }
 
 function slugFilename(name: string): string {
@@ -106,52 +86,26 @@ export function credentialsFilename(data: CredentialsPdfData): string {
 }
 
 /**
- * İçeriği SABİT yükseklikte bir kutuya oturtur.
- *
- * Zemin (canvas) akışta `height` kadar yer kaplar; içerik negatif üst boşlukla onun üzerine
- * çekilir ve kendi yüksekliği `heights` ile sabitlenir. Böylece akış imleci daima
- * `height − padB` ilerler: kart yükseklikleri hesaplanabilir kalır, içerik gerçek akışta
- * olduğu için tablo dolguları / görseller / madde imleri doğru çizilir ve sayfalama şaşmaz.
+ * PUNTOLAR TASARIMDAN GERİ HESAPLANDI: her alanın tasarımdaki metin genişliği ölçülüp aynı
+ * genişliği veren punto seçildi (kurum adı 284 px, kişi adı 339 px, şube 128 px, e-posta 351 px).
+ * Gözle "yakın" seçilen puntolar belgeyi tasarımdan gözle görülür biçimde küçük gösteriyordu.
  */
-function overlayBox(shell: Content, height: number, padTop: number, padLeft: number, innerWidth: number, inner: Content[], gapBelow: number, marginLeft: number): Content {
-  return {
-    stack: [
-      shell,
-      {
-        table: {
-          widths: [innerWidth],
-          heights: [height - padTop - CARD_PAD_B],
-          body: [[{ stack: inner, border: [false, false, false, false] }]],
-        },
-        layout: 'noBorders',
-        margin: m(padLeft, -height + padTop, 0, 0),
-      },
-    ],
-    margin: m(marginLeft, 0, 0, gapBelow),
-  }
+
+/**
+ * Metni verilen genişliğe sığdıracak puntoyu seçer (punto başına ~0.52 em ortalama genişlik).
+ *
+ * NEDEN KESTİRİM: yazdığımız değerler zeminde BASILI kutuların içine oturmak zorunda; kutuyu
+ * büyütme şansımız yok. Uzun kurum adı / e-posta puntoyu kademeli küçülterek sığar.
+ */
+function fitFontSize(text: string, maxWidth: number, base: number, min: number): number {
+  let size = base
+  while (size > min && text.length * size * 0.52 > maxWidth) size -= 0.5
+  return size
 }
 
-/** Yuvarlak köşeli pembe kart (tasarımın iki büyük bloğu). */
-function card(height: number, inner: Content[], gapBelow: number): Content {
-  const shell: Content = {
-    canvas: [{
-      type: 'rect',
-      x: 0, y: 0, w: CARD_W, h: height, r: 14,
-      color: COLORS.cardFill, lineColor: COLORS.cardBorder, lineWidth: 1.4,
-    }],
-  }
-  return overlayBox(shell, height, CARD_PAD_T, CARD_PAD_X, INNER_W, inner, gapBelow, CARD_X)
-}
-
-/** Kart başlığı + altındaki ince çizgi (tasarımdaki desen). */
-function cardTitle(text: string): Content[] {
-  return [
-    { text, fontSize: 17, bold: true, color: COLORS.ink, characterSpacing: 2.5 },
-    {
-      canvas: [{ type: 'line', x1: 0, y1: 0, x2: INNER_W - 32, y2: 0, lineWidth: 0.9, lineColor: COLORS.ink }],
-      margin: m(4, 9, 0, 13),
-    },
-  ]
+/** Mutlak konumlu içerik — zemindeki alanın üstüne yazar, akışa girmez. */
+function at(x: number, y: number, content: Record<string, unknown>): Content {
+  return { ...content, absolutePosition: { x, y } } as unknown as Content
 }
 
 export function buildCredentialsDoc(
@@ -159,216 +113,149 @@ export function buildCredentialsDoc(
   assets: CredentialsPdfAssets,
   fallbackLoginUrl: string,
 ): TDocumentDefinitions {
-  const { wordmark, maydanoz, badge } = assets
   const link = data.loginUrl || fallbackLoginUrl
   const meta = [data.roleLine, data.branchName].filter(Boolean).join('   ·   ')
+  /** Personel belgesinde başlık ve kişi etiketi zeminde YOK — bizim yazmamız gerekir. */
+  const isStaff = data.subjectLabel !== 'YÖNETİCİ'
+  const template = isStaff ? assets.templateStaff : assets.templateOwner
+
   const content: Content[] = []
-  /**
-   * Yetki listesi varsa (personel belgesi) yerleşim SIKIŞTIRILIR: üç kart tek sayfaya sığsın.
-   * Yönetici belgesinde kart yoktur ve boşluklar tasarımdaki ferah ölçülere döner.
-   */
-  const compact = Boolean(data.permissions && data.permissions.length > 0)
 
-  // ---- 1) Üst pembe bant + marka + kurum logosu ---------------------------------------------
-  const brandColumn: Content[] = [
-    wordmark
-      // Serif logotip — projede serif yazı tipi yok, marka izi görsel olarak taşınıyor. Görsel
-      // pembe zeminiyle kırpıldı: bandın rengiyle birebir aynı olduğu için sınırı görünmez.
-      ? { image: wordmark, width: 254.5 } // 454 px
-      : { text: 'Beauty Asist', fontSize: 30, bold: true, color: COLORS.ink },
-    // Başlık: 236 px → bandın üstünden 132 pt; logotipin altına 11 pt boşlukla oturur.
-    { text: data.heading, fontSize: 17, bold: true, color: COLORS.ink, lineHeight: 1.05, margin: m(0, 11, 0, 0) },
-    { text: data.tenantName, fontSize: 15, italics: true, color: COLORS.ink, margin: m(0, 9, 0, 0) },
-  ]
-
-  // Beyaz logo kutusu — bandın altına taşar. Logo yoksa HİÇ çizilmez (boş kutu "bozuk" görünürdü).
-  const logoCell: Content = data.logoDataUrl
-    ? {
-        stack: [
-          {
-            canvas: [{
-              type: 'rect', x: 0, y: 0, w: 140, h: 145,
-              color: COLORS.white, lineColor: COLORS.cardBorder, lineWidth: 0.8,
-            }],
-          },
-          { image: data.logoDataUrl, fit: [118, 123], alignment: 'center', margin: m(11, -134, 11, 0) },
-        ],
-        margin: m(0, 48.2, 0, 0), // 160 px − 74 px
-      }
-    : { text: '' }
-
-  content.push({
-    stack: [
-      { canvas: [{ type: 'rect', x: 0, y: 0, w: PAGE_W, h: BAND_H, color: COLORS.band }] },
-      {
-        // SABİT YÜKSEKLİK: logo olsun olmasın bandın altındaki akış aynı yerden devam etsin.
-        table: {
-          widths: [355, 140],
-          heights: [BAND_BLOCK_H],
-          body: [[
-            { stack: brandColumn, border: [false, false, false, false] },
-            // Hücre kenarlığı YOK: bandın üstünde tablo çizgisi görünmemeli.
-            Object.assign({ border: [false, false, false, false] }, logoCell) as Content,
-          ]],
-        },
-        layout: 'noBorders',
-        margin: m(34.8, -BAND_H + BAND_PAD_T, 0, 0), // 62 px, 74 px
-      },
-    ],
-  })
-
-  // ---- 2) Kişi bloğu -----------------------------------------------------------------------
-  content.push({
-    stack: [
-      { text: data.subjectLabel, fontSize: 20, bold: true, color: COLORS.ink, characterSpacing: 5 },
-      { text: data.personName, fontSize: 19, color: COLORS.ink, characterSpacing: 1.5, margin: m(0, 14, 0, 0) },
-      ...(meta ? [{ text: meta, fontSize: 11.5, color: COLORS.inkSoft, margin: m(2, 8, 0, 0) }] : []),
-    ],
-    // 41 px sol. Dikey boşluklar tasarımdan; personel belgesinde üç kart sığsın diye sıkıştırılır.
-    margin: m(23, compact ? 18 : 40, 40, compact ? 10 : 26),
-  })
-
-  // ---- 3) Giriş bilgileri kartı --------------------------------------------------------------
-  content.push(card(compact ? 180 : 186, [
-    ...cardTitle('GİRİŞ BİLGİLERİ'),
-    {
-      columns: [
-        { width: 78, text: 'E-POSTA:', fontSize: 12, color: COLORS.ink, characterSpacing: 1.6, margin: m(0, 2, 0, 0) },
-        { text: data.email, fontSize: 13, color: COLORS.ink },
-      ],
-      margin: m(4, 0, 0, 12),
-    },
-    {
-      columns: [
-        { width: 108, text: 'GEÇİCİ ŞİFRE:', fontSize: 12, color: COLORS.ink, characterSpacing: 1.6, margin: m(0, 5, 0, 0) },
-        {
-          /*
-           * Şifre çipi — tasarımdaki koyu kutu (280..469 px × 828..867 px).
-           *
-           * CANVAS, TABLO DOLGUSU DEĞİL: hücre `fillColor`'ı negatif üst boşlukla kaydırılan bir
-           * ağaçta ESKİ yerine boyanıyor (aynı sınıf kusur `relativePosition`'da da vardı) —
-           * çip görünmüyor, beyaz şifre pembe zeminde okunmaz kalıyordu. Genişlik metinden
-           * kestirilir; fazlası zararsız boşluk, azı taşmadır.
-           */
-          stack: [
-            {
-              canvas: [{
-                type: 'rect', x: 0, y: 0, r: 3,
-                w: Math.max(96, Math.round(data.initialPassword.length * 7.4) + 20), h: 24,
-                color: COLORS.ink,
-              }],
-            },
-            {
-              text: data.initialPassword,
-              fontSize: 13, bold: true, color: COLORS.white,
-              margin: m(10, -19, 0, 0),
-            },
-          ],
-        },
-      ],
-      margin: m(4, 0, 0, 8),
-    },
-    { text: 'İlk girişte şifreyi değiştirmeniz istenecektir', fontSize: 10.5, color: COLORS.inkSoft, margin: m(4, 0, 0, 12) },
-    {
-      text: [
-        { text: 'SİSTEME GİRİŞ LİNKİ:  ', fontSize: 12, bold: true, color: COLORS.ink, characterSpacing: 1.2 },
-        // Gerçek bağlantı: PDF okuyucuda tıklanabilir, metin olarak da kopyalanabilir.
-        { text: link, fontSize: 11, color: COLORS.ink, link, decoration: 'underline' },
-      ],
-      margin: m(8, 0, 0, 0),
-    },
-    // Kart yüksekliği 186: tasarımdaki 331 px = 185.5 pt ile aynı hedef.
-    // Kartlar arası boşluk: yönetici belgesinde tasarımdaki ferah aralık, personel belgesinde
-    // (yetki kartı da var) üç kart tek sayfaya sığacak kadar dar.
-  ], compact ? 6 : 62))
-
-  // ---- 4) Yetkiler (personel belgesinde) -----------------------------------------------------
-  // BU BÖLÜM KORUNDU: tasarım görselinde yok ama personel belgesinin taşıdığı bilgi kaybolamaz.
-  // Aynı kart dilinde, iki kolon.
-  if (data.permissions && data.permissions.length > 0) {
-    const labels = data.permissions.map((p) => p.label)
-    // Uzun listede ÜÇ kolon: iki kolonda 12+ yetki kartı büyütüp güvenlik kartını ikinci sayfaya
-    // itiyordu. Kolon sayısı yükseklikten önce gelir — belge tek sayfada kalsın.
-    const cols = labels.length > 6 ? 3 : 2
-    const per = Math.ceil(labels.length / cols)
-    const height = 59 + Math.round(per * 11.5) + CARD_PAD_B
-    const slices = Array.from({ length: cols }, (_, i) => labels.slice(i * per, (i + 1) * per))
-    content.push(card(height, [
-      ...cardTitle('TANIMLI YETKİLER'),
-      {
-        columns: slices.map((slice) =>
-          slice.length > 0
-            ? { ul: slice, fontSize: 9.5, lineHeight: 1.2, color: COLORS.ink, markerColor: COLORS.cardBorder }
-            : { text: '' },
-        ),
-        columnGap: 14,
-        margin: m(4, 0, 0, 0),
-      },
-    ], 6))
+  // ---- Zemin: tasarımın kendisi, tam sayfa ---------------------------------------------------
+  if (template) {
+    content.push({ image: template, width: PAGE_W, absolutePosition: { x: 0, y: 0 } })
   }
 
-  // ---- 5) Güvenlik kartı ---------------------------------------------------------------------
-  content.push(card(compact ? 120 : 140, [
-    ...cardTitle('GÜVENLİK'),
-    {
-      ul: [
-        'İlk girişten sonra şifrenizi mecburen değiştirmeniz gerekir.',
-        'Bu belgeyi güvenli bir yerde saklayın, kimseyle paylaşmayın.',
-        'Şifrenizi unutursanız yöneticinizden yeni şifre talep edin.',
-      ],
-      fontSize: compact ? 10 : 10.5,
+  // ---- Personel varyantında zeminde olmayan iki metin ----------------------------------------
+  if (isStaff) {
+    // Başlık — tasarımda 74 px sol, 236 px üst.
+    content.push(at(px(74), px(232), {
+      text: data.heading,
+      fontSize: fitFontSize(data.heading, px(620), 17, 13),
       bold: true,
-      color: COLORS.ink,
-      markerColor: COLORS.ink,
-      lineHeight: compact ? 1.25 : 1.4,
-      margin: m(4, 0, 0, 0),
-    },
-  ], 0))
+      color: INK,
+    }))
+    // Kişi etiketi — 41 px sol, 491 px üst.
+    content.push(at(px(41), px(489), {
+      text: data.subjectLabel,
+      fontSize: 20,
+      bold: true,
+      characterSpacing: 5,
+      color: INK,
+    }))
+  }
 
-  // ---- 6) Alt bant (her sayfada) ---------------------------------------------------------------
-  const footer = (): Content => ({
-    stack: [
-      { canvas: [{ type: 'rect', x: 0, y: 0, w: PAGE_W, h: FOOTER_H, color: COLORS.navy }] },
-      {
-        columns: [
-          maydanoz ? { width: 78, image: maydanoz, fit: [78, 30] } : { width: 78, text: '' },
-          {
-            width: 300,
-            text:
-              'Beauty Asist, işletmenizi geleceğe taşıyan Maydanoz Yazılım teknolojisiyle yanınızda. '
-              + 'Güzelliğin yönetimi artık daha akıllı. Beauty Asist, Maydanoz Yazılım teknolojisiyle '
-              + 'işletmenizin tüm süreçlerini tek bir çatı altında kolaylaştırmak ve daha hızlı, daha '
-              + 'akıllı yönetmeniz için geliştirildi.',
-            fontSize: 6.2,
-            bold: true,
-            color: COLORS.white,
-            lineHeight: 1.28,
-          },
-          // Rozet bandın ÜSTÜNE taşar (tasarımın imzası) — negatif üst boşluk bandın dışına çıkarır.
-          badge
-            ? { width: 60, image: badge, fit: [52, 52], alignment: 'right', margin: m(0, -14, 0, 0) }
-            : { width: 60, text: '' },
-        ],
-        columnGap: 12,
-        margin: m(24, -FOOTER_H + 9, 20, 0),
-      },
-    ],
-  })
+  // ---- Kurum adı (bandın içinde, başlığın altında; tasarımda 71 px × 291 px) ------------------
+  content.push(at(px(71), px(288), {
+    text: data.tenantName,
+    fontSize: fitFontSize(data.tenantName, px(620), 18.5, 11),
+    italics: true,
+    color: INK,
+    width: px(620),
+  }))
 
-  const docDefinition: TDocumentDefinitions = {
+  // ---- Kurum logosu: şablondaki beyaz kutunun içine (728..978 px × 160..418 px) ---------------
+  if (data.logoDataUrl) {
+    content.push(at(px(742), px(174), {
+      image: data.logoDataUrl,
+      fit: [px(222), px(230)],
+      alignment: 'center',
+      width: px(222),
+    }))
+  }
+
+  // ---- Kişi bilgileri (552 px ve 603 px) ------------------------------------------------------
+  content.push(at(px(42), px(545), {
+    text: data.personName,
+    fontSize: fitFontSize(data.personName, px(620), 27, 14),
+    characterSpacing: 1.5,
+    color: INK,
+    width: px(620),
+  }))
+  if (meta) {
+    content.push(at(px(43), px(599), { text: meta, fontSize: 12.7, color: INK_SOFT, width: px(620) }))
+  }
+
+  // ---- Giriş bilgileri kartındaki değerler ----------------------------------------------------
+  // E-posta: etiket zeminde 92..237 px; değer 243 px'ten başlar.
+  content.push(at(px(245), px(776), {
+    text: data.email,
+    fontSize: fitFontSize(data.email, px(600), 16.5, 9.5),
+    color: INK,
+    width: px(590),
+  }))
+
+  /*
+   * Şifre: zemindeki koyu kutunun (280..469 px × 828..867 px) içine BEYAZ yazılır.
+   *
+   * SOLA DAYALI: tasarımda metin kutunun sol kenarından 2 px içeriden başlıyor ve kutuyu
+   * neredeyse dolduruyor. `alignment: 'center'` DENENDİ ve OLMADI — mutlak konumlu düğümde
+   * pdfmake hizalamayı verdiğimiz kutuya değil sayfaya göre yapıp metni kutunun dışına attı.
+   * Uzun şifrede punto küçülerek sığar.
+   */
+  content.push(at(px(292), px(833), {
+    text: data.initialPassword,
+    fontSize: fitFontSize(data.initialPassword, px(176), 16, 8.5),
+    bold: true,
+    color: WHITE,
+  }))
+
+  // Giriş linki: "SİSTEME GİRİŞ LİNKİ:" zeminde 97..420 px; değer hemen sağından.
+  content.push(at(px(432), px(929), {
+    text: link,
+    fontSize: fitFontSize(link, px(430), 13, 8.5),
+    color: INK,
+    link,
+    decoration: 'underline',
+    width: px(420),
+  }))
+
+  // ---- Yetkiler (personel belgesi) — İKİNCİ SAYFADA -------------------------------------------
+  // Tasarımda böyle bir alan yok; personel belgesinin taşıdığı bilgi de kaybolamaz. Zemin
+  // bozulmasın diye ayrı sayfaya yazılır.
+  if (data.permissions && data.permissions.length > 0) {
+    const labels = data.permissions.map((p) => p.label)
+    const cols = labels.length > 6 ? 3 : 2
+    const per = Math.ceil(labels.length / cols)
+    const slices = Array.from({ length: cols }, (_, i) => labels.slice(i * per, (i + 1) * per))
+
+    content.push({ text: '', pageBreak: 'before' })
+    content.push(at(px(44), px(90), {
+      text: 'TANIMLI YETKİLER',
+      fontSize: 17,
+      bold: true,
+      characterSpacing: 2.5,
+      color: INK,
+    }))
+    content.push(at(px(44), px(132), {
+      canvas: [{ type: 'line', x1: 0, y1: 0, x2: px(477), y2: 0, lineWidth: 0.9, lineColor: INK }],
+    }))
+    content.push(at(px(44), px(160), {
+      columns: slices.map((slice) =>
+        slice.length > 0
+          ? { ul: slice, fontSize: 10.5, lineHeight: 1.35, color: INK, markerColor: INK }
+          : { text: '' },
+      ),
+      columnGap: px(26),
+      width: px(842),
+    }))
+    content.push(at(px(44), px(160) + per * 15 + 26, {
+      text: `${data.personName} · ${data.tenantName}`,
+      fontSize: 10,
+      color: INK_SOFT,
+    }))
+  }
+
+  return {
     info: {
       title: `${data.personName} - Giriş Bilgileri`,
       author: 'BeautyAsist',
       subject: data.tenantName,
     },
-    pageSize: 'A4',
-    // Alt kenar boşluğu = bandın TAM yüksekliği: bant sayfa sonuna dayanır, içerik banda girmez.
-    pageMargins: [0, 0, 0, FOOTER_H],
-    // NOT: `background: { canvas }` KULLANMA — pdfmake 0.3.x'te tarayıcıda crash ediyor.
+    // Sayfa TASARIMIN oranında (A4 değil) — zemin kırpılmasın, kenarda beyaz kalmasın.
+    pageSize: { width: PAGE_W, height: PAGE_H },
+    pageMargins: [0, 0, 0, 0],
     content,
-    footer,
-    defaultStyle: { font: 'Roboto', fontSize: 10, color: COLORS.ink },
+    defaultStyle: { font: 'Roboto', fontSize: 10, color: INK },
   }
-
-  return docDefinition
 }

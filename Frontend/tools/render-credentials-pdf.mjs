@@ -38,9 +38,8 @@ const dataUrl = (rel, mime = 'image/png') =>
   `data:${mime};base64,${readFileSync(join(root, 'public', rel)).toString('base64')}`
 
 const assets = {
-  wordmark: dataUrl('credentials/beautyasist-wordmark.png'),
-  maydanoz: dataUrl('credentials/maydanoz-yazilim.png'),
-  badge: dataUrl('logo.png'),
+  templateOwner: dataUrl('credentials/form-yonetici.png'),
+  templateStaff: dataUrl('credentials/form-personel.png'),
 }
 
 const fonts = {

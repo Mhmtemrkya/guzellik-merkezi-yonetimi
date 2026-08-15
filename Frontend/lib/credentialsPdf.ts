@@ -51,12 +51,12 @@ function loadAsset(path: string): Promise<string | null> {
 }
 
 export async function generateCredentialsPdf(data: CredentialsPdfData): Promise<void> {
-  const [wordmark, maydanoz, badge] = await Promise.all([
-    loadAsset('/credentials/beautyasist-wordmark.png'),
-    loadAsset('/credentials/maydanoz-yazilim.png'),
-    loadAsset('/logo.png'),
+  // Belge ZEMİNİ tasarımın kendisidir; iki varyantın şablonu da yüklenir (önbellekli).
+  const [templateOwner, templateStaff] = await Promise.all([
+    loadAsset('/credentials/form-yonetici.png'),
+    loadAsset('/credentials/form-personel.png'),
   ])
 
-  const doc = buildCredentialsDoc(data, { wordmark, maydanoz, badge }, defaultLoginUrl())
+  const doc = buildCredentialsDoc(data, { templateOwner, templateStaff }, defaultLoginUrl())
   pdfMake.createPdf(doc).download(credentialsFilename(data))
 }
