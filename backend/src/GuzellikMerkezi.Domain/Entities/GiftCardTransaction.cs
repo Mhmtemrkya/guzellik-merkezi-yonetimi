@@ -18,6 +18,14 @@ namespace GuzellikMerkezi.Domain.Entities;
 /// DEFTER EKLENİR, DÜZELTİLMEZ: geri alma (iptal) yeni bir satır olarak yazılır, eski satır silinmez.
 /// Değişmez: <c>Σ BalanceDelta == Balance − Value</c> ve <c>Σ UsesDelta == UsedCount</c>.
 /// </para>
+///
+/// <para>
+/// DEFTER GERİYE DÖNÜK DEĞİLDİR. Kayıtlar <c>20260815132233_AddGiftCardProductTargetAndLedger</c>
+/// migration'ından İTİBAREN tutulur; o tarihten önce harcanmış çeklerin hiç satırı yoktur ve
+/// yukarıdaki değişmez onlar için TUTMAZ (bakiye düşmüş, defter boş). Mutabakat/rapor yazan taraf
+/// kartı <c>CreatedAtUtc</c>'sine göre süzmeli — aksi hâlde her eski kart "tutarsız" görünür ve
+/// gerçek bir bozulma bu gürültünün içinde kaybolur.
+/// </para>
 /// </summary>
 public sealed class GiftCardTransaction : Entity
 {

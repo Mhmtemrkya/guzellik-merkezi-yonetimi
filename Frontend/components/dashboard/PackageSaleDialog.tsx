@@ -420,6 +420,7 @@ export default function PackageSaleDialog({
     // Müşteri değişti: önce otomatik seçim geri alınır.
     if (autoPickedRef.current) {
       if (isServiceSale) setServiceId(presetService?.id || '')
+      else if (isProductSale) setProductId('')
       else setPackageId(presetPackageId || '')
       autoPickedRef.current = false
     }
@@ -442,23 +443,30 @@ export default function PackageSaleDialog({
   /**
    * Çeke bağlı katalog kaydı satılacak türle uyuşuyorsa otomatik seçilir.
    * Kullanıcının önceki seçimi EZİLMEZ: yalnız alan boşken ve bir kez.
+   *
+   * ÜRÜN DE KAPSAMDA: çek artık bir ürüne de bağlanabiliyor (gift_cards.ProductId). Ürün dalını
+   * dışarıda bırakmak, kolaylık katmanının satılan üç türden yalnız ikisinde çalışması demekti —
+   * ürüne bağlı çeki olan müşteride hiçbir şey olmuyor, kullanıcı da sebebini göremiyordu.
    */
   const autoGift = useMemo(
-    () => giftCards.find((g) => (isServiceSale ? g.serviceDefinitionId : g.servicePackageId)) ?? null,
-    [giftCards, isServiceSale],
+    () => giftCards.find((g) => (isServiceSale ? g.serviceDefinitionId : isProductSale ? g.productId : g.servicePackageId)) ?? null,
+    [giftCards, isServiceSale, isProductSale],
   )
 
   useEffect(() => {
-    if (!autoGift || autoPickedRef.current || isProductSale) return
+    if (!autoGift || autoPickedRef.current) return
     if (isServiceSale) {
       if (serviceId || !autoGift.serviceDefinitionId) return
       setServiceId(autoGift.serviceDefinitionId)
+    } else if (isProductSale) {
+      if (productId || !autoGift.productId) return
+      setProductId(autoGift.productId)
     } else {
       if (packageId || !autoGift.servicePackageId) return
       setPackageId(autoGift.servicePackageId)
     }
     autoPickedRef.current = true
-  }, [autoGift, isServiceSale, isProductSale, serviceId, packageId])
+  }, [autoGift, isServiceSale, isProductSale, serviceId, packageId, productId])
 
   const basePrice = isProductSale
     ? Number(selectedProduct?.salePrice || 0)

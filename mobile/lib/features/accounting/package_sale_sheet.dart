@@ -303,17 +303,29 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
    * kaydı varsayılan olarak seçiliyor; "alan doluysa dokunma" kuralı bu varsayılanı kullanıcı
    * seçimi sanıp çeki uygulamıyordu — üstelik hangi isteğin önce bittiğine göre sonuç
    * değişiyordu. Ayrım `_userPickedItem`: yalnız kullanıcı dokunduğunda true olur.
+   *
+   * ÜRÜN DE KAPSAMDA: çek artık bir ürüne de bağlanabiliyor (gift_cards.ProductId). Ürün dalı
+   * dışarıda bırakılırsa kolaylık katmanı satılan üç türden yalnız ikisinde çalışır ve ürüne
+   * bağlı çeki olan müşteride hiçbir şey olmaz — kullanıcı da sebebini göremez.
    */
   void _applyGiftCardAutoPick() {
-    if (_autoPicked || _isProduct || !mounted || _userPickedItem) return;
+    if (_autoPicked || !mounted || _userPickedItem) return;
     for (final g in _giftCards) {
-      final target = _isService ? '${g['serviceDefinitionId'] ?? ''}' : '${g['servicePackageId'] ?? ''}';
+      final target = _isProduct
+          ? '${g['productId'] ?? ''}'
+          : (_isService ? '${g['serviceDefinitionId'] ?? ''}' : '${g['servicePackageId'] ?? ''}');
       if (target.isEmpty) continue;
       // Hedef katalogda gerçekten var mı? Yoksa seçimi bozup boş bırakmayalım.
-      final pool = _isService ? services : packages;
+      final pool = _isProduct ? products : (_isService ? services : packages);
       if (!pool.any((x) => '${x['id']}' == target)) continue;
       setState(() {
-        if (_isService) { serviceId = target; } else { packageId = target; }
+        if (_isProduct) {
+          productId = target;
+        } else if (_isService) {
+          serviceId = target;
+        } else {
+          packageId = target;
+        }
         _autoPicked = true;
       });
       return;

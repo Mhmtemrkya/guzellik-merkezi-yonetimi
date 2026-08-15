@@ -117,6 +117,20 @@
     `SHOW INDEX FROM provider_payment_claims WHERE Key_name LIKE '%ProviderPaymentId%';` → `Non_unique=0`
   - ⚠️ Yeni migration eklendiğinde **manifest de yenilenmeli**, yoksa CI kapısı düşer:
     `./backend/tools/migration-manifest.sh generate` → `migrations.sha256` commit'e dahil edilmeli.
+- [ ] **HEDİYE KARTI MIGRATION'LARI (SIRAYLA).** Üçü de yalnız EKLER; mevcut veri değişmez.
+  1. `AddGiftCardPrintFields` (`20260815104350`) — `gift_cards`: `ValidFromUtc`, `ScopeLabel`,
+     `RecipientName`. Basılı kartın üzerine yazılan alanlar; hepsi nullable.
+  2. `AddGiftCardCatalogTarget` (`20260815113508`) — `gift_cards`: `ServiceDefinitionId`,
+     `ServicePackageId`. Çekin bağlandığı katalog kaydı; satış ekranı bunu otomatik seçer.
+  3. `AddGiftCardProductTargetAndLedger` (`20260815132233`) — iki değişiklik:
+     - `gift_cards.ProductId` (nullable) — çek bir ürüne de bağlanabiliyor.
+     - **`gift_card_transactions` tablosu** — çek bakiyesindeki her harcama/geri alma satır satır
+       tutuluyor (kim, hangi adisyon, ne kadar, sonrasında bakiye ne oldu).
+  - ⚠️ **Defter BU MIGRATION'DAN İTİBAREN başlar.** Eskiden harcanmış çeklerin hiç satırı yoktur;
+    `Σ BalanceDelta == Balance − Value` değişmezi yalnız bu tarihten sonra açılan kartlar için
+    geçerlidir. Mutabakat raporu yazacaksan kartın `CreatedAtUtc`'sine göre süz, yoksa her eski
+    kart "tutarsız" görünür.
+  - Uygulanmazsa: hediye çeki uçları eksik kolon/tablo nedeniyle **500** verir.
 - [ ] (Opsiyonel) Plan tablosu boşsa: `Database__SeedReferenceData=true` ile bir kez başlat, sonra kaldır. (Güvenli, idempotent; DDL/demo eklemez.)
 - [ ] (Opsiyonel) **İlk kurulumda demo veriyi de istiyorsan** (yeni cihaz/sunucu veya canlı): `Database__SeedDemoData=true` ile bir kez başlat.
   - Bu bayrak tek hamlede: **DB oluşturur + EF migration uygular + demo seed eder** (kurum/şube/personel/müşteri/randevu…).
