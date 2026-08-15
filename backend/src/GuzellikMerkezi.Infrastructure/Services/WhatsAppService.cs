@@ -308,6 +308,88 @@ public sealed class WhatsAppService : IWhatsAppService
             : WhatsAppDispatchReport.Failed(result.Error ?? "WhatsApp gönderimi başarısız.");
     }
 
+
+    /// <summary>Hediye kartı mesajının şablon adı — mükerrer koruması bununla eşleşir.</summary>
+    private const string GiftCardTemplateName = "gift-card";
+    private const string GiftCardMessageTemplate =
+        "Merhaba{ad}, {salon} hediye kartınız hazır! 🎁 Kart ekteki PDF'tedir; " +
+        "işletmemizde kart üzerindeki kodu göstermeniz yeterlidir.{gecerlilik}";
+
+    /// <summary>
+    /// Hediye kartını PDF olarak gönderir.
+    ///
+    /// PDF'İ İSTEMCİ ÜRETİR ama SUNUCU DOĞRULAR: gelen `giftCardId` gerçekten bu kuruma ait mi,
+    /// kart geçerli mi, numara kime ait? Aksi hâlde uç, herhangi bir PDF'i herhangi bir numaraya
+    /// kurumun kontöründen gönderen açık bir kapı olurdu.
+    /// </summary>
+    public async Task<Result<ReminderResultDto>> SendGiftCardAsync(Guid tenantId, SendGiftCardRequest request, CancellationToken ct = default)
+    {
+        var card = await _db.GiftCards.IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(g => g.TenantId == tenantId && g.Id == request.GiftCardId && !g.IsDeleted, ct);
+        if (card is null) return Result<ReminderResultDto>.Failure(Error.NotFound("Hediye kartı bulunamadı."));
+
+        // GEÇERSİZ KART GÖNDERİLMEZ: süresi dolmuş ya da bakiyesi bitmiş bir kartı müşteriye
+        // yollamak, kontörü boşa harcamanın yanında müşteriyi de işletmeye boşuna getirir.
+        if (!card.IsValid(DateTime.UtcNow))
+            return Result<ReminderResultDto>.Failure(Error.Validation("Kart geçerli değil (pasif, süresi dolmuş, hakkı bitmiş veya bakiyesi yok)."));
+
+        // Numara: istekte verilen ya da karta bağlı müşterinin kayıtlı numarası.
+        var phone = (request.Phone ?? string.Empty).Trim();
+        Customer? customer = null;
+        if (card.CustomerId.HasValue)
+        {
+            customer = await _db.Customers.IgnoreQueryFilters().AsNoTracking()
+                .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == card.CustomerId.Value && !c.IsDeleted, ct);
+            if (phone.Length == 0) phone = customer?.Phone ?? string.Empty;
+        }
+        if (phone.Length == 0)
+            return Result<ReminderResultDto>.Failure(Error.Validation("Gönderilecek telefon numarası yok."));
+
+        byte[] pdf;
+        try
+        {
+            pdf = Convert.FromBase64String(request.PdfBase64 ?? string.Empty);
+        }
+        catch (FormatException)
+        {
+            return Result<ReminderResultDto>.Failure(Error.Validation("Kart dosyası okunamadı."));
+        }
+        // Boş/absürt boyut reddedilir: Meta 100 MB'a kadar kabul eder ama kart PDF'i birkaç yüz KB'dir.
+        if (pdf.Length < 512 || pdf.Length > 8 * 1024 * 1024)
+            return Result<ReminderResultDto>.Failure(Error.Validation("Kart dosyası geçersiz boyutta."));
+        // İçerik gerçekten PDF mi? ("%PDF-" imzası) Aksi hâlde uç, keyfi dosya taşıyan bir kanal olur.
+        if (pdf.Length < 5 || pdf[0] != 0x25 || pdf[1] != 0x50 || pdf[2] != 0x44 || pdf[3] != 0x46)
+            return Result<ReminderResultDto>.Failure(Error.Validation("Kart dosyası PDF değil."));
+
+        var salonName = await SalonNameAsync(tenantId, card.BranchId, ct);
+        var firstName = customer is null ? string.Empty : FirstName(customer.FullName);
+        var validity = card.ValidUntilUtc.HasValue
+            ? $" Son kullanma: {card.ValidUntilUtc.Value.ToLocalTime():dd.MM.yyyy}."
+            : string.Empty;
+
+        var body = GiftCardMessageTemplate
+            .Replace("{ad}", firstName.Length == 0 ? string.Empty : $" {firstName}")
+            .Replace("{salon}", salonName)
+            .Replace("{gecerlilik}", validity);
+
+        var attachment = new OutboundAttachment(pdf, $"Hediye-Karti-{card.Code}.pdf");
+
+        var dispatch = await DispatchAsync(tenantId, card.BranchId, appointmentId: null, card.CustomerId, waitlistEntryId: null,
+            phone, body, WhatsAppMessageCategory.Marketing, templateName: GiftCardTemplateName, ct, attachment);
+
+        // Engellendi (paket kapalı / kontör yetersiz / sonucu bilinmeyen önceki deneme):
+        // sebep kullanıcıya AYNEN aktarılır, "başarısız" diye yuvarlanmaz.
+        if (dispatch.Blocked)
+            return Result<ReminderResultDto>.Failure(Error.Conflict(dispatch.BlockReason ?? "Gönderim engellendi."));
+        if (dispatch.Message is null)
+            return Result<ReminderResultDto>.Failure(Error.Validation("Telefon numarası çözümlenemedi."));
+        if (!dispatch.Success)
+            return Result<ReminderResultDto>.Failure(Error.Validation(dispatch.Error ?? "WhatsApp gönderimi başarısız."));
+
+        return Result<ReminderResultDto>.Success(new ReminderResultDto(
+            true, dispatch.Simulated, dispatch.ToPhone, dispatch.Body, dispatch.ProviderMessageId, dispatch.Error));
+    }
+
     /// <inheritdoc cref="SendWaitlistOfferAsync" />
     public async Task<WhatsAppDispatchReport> SendKvkkConsentRequestAsync(Guid tenantId, Guid customerId, CancellationToken ct = default)
     {

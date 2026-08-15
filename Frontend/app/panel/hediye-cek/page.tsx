@@ -12,6 +12,7 @@ import { adminApi } from '@/lib/apiClient'
 import { formatTL, guidOrUndefined, normalizeGiftCard } from '@/lib/apiMappers'
 import type { ApiGiftCard, GiftCard, GiftCardKind } from '@/lib/types'
 import GiftCardShareModal from '@/components/dashboard/GiftCardShareModal'
+import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 import { CheckCircle2, Gift, Image as ImageIcon, Lock, Percent, Plus, Power, Sparkles, Ticket, Trash2, Wallet, XCircle } from 'lucide-react'
 
 type ScopeKey = 'all' | 'active' | 'stored' | 'coupon'
@@ -234,8 +235,19 @@ function HediyeCekPageInner() {
   /** Kartın üzerine basılan kapsam ve alıcı — ikisi de opsiyonel. */
   const [scopeLabel, setScopeLabel] = useState('')
   const [recipientName, setRecipientName] = useState('')
+  /**
+   * Kartın bağlanacağı müşteri (opsiyonel). Bağlanırsa alıcı adı ve WhatsApp numarası
+   * kendiliğinden gelir — gönderimde numara elle yazılmak zorunda kalmaz.
+   */
+  const [customer, setCustomer] = useState<CustomerPickerItem | null>(null)
   /** Görseli açılan kart. */
   const [shareCard, setShareCard] = useState<GiftCard | null>(null)
+  /**
+   * Kart→müşteri telefonu eşlemesi. Liste ucu telefon döndürmediği için (ve şifreli alan
+   * olduğundan sunucuda da aranamadığı için) seçim anında burada tutulur; gönderim kutusuna
+   * ön-dolum bundan gelir. Bilinmiyorsa kutu boş açılır, kullanıcı elle yazar.
+   */
+  const [phoneByCard, setPhoneByCard] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
 
@@ -248,6 +260,7 @@ function HediyeCekPageInner() {
     setNote('')
     setScopeLabel('')
     setRecipientName('')
+    setCustomer(null)
   }
 
   const handleCreate = async (): Promise<void> => {
@@ -263,7 +276,7 @@ function HediyeCekPageInner() {
     setBusy(true)
     setActionError('')
     try {
-      await adminApi.createGiftCard(
+      const created = await adminApi.createGiftCard<{ id?: string }>(
         {
           code: code.trim() || null,
           kind,
@@ -274,12 +287,19 @@ function HediyeCekPageInner() {
           maxUses: maxUses ? Number(maxUses) : 0,
           note: note.trim() || null,
           scopeLabel: scopeLabel.trim() || null,
-          recipientName: recipientName.trim() || null,
-          customerId: null,
+          // Alıcı adı yazılmadıysa seçilen müşterinin adı karta basılır.
+          recipientName: recipientName.trim() || customer?.name || null,
+          customerId: customer?.id ?? null,
           branchId: branchId ?? null,
         },
         tenantId,
       )
+      // Yeni kartın telefonu hemen eşlensin: "Kartı göster" ile açılan gönderim kutusu
+      // ön-dolu gelsin diye (liste ucu telefonu döndürmüyor).
+      const createdId = (created as { id?: string } | null)?.id
+      if (createdId && customer?.phone) {
+        setPhoneByCard((m) => ({ ...m, [createdId]: customer.phone as string }))
+      }
       resetForm()
       await reload()
     } catch (e) {
@@ -312,6 +332,8 @@ function HediyeCekPageInner() {
   const valueAdorn = kind === 'Percentage' ? '%' : '₺'
 
   const featureAllowed = useFeature('marketing.giftcards')
+  /** WhatsApp gönderimi ayrı bir paket özelliği — kapalıysa gönder düğmesi hiç çizilmez. */
+  const canWhatsApp = useFeature('notifications.whatsapp')
   if (!featureAllowed) {
     return (
       <>
@@ -470,6 +492,20 @@ function HediyeCekPageInner() {
               <span className="mt-1 block text-[10.5px] text-[#74616A]">Kartta “…geçerli <b>El ve Ayak Bakım</b> çekidir.” diye yazar. Boşsa “tüm hizmetlerde”.</span>
             </label>
             <label className="block">
+              <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Müşteriye bağla (ops.)</span>
+              <CustomerPicker
+                items={customer ? [customer] : []}
+                value={customer?.id ?? ''}
+                onChange={(id) => { if (!id) setCustomer(null) }}
+                onSelectItem={(item) => setCustomer(item)}
+                onSearch={customerSearchProvider(tenantId)}
+                placeholder="İsim veya telefonla ara…"
+              />
+              <span className="mt-1 block text-[10.5px] text-[#74616A]">
+                Bağlarsanız kartın alıcı adı ve WhatsApp numarası kendiliğinden gelir.
+              </span>
+            </label>
+            <label className="block">
               <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">Kartta yazacak alıcı (ops.)</span>
               <input
                 value={recipientName}
@@ -526,6 +562,19 @@ function HediyeCekPageInner() {
           salonName={selectedInstitution?.name || 'Güzellik Merkezi'}
           salonSlug={profile?.slug ?? null}
           logoDataUrl={profile?.logoData ?? null}
+          defaultPhone={shareCard ? (phoneByCard[shareCard.id] ?? '') : ''}
+          /* Gönderim yalnız WhatsApp özelliği açıkken sunulur: kapalıyken düğmeyi gösterip
+             sunucudan 409 almak, kullanıcıya boşuna bir yol denetiyordu. */
+          onSendWhatsApp={
+            canWhatsApp && shareCard
+              ? async (pdfBase64, phone) => {
+                  await adminApi.sendGiftCardWhatsapp(
+                    { giftCardId: shareCard.id, phone, pdfBase64 },
+                    tenantId,
+                  )
+                }
+              : undefined
+          }
         />
 
         {/* Kart ızgarası */}

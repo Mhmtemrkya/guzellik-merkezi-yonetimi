@@ -916,6 +916,15 @@ export const adminApi = {
     apiRequest<T>('/api/admin/whatsapp/settings', { method: 'PUT', query: { tenantId }, body }),
   sendWhatsappReminder: <T = unknown>(appointmentId: string, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/whatsapp/reminder/${appointmentId}`, { method: 'POST', query: { tenantId }, body: {} }),
+  /**
+   * Hediye kartını WhatsApp'tan PDF olarak gönderir. `pdfBase64` veri-URL öneki OLMADAN ham
+   * base64'tür; sunucu kartın bu kuruma ait ve geçerli olduğunu doğrular.
+   */
+  sendGiftCardWhatsapp: <T = unknown>(
+    body: { giftCardId: string; phone: string | null; pdfBase64: string },
+    tenantId?: string,
+  ): Promise<T> =>
+    apiRequest<T>('/api/admin/whatsapp/gift-card', { method: 'POST', query: { tenantId }, body }),
   whatsappMessages: <T = unknown>(appointmentId?: string, tenantId?: string): Promise<T[]> =>
     apiRequest<T[]>('/api/admin/whatsapp/messages', { query: { appointmentId, tenantId } }),
   /** WhatsApp kontör cüzdanı: bakiye + aylık kullanım + satın alınabilir paketler. */

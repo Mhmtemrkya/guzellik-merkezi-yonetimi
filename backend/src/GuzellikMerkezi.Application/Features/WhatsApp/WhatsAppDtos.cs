@@ -78,4 +78,14 @@ public sealed record BindWhatsAppConnectionRequest(
     string? VerifyToken,
     string? AccessTokenOverride);
 
+/// <summary>
+/// Hediye kartı gönderimi. <paramref name="PdfBase64"/> istemcide üretilen kartın PDF'idir
+/// (veri-URL öneki olmadan ham base64).
+/// </summary>
+public sealed record SendGiftCardRequest(
+    Guid GiftCardId,
+    /// <summary>Alıcı numarası. Boşsa karta bağlı müşterinin kayıtlı numarası kullanılır.</summary>
+    string? Phone,
+    string PdfBase64);
+
 public sealed record SendTestMessageRequest(string ToPhone, string? Text);

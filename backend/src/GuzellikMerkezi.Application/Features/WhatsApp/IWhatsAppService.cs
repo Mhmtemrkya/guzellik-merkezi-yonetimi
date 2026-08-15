@@ -67,6 +67,15 @@ public interface IWhatsAppService
     /// <summary>Randevu tamamlanınca müşteriye değerlendirme (personel + salon yıldızı) linkini gönderir. Best-effort.</summary>
     Task<WhatsAppDispatchReport> SendRatingLinkAsync(Guid tenantId, Guid appointmentId, Guid ratingToken, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Hediye kartını müşteriye PDF olarak gönderir.
+    ///
+    /// PDF'i İSTEMCİ ÜRETİR (kart canvas'ta çizilir; sunucuda ikinci bir çizim motoru tutmak,
+    /// aynı tasarımın iki ayrı yerde yaşaması demekti). Sunucu yalnız kartın gerçekten bu
+    /// kuruma ait olduğunu doğrular ve gönderimi kendi kontör/kuyruk protokolünden geçirir.
+    /// </summary>
+    Task<Result<ReminderResultDto>> SendGiftCardAsync(Guid tenantId, SendGiftCardRequest request, CancellationToken cancellationToken = default);
+
     /// <summary>Meta webhook doğrulaması (GET). Eşleşen verify token varsa challenge döner.</summary>
     Task<string?> VerifyWebhookAsync(string? mode, string? verifyToken, string? challenge, CancellationToken cancellationToken = default);
 

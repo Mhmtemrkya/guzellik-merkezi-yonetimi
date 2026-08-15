@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { QRCodeCanvas } from 'qrcode.react'
-import { Check, Copy, Download, Loader2, Printer, Send, X } from 'lucide-react'
+import { Check, Copy, Download, FileDown, Loader2, Printer, Send, X } from 'lucide-react'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import GiftCardArtwork, { giftCardArtworkData } from '@/components/dashboard/GiftCardArtwork'
 import type { GiftCard } from '@/lib/types'
@@ -22,6 +22,7 @@ export default function GiftCardShareModal({
   open,
   onClose,
   onSendWhatsApp,
+  defaultPhone = '',
 }: {
   card: GiftCard | null
   salonName: string
@@ -31,10 +32,12 @@ export default function GiftCardShareModal({
   open: boolean
   onClose: () => void
   /**
-   * WhatsApp gönderimi. Verilmezse düğme çizilmez (özellik kapalı ya da bağlantı yok).
-   * `pngBase64` veri-URL önekiSİZ ham base64'tür; alıcı numarası çağıranda sorulur.
+   * WhatsApp gönderimi. Verilmezse düğme çizilmez.
+   * `pdfBase64` veri-URL önekiSİZ ham base64'tür (kart PDF'i).
    */
-  onSendWhatsApp?: (pngBase64: string) => Promise<void>
+  onSendWhatsApp?: (pdfBase64: string, phone: string) => Promise<void>
+  /** Karta bağlı müşterinin kayıtlı numarası — biliniyorsa gönderim kutusuna ön-dolum gelir. */
+  defaultPhone?: string
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   /**
@@ -49,6 +52,10 @@ export default function GiftCardShareModal({
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  /** Gönderim kutusu açık mı + alıcı numarası. */
+  const [sendOpen, setSendOpen] = useState(false)
+  const [phone, setPhone] = useState(defaultPhone)
 
   /**
    * QR'ın kodladığı adres. ÇIPLAK KOD DEĞİL: müşteri telefonuyla okuttuğunda anlamlı bir
@@ -70,8 +77,11 @@ export default function GiftCardShareModal({
   useEffect(() => {
     if (!open) return
     setError('')
+    setNotice('')
     setCopied(false)
-  }, [open, qrValue])
+    setSendOpen(false)
+    setPhone(defaultPhone)
+  }, [open, qrValue, defaultPhone])
 
   useEffect(() => {
     if (!open) return
@@ -88,6 +98,8 @@ export default function GiftCardShareModal({
   if (!open || !card || !data) return null
 
   const fileName = `hediye-karti-${card.code}.png`
+  /** Karta müşteri bağlıysa numara zorunlu değil — sunucu kayıtlı numarayı kullanır. */
+  const hasLinkedCustomer = Boolean(card.customerId)
 
   const download = (): void => {
     const canvas = canvasRef.current
@@ -122,15 +134,58 @@ export default function GiftCardShareModal({
     }
   }
 
-  const sendWhatsApp = async (): Promise<void> => {
+  /**
+   * Kartı tek sayfalık PDF'e çevirir (ham base64 döner).
+   *
+   * SAYFA KARTIN ÖLÇÜSÜNDE: A4'e yerleştirip ortalamak, WhatsApp'ta kocaman beyaz boşluklu bir
+   * belge gösterirdi. Sayfa kartın en-boy oranını birebir alır, görsel sayfayı tam doldurur.
+   * jsPDF dinamik yüklenir — 300 KB'lik kütüphane yalnız gönderim/indirme anında iner.
+   */
+  const buildPdfBase64 = async (canvas: HTMLCanvasElement): Promise<string> => {
+    const { jsPDF } = await import('jspdf')
+    // mm cinsinden makul bir kart boyu (genişlik 210mm; yükseklik orandan).
+    const widthMm = 210
+    const heightMm = Math.round((canvas.height / canvas.width) * widthMm * 100) / 100
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [widthMm, heightMm] })
+    doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, widthMm, heightMm, undefined, 'FAST')
+    // datauristring: "data:application/pdf;filename=...;base64,XXXX" → yalnız gövde alınır.
+    return doc.output('datauristring').split(',')[1] ?? ''
+  }
+
+  const downloadPdf = async (): Promise<void> => {
     const canvas = canvasRef.current
-    if (!canvas || !onSendWhatsApp) return
+    if (!canvas) return
     setBusy(true)
     setError('')
     try {
-      // "data:image/png;base64," öneki ayrıştırılıp yalnız base64 gövdesi gönderilir.
-      const base64 = canvas.toDataURL('image/png').split(',')[1] ?? ''
-      await onSendWhatsApp(base64)
+      const { jsPDF } = await import('jspdf')
+      const widthMm = 210
+      const heightMm = Math.round((canvas.height / canvas.width) * widthMm * 100) / 100
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [widthMm, heightMm] })
+      doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, widthMm, heightMm, undefined, 'FAST')
+      doc.save(`hediye-karti-${card.code}.pdf`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'PDF üretilemedi.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const sendWhatsApp = async (): Promise<void> => {
+    const canvas = canvasRef.current
+    if (!canvas || !onSendWhatsApp) return
+    const target = phone.trim()
+    // Numara BOŞ BIRAKILABİLİR: kart bir müşteriye bağlıysa sunucu onun kayıtlı numarasını
+    // kullanır (bkz. WhatsAppService.SendGiftCardAsync). Numara da yoksa sunucu açıkça reddeder.
+    if (!target && !hasLinkedCustomer) { setError('Gönderilecek telefon numarasını yazın.'); return }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const pdfBase64 = await buildPdfBase64(canvas)
+      await onSendWhatsApp(pdfBase64, target)
+      setNotice('Hediye kartı WhatsApp\'tan gönderildi.')
+      setSendOpen(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gönderilemedi.')
     } finally {
@@ -201,6 +256,51 @@ export default function GiftCardShareModal({
                   {error}
                 </p>
               )}
+              {notice && (
+                <p className="mt-3 rounded-[11px] border border-[#8ED6B4] bg-[#DFF3EA] px-3 py-2 text-[12px] font-medium text-[#15694A]">
+                  {notice}
+                </p>
+              )}
+
+              {/* Gönderim kutusu — numara sorulmadan kontör harcanmaz. */}
+              {sendOpen && onSendWhatsApp && (
+                <div className="mt-3 rounded-[14px] border border-[#EAD8DF] bg-white p-3.5">
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">
+                      Alıcı telefon numarası{hasLinkedCustomer ? ' (boş bırakılabilir)' : ''}
+                    </span>
+                    <input
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="05xx xxx xx xx"
+                      className="w-full rounded-[11px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition-colors focus:border-[#A5556E]"
+                    />
+                  </label>
+                  <div className="mt-2.5 flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSendOpen(false)}
+                      className="inline-flex min-h-9 items-center rounded-[11px] border border-[#EAD8DF] bg-white px-3 text-[12px] font-semibold text-[#5A4B53]"
+                    >
+                      Vazgeç
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void sendWhatsApp()}
+                      className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] bg-[#1E8C60] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#15694A] disabled:opacity-60"
+                    >
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Gönder
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[10.5px] leading-snug text-[#74616A]">
+                    {hasLinkedCustomer && !phone.trim()
+                      ? 'Boş bırakırsanız karta bağlı müşterinin kayıtlı numarasına gönderilir. '
+                      : ''}
+                    Kart PDF olarak gönderilir ve kurumunuzun WhatsApp kontöründen düşer.
+                  </p>
+                </div>
+              )}
             </div>
 
             <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-[#EAD8DF] bg-white px-5 py-3.5">
@@ -224,16 +324,24 @@ export default function GiftCardShareModal({
                 onClick={download}
                 className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3.5 text-[12px] font-semibold text-[#5A4B53] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]"
               >
-                <Download className="h-4 w-4" /> PNG indir
+                <Download className="h-4 w-4" /> PNG
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void downloadPdf()}
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3.5 text-[12px] font-semibold text-[#5A4B53] transition-colors hover:border-[#BE7690] hover:text-[#A5556E] disabled:opacity-60"
+              >
+                <FileDown className="h-4 w-4" /> PDF indir
               </button>
               {onSendWhatsApp && (
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => void sendWhatsApp()}
+                  onClick={() => { setError(''); setNotice(''); setSendOpen((v) => !v) }}
                   className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] bg-[#1E8C60] px-4 text-[12px] font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-[#15694A] disabled:opacity-60 disabled:hover:translate-y-0"
                 >
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} WhatsApp'tan gönder
+                  <Send className="h-4 w-4" /> WhatsApp'tan gönder
                 </button>
               )}
             </footer>

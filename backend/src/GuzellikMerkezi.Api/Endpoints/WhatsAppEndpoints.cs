@@ -38,6 +38,15 @@ public static class WhatsAppEndpoints
             return tid == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SendReminderAsync(tid, appointmentId, ct)).ToHttpResult(http);
         });
 
+        // HEDİYE KARTI GÖNDERİMİ. Kart PDF'i istemcide üretilir (canvas → PDF); sunucu kartın
+        // gerçekten bu kuruma ait ve geçerli olduğunu doğrular, sonra gönderimi kendi
+        // kontör/kuyruk protokolünden geçirir (bkz. WhatsAppService.SendGiftCardAsync).
+        group.MapPost("/gift-card", async (SendGiftCardRequest request, Guid? tenantId, ICurrentUser currentUser, IWhatsAppService service, HttpContext http, CancellationToken ct) =>
+        {
+            var tid = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return tid == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.SendGiftCardAsync(tid, request, ct)).ToHttpResult(http);
+        });
+
         // --- Kontör cüzdanı (kurum yöneticisi): bakiye, kullanım, ek kontör satın alma ---
         group.MapGet("/wallet", async (Guid? tenantId, ICurrentUser currentUser, IWhatsAppBillingService billing, HttpContext http, CancellationToken ct) =>
         {
