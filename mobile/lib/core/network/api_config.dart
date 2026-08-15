@@ -26,4 +26,19 @@ class ApiConfig {
         ? 'http://10.0.2.2:5019'
         : 'http://127.0.0.1:5019';
   }
+
+  /// HERKESE AÇIK WEB adresi — hediye kartındaki QR'ın hedefi buradan kurulur.
+  ///
+  /// API adresiyle AYNI DEĞİLDİR: QR bir Next.js sayfasını (`/hediye-kart/{slug}/{kod}`) açar,
+  /// API'yi değil. Tek domain kurulumunda ikisi çakışır, ayrı domainde `--dart-define`
+  /// (PUBLIC_WEB_BASE_URL) ile ayrıştırılır. Tanımsızsa QR basılmaz — çalışmayan bir adres
+  /// gömmek, hiç QR koymamaktan kötüdür.
+  /// Panelin/vitrinin yayın adresi — QR bu adrese götürür.
+  static const String productionWebUrl = 'https://beautyasist.com';
+
+  static String get publicWebBaseUrl {
+    const configured = String.fromEnvironment('PUBLIC_WEB_BASE_URL');
+    if (configured.isNotEmpty) return configured;
+    return productionWebUrl;
+  }
 }

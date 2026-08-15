@@ -62,11 +62,18 @@ export default function GiftCardShareModal({
    * sayfa açılmalı — kartın geçerliliği ve kalan bakiyesi orada görünür.
    */
   const qrValue = useMemo(() => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    /*
+     * HEDEF YAYIN ADRESİDİR, `window.location.origin` DEĞİL.
+     *
+     * Kart basılıp müşterinin eline geçer ve aylarca yaşar; QR'ın panelin o anki adresini
+     * (localhost, önizleme alanı, iç ağ IP'si) gömmesi kartı kalıcı olarak bozardı.
+     * Ortam değişkeniyle ezilebilir — farklı domainde çalışan kurulum için.
+     */
+    const base = (process.env.NEXT_PUBLIC_PUBLIC_WEB_URL || 'https://beautyasist.com').replace(/\/+$/, '')
     // Kurum anahtarı ZORUNLU: kodlar yalnız kurum içinde benzersiz. Slug yoksa QR çizilmez
     // (aşağıda kullanıcıya söylenir) — yanlış kuruma götüren bir kare basmaktansa boş bırakılır.
     if (!salonSlug) return ''
-    return `${origin}/hediye-kart/${encodeURIComponent(salonSlug)}/${encodeURIComponent(card?.code ?? '')}`
+    return `${base}/hediye-kart/${encodeURIComponent(salonSlug)}/${encodeURIComponent(card?.code ?? '')}`
   }, [card?.code, salonSlug])
 
   const data = useMemo(

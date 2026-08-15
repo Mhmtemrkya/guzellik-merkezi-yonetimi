@@ -44,6 +44,9 @@ dependencies:
   url_launcher: ^6.3.1
 
   # KVKK aydınlatma metni için markalı PDF üretimi + paylaş/yazdır
+  # Hediye kartındaki QR'ı çizmek için. `pdf` zaten dolaylı olarak kullanıyordu; kart görselinde
+  # doğrudan kullandığımız için açık bağımlılık hâline getirildi (dolaylıya güvenmek kırılgandır).
+  barcode: ^2.2.9
   pdf: ^3.11.1
   printing: ^5.13.4
 

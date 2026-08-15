@@ -63,6 +63,8 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
   String _adisyonQuery = '';
   /// "Nasıl işler?" — üç adımlık akış anlatımı kalıcı şerit değil, istendiğinde açılır.
   bool _adisyonFlowOpen = false;
+  /// Adisyon görünümü: kart mı liste mi (katalog sayfalarındaki geçişin aynısı).
+  bool _adisyonGrid = true;
   String _accountFilter = 'all'; // all/overdue/upcoming/installment/closed
   String _accountQuery = '';
   late Future<_AccData> _future;
@@ -464,7 +466,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
                 opacity: v,
                 child: Transform.translate(offset: Offset(0, (1 - v) * 12), child: child),
               ),
-              child: _adisyonCard(filtered[i]),
+              child: _adisyonCard(filtered[i], compact: !_adisyonGrid),
             ),
       ],
     );
@@ -579,7 +581,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
                           builder: (_) => DailyAdisyonSheet(api: widget.api),
                         ),
                         icon: const Icon(Icons.today_rounded, size: 17),
-                        label: const Text('Bugünün Kartı', overflow: TextOverflow.ellipsis),
+                        label: const Text('Bugünün Adisyon Kartı', overflow: TextOverflow.ellipsis),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -589,6 +591,13 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
                         icon: const Icon(Icons.help_outline_rounded, size: 17),
                         label: const Text('Nasıl işler?', overflow: TextOverflow.ellipsis),
                       ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Kart / liste geçişi — çok kayıtta liste, tek tek bakarken kart.
+                    IconButton.outlined(
+                      tooltip: _adisyonGrid ? 'Liste görünümü' : 'Kart görünümü',
+                      onPressed: () => setState(() => _adisyonGrid = !_adisyonGrid),
+                      icon: Icon(_adisyonGrid ? Icons.view_list_rounded : Icons.grid_view_rounded, size: 18),
                     ),
                   ],
                 ),
@@ -712,7 +721,9 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
   /// Adisyon kartı (web `AdisyonPanel` kart diliyle): durum tonlu ikon çipi,
   /// müşteri + tarih/kalem satırı, üç haneli borç/tahsilat/kalan şeridi.
   /// Dokunma: açık adisyon düzenlenebilir sayfaya, kapanmış adisyon fişe gider.
-  Widget _adisyonCard(Map<String, dynamic> a) {
+  /// [compact] = liste görünümü: kart aynı bilgiyi taşır ama üç haneli tutar şeridi gizlenir
+  /// (borç zaten satırın sağında yazıyor) ve iç boşluk daralır — çok kayıt bir arada okunsun.
+  Widget _adisyonCard(Map<String, dynamic> a, {bool compact = false}) {
     final status = '${a['status']}';
     final open = status == 'Open';
     final cancelled = status == 'Cancelled';
@@ -737,7 +748,7 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
           borderRadius: BorderRadius.circular(18),
           onTap: () => _openAdisyon(a),
           child: Container(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(compact ? 10 : 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: AppColors.border),
@@ -815,29 +826,31 @@ class _OnMuhasebeScreenState extends State<OnMuhasebeScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceSoft,
-                    borderRadius: BorderRadius.circular(12),
+                if (!compact) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceSoft,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    child: Row(
+                      children: [
+                        _adisyonTotal('Borç', charge, AppColors.ink),
+                        _adisyonTotal(
+                          'Tahsilat',
+                          payment,
+                          const Color(0xFF2F7D54),
+                        ),
+                        _adisyonTotal(
+                          net >= 0 ? 'Kalan' : 'Fazla',
+                          net.abs(),
+                          net > 0 ? const Color(0xFFC0405F) : AppColors.ink,
+                        ),
+                      ],
+                    ),
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  child: Row(
-                    children: [
-                      _adisyonTotal('Borç', charge, AppColors.ink),
-                      _adisyonTotal(
-                        'Tahsilat',
-                        payment,
-                        const Color(0xFF2F7D54),
-                      ),
-                      _adisyonTotal(
-                        net >= 0 ? 'Kalan' : 'Fazla',
-                        net.abs(),
-                        net > 0 ? const Color(0xFFC0405F) : AppColors.ink,
-                      ),
-                    ],
-                  ),
-                ),
+                ],
               ],
             ),
           ),

@@ -20,7 +20,8 @@ import AdisyonReceiptModal from '@/components/dashboard/AdisyonReceiptModal'
 import DailyAdisyonModal from '@/components/dashboard/DailyAdisyonModal'
 import ConfirmDialog from '@/components/dashboard/ConfirmDialog'
 import {
-  CatalogOverview, CatalogSearch, StatusSegments, catalogGhostBtn, catalogPrimaryBtn,
+  CatalogOverview, CatalogSearch, CatalogViewToggle, StatusSegments, catalogGhostBtn, catalogPrimaryBtn,
+  type CatalogView,
 } from '@/components/dashboard/CatalogKit'
 import ExpenseFormDialog, { type ExpenseFormDialogValues } from '@/components/dashboard/ExpenseFormDialog'
 import { useBranch } from '@/components/dashboard/BranchContext'
@@ -118,6 +119,8 @@ function OnMuhasebePageInner() {
   const [adisyonQuery, setAdisyonQuery] = useState('')
   /** "Nasıl işler?" — üç adımlık akış anlatımı kalıcı şerit değil, istendiğinde açılır. */
   const [flowOpen, setFlowOpen] = useState(false)
+  /** Adisyon görünümü — katalog sayfalarındaki kart/liste geçişinin aynısı. */
+  const [adisyonView, setAdisyonView] = useState<CatalogView>('grid')
   // Açık adisyon düzenlenebilir (AdisyonModal), kapanmış olan okunur fiş (AdisyonReceiptModal).
   const [adisyonEditOpen, setAdisyonEditOpen] = useState(false)
   const [adisyonReceiptOpen, setAdisyonReceiptOpen] = useState(false)
@@ -970,12 +973,13 @@ function OnMuhasebePageInner() {
 
               <div className="flex flex-wrap items-center gap-2">
                 <CatalogSearch value={adisyonQuery} onChange={setAdisyonQuery} placeholder="Müşteri veya kalem ara…" />
+                <CatalogViewToggle value={adisyonView} onChange={setAdisyonView} idPrefix="on-muhasebe-adisyon" />
                 <button
                   type="button"
                   onClick={() => setDailyOpen(true)}
                   className={catalogGhostBtn}
                 >
-                  <CalendarDays className="h-3.5 w-3.5" /> Bugünün Kartı
+                  <CalendarDays className="h-3.5 w-3.5" /> Bugünün Adisyon Kartı
                 </button>
                 {/* Akış anlatımı KALICI ŞERİT DEĞİL: her gün aynı ekrana bakan kullanıcı için
                     gürültü, yeni kullanıcı için gerekli — isteyen açar. */}
@@ -1025,7 +1029,10 @@ function OnMuhasebePageInner() {
             </CatalogOverview>
 
             {/* ---- Adisyon fişleri ---- */}
-            <motion.div layout className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+            <motion.div
+              layout
+              className={adisyonView === 'grid' ? 'grid gap-3 lg:grid-cols-2 2xl:grid-cols-3' : 'flex flex-col gap-2'}
+            >
               <AnimatePresence mode="popLayout" initial={false}>
                 {filteredAdisyonlar.map((a, index) => {
                   const saleCancelled = cancelledSaleByAdisyonId.get(a.id)
@@ -1062,7 +1069,7 @@ function OnMuhasebePageInner() {
                         />
                       )}
 
-                      <div className="relative p-4 pl-5">
+                      <div className={`relative pl-5 ${adisyonView === 'grid' ? 'p-4' : 'px-4 py-3'}`}>
                         <div className="flex items-start justify-between gap-3">
                           <button type="button" onClick={() => openAdisyonDetail(a)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
                             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] bg-gradient-to-br from-[#fde7ee] to-[#f6d0dd] text-[12px] font-bold text-[#8C4460] transition-transform duration-300 group-hover:scale-105">
@@ -1102,7 +1109,9 @@ function OnMuhasebePageInner() {
                           </div>
                         )}
 
-                        {a.chargeTotal > 0 && (
+                        {/* Tahsilat çubuğu ve eylem satırı yalnız KART görünümünde: liste
+                            görünümü çok satırı bir arada okumak içindir, kart kadar yer kaplamamalı. */}
+                        {adisyonView === 'grid' && a.chargeTotal > 0 && (
                           <div className="mt-2.5 flex items-center gap-2">
                             <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#f7e9ee]">
                               <motion.span
@@ -1116,7 +1125,7 @@ function OnMuhasebePageInner() {
                           </div>
                         )}
 
-                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                        <div className={`flex flex-wrap items-center gap-1.5 ${adisyonView === 'grid' ? 'mt-3' : 'mt-2'}`}>
                           <button
                             type="button" onClick={() => openAdisyonDetail(a)}
                             className={isOpen ? catalogPrimaryBtn : catalogGhostBtn}

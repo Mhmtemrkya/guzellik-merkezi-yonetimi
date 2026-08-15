@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
+import '../../shared/widgets/barcode_scanner_sheet.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/customer_call.dart';
 import '../../shared/payment_method.dart';
@@ -136,6 +137,67 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   bool _busyVip = false;
 
   /// Başlıktaki VIP rozetine dokununca etiketi ekler/kaldırır (web paritesi).
+  /*
+   * HEDİYE KARTI EŞLEŞTİRME. QR okutulup kart BU müşterinin hesabına bağlanır. Kart başka
+   * müşteriye tanımlıysa sunucu 409 döner ve devir yalnız kullanıcı onayıyla yapılır —
+   * sessizce üzerine yazılmaz.
+   */
+  Future<void> _assignGiftCard() async {
+    final scanned = await showBarcodeScannerSheet(context);
+    if (scanned == null || !mounted) return;
+    final code = _extractGiftCardCode(scanned);
+    if (code.isEmpty) {
+      _snack('Okunan kod hediye kartına ait değil.');
+      return;
+    }
+    await _sendAssign(code, allowReassign: false);
+  }
+
+  Future<void> _sendAssign(String code, {required bool allowReassign}) async {
+    try {
+      await widget.api.post('/api/admin/gift-cards/assign-customer', {
+        'code': code,
+        'customerId': _id,
+        'allowReassign': allowReassign,
+      });
+      _snack('$code kartı bu müşteriye tanımlandı.');
+    } catch (e) {
+      final message = '$e';
+      if (!allowReassign && message.contains('başka bir müşteriye')) {
+        if (!mounted) return;
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Kart başka müşteride'),
+            content: Text('$message\n\nBu kartı bu müşteriye devretmek istiyor musunuz?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Vazgeç')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Devret')),
+            ],
+          ),
+        );
+        if (ok == true) await _sendAssign(code, allowReassign: true);
+        return;
+      }
+      _snack(message);
+    }
+  }
+
+  /// Okunan QR'dan kart kodunu çıkarır — tam adres, göreli yol ya da çıplak kod.
+  static String _extractGiftCardCode(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return '';
+    final match = RegExp(r'hediye-kart/[^/]+/([^/?#\s]+)', caseSensitive: false).firstMatch(text);
+    if (match != null) return Uri.decodeComponent(match.group(1)!).toUpperCase();
+    if (RegExp(r'^[A-Za-z0-9-]{4,40}$').hasMatch(text)) return text.toUpperCase();
+    return '';
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _toggleVip() async {
     if (_busyVip) return;
     final next = _customer['isVip'] != true;
@@ -886,6 +948,9 @@ class _OverviewTab extends StatelessWidget {
                   () => DefaultTabController.of(context).animateTo(2)),
               // Ürün satışı müşteri sabitken tek dokunuşla (web müşteri kartındaki "Ürün Sat").
               _quickAction(Icons.shopping_bag_rounded, 'Ürün Sat', state._sellProduct),
+              // Kart müşteriye ELDEN verilmiş olur; burada QR okutulup hesabına bağlanır.
+              _quickAction(Icons.qr_code_scanner_rounded, 'Hediye Kartı Tanımla',
+                  state._assignGiftCard),
               _quickAction(
                   Icons.workspace_premium_rounded,
                   c['isVip'] == true ? 'VIP Etiketini Kaldır' : 'VIP Yap',

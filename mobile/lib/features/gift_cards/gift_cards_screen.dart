@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -5,6 +8,9 @@ import 'package:intl/intl.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
+import '../../shared/widgets/barcode_scanner_sheet.dart';
+import '../customers/customer_picker.dart';
+import 'gift_card_share_sheet.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../appointments/calendar_theme.dart';
@@ -52,6 +58,23 @@ const _giftAccent = Color(0xFF7A3450);
 
 class _GiftCardsScreenState extends State<GiftCardsScreen> {
   late Future<List<Map<String, dynamic>>> _future;
+
+  /// Kart görselinde kullanılan kurum bilgileri (logo + herkese açık adres anahtarı).
+  String? _salonSlug;
+  String _salonName = 'Güzellik Merkezi';
+  Uint8List? _logoBytes;
+
+  /*
+   * KATALOG BAĞI. Çek serbest metne değil GERÇEK kayda bağlanır: satış ekranı müşterinin
+   * çekini görünce doğru hizmeti/paketi kendiliğinden seçebilsin diye.
+   */
+  List<Map<String, dynamic>> _services = const [];
+  List<Map<String, dynamic>> _packages = const [];
+  String _targetKind = 'service';
+  String? _targetId;
+
+  /// Kart→müşteri telefonu eşlemesi — paylaşım sayfasındaki numara ön-dolumu için.
+  final Map<String, String> _phoneByCard = {};
   _Scope _scope = _Scope.all;
 
   // Oluşturma formu
@@ -60,6 +83,10 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
   String? _error;
   String _kind = 'StoredValue';
   DateTime? _validUntil;
+  DateTime? _validFrom;
+  ({String id, String name, String phone})? _createCustomer;
+  final _scopeLabel = TextEditingController();
+  final _recipientName = TextEditingController();
   final _value = TextEditingController();
   final _code = TextEditingController();
   final _maxUses = TextEditingController();
@@ -77,12 +104,69 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
     _code.dispose();
     _maxUses.dispose();
     _note.dispose();
+    _scopeLabel.dispose();
+    _recipientName.dispose();
     super.dispose();
   }
 
   Future<List<Map<String, dynamic>>> _load() async {
+    // Kurum profili ve katalog YAN YOLDUR: alınamazsa kart listesi yine gelir (kart görselinde
+    // logo yerine ad yazılır, katalog seçici boş kalır). Ana akış bunlara bağlanmaz.
+    unawaited(_loadSideData());
     final data = await widget.api.get('/api/admin/gift-cards/');
     return apiItems(data);
+  }
+
+  Future<void> _loadSideData() async {
+    try {
+      final profile = await widget.api.get('/api/admin/tenant/public-profile');
+      if (!mounted || profile is! Map) return;
+      final logo = '${profile['logoData'] ?? ''}';
+      final name = '${profile['name'] ?? ''}'.trim();
+      setState(() {
+        _salonSlug = '${profile['slug'] ?? ''}'.isEmpty ? null : '${profile['slug']}';
+        if (name.isNotEmpty) _salonName = name;
+        _logoBytes = _decodeDataUrl(logo);
+      });
+    } catch (_) {
+      // sessiz geç
+    }
+    try {
+      final results = await Future.wait<dynamic>([
+        widget.api.get('/api/admin/services/', query: {'page': 1, 'pageSize': 500}),
+        widget.api.get('/api/admin/packages/', query: {'page': 1, 'pageSize': 500}),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _services = apiItems(results[0]);
+        _packages = apiItems(results[1]);
+      });
+    } catch (_) {
+      // sessiz geç
+    }
+  }
+
+  /// `data:image/png;base64,...` biçimindeki logoyu bayta çevirir.
+  static Uint8List? _decodeDataUrl(String value) {
+    if (value.isEmpty) return null;
+    final comma = value.indexOf(',');
+    final body = comma >= 0 ? value.substring(comma + 1) : value;
+    try {
+      return base64Decode(body);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Seçili katalog kaydı — kapsam metnini besler.
+  Map<String, dynamic>? get _selectedTarget {
+    final id = _targetId;
+    if (id == null || id.isEmpty) return null;
+    final list = _targetKind == 'service' ? _services : _packages;
+    for (final x in list) {
+      if ('${x['id']}' == id) return x;
+    }
+    return null;
   }
 
   Future<void> _reload() async {
@@ -156,16 +240,34 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
             ? 0
             : int.tryParse(_maxUses.text.trim()) ?? 0,
         'note': _note.text.trim().isEmpty ? null : _note.text.trim(),
-        'customerId': null,
+        // Başlangıç günün BAŞI, bitiş günün SONU: iki tarih de dahildir (kartta öyle yazar).
+        'validFromUtc': _validFrom == null
+            ? null
+            : DateTime(_validFrom!.year, _validFrom!.month, _validFrom!.day).toUtc().toIso8601String(),
+        // Kapsam metni yazılmadıysa seçilen katalog kaydının adı karta basılır.
+        'scopeLabel': _scopeLabel.text.trim().isEmpty
+            ? (_selectedTarget == null ? null : '${_selectedTarget!['name']}')
+            : _scopeLabel.text.trim(),
+        'recipientName': _recipientName.text.trim().isEmpty
+            ? (_createCustomer?.name)
+            : _recipientName.text.trim(),
+        'serviceDefinitionId': _targetKind == 'service' ? _targetId : null,
+        'servicePackageId': _targetKind == 'package' ? _targetId : null,
+        'customerId': _createCustomer?.id,
         'branchId': widget.api.auth?.user?.branchId,
       });
       _value.clear();
       _code.clear();
       _maxUses.clear();
       _note.clear();
+      _scopeLabel.clear();
+      _recipientName.clear();
       setState(() {
         _validUntil = null;
+        _validFrom = null;
         _createOpen = false;
+        _targetId = null;
+        _createCustomer = null;
       });
       await _reload();
       if (mounted) {
@@ -178,6 +280,94 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /*
+   * QR İLE MÜŞTERİ EŞLEŞTİRME. Kart müşterisiz basılıp elden verilir; sonra QR okutulup
+   * "bu kart şu müşterinin" denir. SIRA ÖNEMLİ: önce müşteri seçilir, sonra okutulur —
+   * tersi olsaydı okunan kart bir yere iliştirilene kadar havada kalırdı.
+   */
+  Future<void> _assignFlow() async {
+    final customer = await pickCustomer(context, widget.api);
+    if (customer == null || !mounted) return;
+
+    final scanned = await showBarcodeScannerSheet(context);
+    if (scanned == null || !mounted) return;
+
+    final code = _extractCode(scanned);
+    if (code.isEmpty) {
+      _toast('Okunan kod hediye kartına ait değil.');
+      return;
+    }
+    await _assign(code, customer.id, customer.name, allowReassign: false);
+    if (customer.phone.isNotEmpty) _phoneByCard[code] = customer.phone;
+  }
+
+  Future<void> _assign(String code, String customerId, String customerName,
+      {required bool allowReassign}) async {
+    setState(() => _busy = true);
+    try {
+      await widget.api.post('/api/admin/gift-cards/assign-customer', {
+        'code': code,
+        'customerId': customerId,
+        'allowReassign': allowReassign,
+      });
+      await _reload();
+      _toast('$code kartı $customerName adlı müşteriye tanımlandı.');
+    } catch (e) {
+      final message = '$e';
+      // Kart BAŞKA müşteriye tanımlıysa sunucu 409 döner; devir kullanıcı onayıyla yapılır.
+      if (!allowReassign && message.contains('başka bir müşteriye')) {
+        if (!mounted) return;
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Kart başka müşteride'),
+            content: Text('$message\n\nBu kartı $customerName adlı müşteriye devretmek istiyor musunuz?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Vazgeç')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Devret')),
+            ],
+          ),
+        );
+        if (ok == true) {
+          await _assign(code, customerId, customerName, allowReassign: true);
+        }
+        return;
+      }
+      _toast(message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Okunan QR'dan kart kodunu çıkarır (web'deki `extractCode` ile aynı kurallar):
+  /// tam adres, göreli yol ya da çıplak kod kabul edilir.
+  static String _extractCode(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return '';
+    final match = RegExp(r'hediye-kart/[^/]+/([^/?#\s]+)', caseSensitive: false).firstMatch(text);
+    if (match != null) return Uri.decodeComponent(match.group(1)!).toUpperCase();
+    if (RegExp(r'^[A-Za-z0-9-]{4,40}$').hasMatch(text)) return text.toUpperCase();
+    return '';
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Kartın müşteriye gidecek hâli — önizleme, PDF, WhatsApp.
+  Future<void> _showCard(Map<String, dynamic> card) async {
+    await showGiftCardShareSheet(
+      context,
+      api: widget.api,
+      card: card,
+      salonName: _salonName,
+      salonSlug: _salonSlug,
+      logoBytes: _logoBytes,
+      defaultPhone: _phoneByCard['${card['code']}'] ?? '',
+    );
   }
 
   Future<void> _redeem(Map<String, dynamic> card) async {
@@ -285,6 +475,8 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
                     _statsRow(cards),
                     const SizedBox(height: 14),
                     _createCard(),
+                    const SizedBox(height: 14),
+                    _assignCard(),
                     const SizedBox(height: 14),
                     _tabs(),
                     const SizedBox(height: 14),
@@ -397,6 +589,60 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
   }
 
   // Katlanır oluşturma formu
+  /// QR ile müşteri eşleştirme kartı — basılı kartı müşteriye bağlama.
+  Widget _assignCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white, size: 18),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Kartı müşteriye tanımla',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                    SizedBox(height: 2),
+                    Text('Önce müşteriyi seçin, sonra kartın QR kodunu okutun.',
+                        style: TextStyle(fontSize: 11.5, color: AppColors.muted)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _busy ? null : _assignFlow,
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 46)),
+              icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+              label: const Text('Müşteri seç ve QR okut'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _createCard() {
     return Container(
       decoration: BoxDecoration(
@@ -512,6 +758,24 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
             ),
           ),
           const SizedBox(height: 12),
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => _pickDate(from: true),
+            child: InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Geçerlilik başlangıcı (ops.)',
+                isDense: true,
+                suffixIcon: Icon(Icons.calendar_today_rounded, size: 18),
+              ),
+              child: Text(
+                _validFrom == null
+                    ? 'Seçilmedi'
+                    : DateFormat('d MMM yyyy', 'tr_TR').format(_validFrom!),
+                style: TextStyle(color: _validFrom == null ? AppColors.muted : AppColors.ink),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -562,6 +826,56 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
               labelText: 'Açıklama (ops.)',
               isDense: true,
               hintText: 'örn. Yılbaşı kampanyası',
+              helperText: 'Sadece iç kayıt notu — kartın üzerine basılmaz.',
+            ),
+          ),
+          const SizedBox(height: 14),
+          _targetPicker(),
+          const SizedBox(height: 12),
+          // AŞAĞIDAKİ İKİ ALAN KARTIN ÜZERİNE BASILIR (iç not değil).
+          TextField(
+            controller: _scopeLabel,
+            decoration: InputDecoration(
+              labelText: 'Kartta yazacak kapsam (ops.)',
+              isDense: true,
+              hintText: _selectedTarget == null ? 'örn. El ve Ayak Bakım' : '${_selectedTarget!['name']}',
+              helperText: 'Boşsa seçilen kalemin adı, o da yoksa “tüm hizmetlerde” yazar.',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _recipientName,
+            decoration: const InputDecoration(
+              labelText: 'Kartta yazacak alıcı (ops.)',
+              isDense: true,
+              hintText: 'örn. Ayşe Yılmaz',
+              helperText: 'Boşsa kartta noktalı boşluk kalır, elle yazılır.',
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Müşteriye bağlanırsa alıcı adı ve WhatsApp numarası kendiliğinden gelir.
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () async {
+              final picked = await pickCustomer(context, widget.api);
+              if (picked != null && mounted) setState(() => _createCustomer = picked);
+            },
+            child: InputDecorator(
+              decoration: InputDecoration(
+                labelText: 'Müşteriye bağla (ops.)',
+                isDense: true,
+                suffixIcon: _createCustomer == null
+                    ? const Icon(Icons.person_search_rounded, size: 18)
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        onPressed: () => setState(() => _createCustomer = null),
+                      ),
+                helperText: 'Bağlarsanız kartın alıcı adı ve WhatsApp numarası kendiliğinden gelir.',
+              ),
+              child: Text(
+                _createCustomer?.name ?? 'Seçilmedi',
+                style: TextStyle(color: _createCustomer == null ? AppColors.muted : AppColors.ink),
+              ),
             ),
           ),
           if (_error != null) ...[
@@ -593,15 +907,72 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
     );
   }
 
-  Future<void> _pickDate() async {
+  /// Katalog seçici — çekin hangi hizmet/paket için geçerli olduğu.
+  Widget _targetPicker() {
+    final list = _targetKind == 'service' ? _services : _packages;
+    final selected = _selectedTarget;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text('Hangi hizmet / paket için? (ops.)',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.muted)),
+            ),
+            SegmentedButton<String>(
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              segments: const [
+                ButtonSegment(value: 'service', label: Text('Hizmet')),
+                ButtonSegment(value: 'package', label: Text('Paket')),
+              ],
+              selected: {_targetKind},
+              onSelectionChanged: (v) => setState(() {
+                _targetKind = v.first;
+                _targetId = null;
+              }),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: _targetId,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: _targetKind == 'service' ? 'Hizmet' : 'Paket',
+            isDense: true,
+            hintText: list.isEmpty ? 'Katalog yüklenemedi' : 'Seçilmedi',
+          ),
+          items: [
+            const DropdownMenuItem<String>(value: null, child: Text('Seçilmedi')),
+            for (final x in list)
+              DropdownMenuItem(value: '${x['id']}', child: Text('${x['name'] ?? '—'}', overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: (v) => setState(() => _targetId = v),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          selected == null
+              ? 'Bağlarsanız satış ekranı, çeki olan müşteride bu kalemi kendiliğinden seçer.'
+              : 'Kartta “…geçerli ${selected['name']} çekidir.” yazacak.',
+          style: const TextStyle(fontSize: 10.5, color: AppColors.muted),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickDate({bool from = false}) async {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: _validUntil ?? now.add(const Duration(days: 30)),
-      firstDate: now,
+      initialDate: from
+          ? (_validFrom ?? now)
+          : (_validUntil ?? now.add(const Duration(days: 30))),
+      // Başlangıç GEÇMİŞE de konabilir (kart daha önce verilmiş olabilir); bitiş bugünden geri gitmez.
+      firstDate: from ? DateTime(now.year - 1) : now,
       lastDate: DateTime(now.year + 5),
     );
-    if (picked != null) setState(() => _validUntil = picked);
+    if (picked != null) setState(() { if (from) { _validFrom = picked; } else { _validUntil = picked; } });
   }
 
   // Filtre sekmeleri
@@ -1024,7 +1395,21 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.all(10),
-      child: Row(
+      child: Column(
+        children: [
+          // Asıl eylem: kartın müşteriye gidecek hâlini aç (önizleme / PDF / WhatsApp).
+          SizedBox(
+            width: double.infinity,
+            child: _barButton(
+              icon: Icons.image_rounded,
+              label: 'Kartı göster',
+              color: Colors.white,
+              bg: AppColors.primary,
+              onTap: _busy ? null : () => _showCard(card),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
         children: [
           if (isStored) ...[
             Expanded(
@@ -1056,6 +1441,8 @@ class _GiftCardsScreenState extends State<GiftCardsScreen> {
               bg: AppColors.danger.withValues(alpha: .1),
               onTap: _busy ? null : () => _delete(card),
             ),
+          ),
+            ],
           ),
         ],
       ),

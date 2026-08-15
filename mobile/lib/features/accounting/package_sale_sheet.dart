@@ -104,6 +104,17 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
   String? customerId;
   String? packageId;
   String? serviceId;
+
+  /*
+   * MÜŞTERİNİN HEDİYE ÇEKİ ve SADAKAT PUANI.
+   *
+   * Çek bir katalog kaydına bağlıysa satış ekranı onu KENDİLİĞİNDEN seçer — kullanıcı listede
+   * aramak zorunda kalmasın. Seçim SESSİZ DEĞİLDİR: üstte bir şerit çıkar ve neyin neden
+   * seçildiğini söyler. PARA BURADA İŞLENMEZ: indirim adisyonda kod girilerek uygulanır.
+   */
+  List<Map<String, dynamic>> _giftCards = const [];
+  int? _loyaltyPoints;
+  bool _autoPicked = false;
   String? productId;
   int quantity = 1;
   String? staffId;
@@ -198,6 +209,7 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
 
   Future<void> _loadLookups() async {
     customerId = widget.customerId;
+    if (customerId != null) unawaited(_loadCustomerExtras());
     // KATALOGLARIN TAMAMI HER MODDA ÇEKİLİR: ek kalem seçicisi paket satışında da hizmet/ürün
     // listesine ihtiyaç duyar (eskiden yalnız satılan türün listesi geliyordu).
     final values = await Future.wait([
@@ -248,6 +260,76 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
       _isProduct ? products : (_isService ? services : packages);
 
   String? get _selectedId => _isProduct ? productId : (_isService ? serviceId : packageId);
+
+  /// Müşteri değişince çekleri ve sadakat puanını tazele. Hatalar YUTULUR: bunlar yalnız
+  /// kolaylık katmanıdır, satış akışını durdurmamalı.
+  Future<void> _loadCustomerExtras() async {
+    final cid = customerId;
+    if (cid == null || cid.isEmpty) {
+      if (mounted) setState(() { _giftCards = const []; _loyaltyPoints = null; _autoPicked = false; });
+      return;
+    }
+    try {
+      final rows = await widget.api.get('/api/admin/gift-cards/by-customer/$cid');
+      if (mounted) setState(() => _giftCards = apiItems(rows));
+    } catch (_) {
+      if (mounted) setState(() => _giftCards = const []);
+    }
+    try {
+      final res = await widget.api.get('/api/admin/loyalty/$cid');
+      final balance = res is Map ? (res['balance'] as num?)?.toInt() : null;
+      if (mounted) setState(() => _loyaltyPoints = balance);
+    } catch (_) {
+      if (mounted) setState(() => _loyaltyPoints = null);
+    }
+    _applyGiftCardAutoPick();
+  }
+
+  /// Çeke bağlı katalog kaydı satılacak türle uyuşuyorsa otomatik seçilir.
+  /// Kullanıcının seçimi EZİLMEZ: yalnız alan boşken ve bir kez.
+  void _applyGiftCardAutoPick() {
+    if (_autoPicked || _isProduct || !mounted) return;
+    for (final g in _giftCards) {
+      final target = _isService ? '${g['serviceDefinitionId'] ?? ''}' : '${g['servicePackageId'] ?? ''}';
+      if (target.isEmpty) continue;
+      if (_isService && (serviceId ?? '').isNotEmpty) return;
+      if (!_isService && (packageId ?? '').isNotEmpty) return;
+      setState(() {
+        if (_isService) { serviceId = target; } else { packageId = target; }
+        _autoPicked = true;
+      });
+      return;
+    }
+  }
+
+  /// Çek satırı: kod · kapsam · değer.
+  String _giftCardLine(Map<String, dynamic> g) {
+    final code = '${g['code'] ?? ''}';
+    final scope = '${g['scopeLabel'] ?? ''}';
+    final kind = '${g['kind']}';
+    final value = (g['value'] as num?)?.toDouble() ?? 0;
+    final balance = (g['balance'] as num?)?.toDouble() ?? 0;
+    final amount = kind == 'Percentage'
+        ? '%${value.round()} indirim'
+        : kind == 'StoredValue'
+            ? '₺${balance.round()} bakiye'
+            : '₺${value.round()} indirim';
+    return scope.isEmpty ? '$code · $amount' : '$code · $scope · $amount';
+  }
+
+  /// Mevcut puanla HEDİYE EDİLEBİLECEK kalemler (katalogdaki loyaltyPointCost'a göre).
+  List<Map<String, dynamic>> get _giftableWithPoints {
+    final points = _loyaltyPoints;
+    if (points == null || points <= 0) return const [];
+    final out = <Map<String, dynamic>>[];
+    for (final list in [services, packages]) {
+      for (final x in list) {
+        final cost = (x['loyaltyPointCost'] as num?)?.toInt() ?? 0;
+        if (cost > 0 && cost <= points) out.add(x);
+      }
+    }
+    return out;
+  }
 
   Map<String, dynamic>? get _selectedItem {
     for (final p in _catalog) {
@@ -1038,16 +1120,135 @@ class _PackageSaleSheetState extends State<PackageSaleSheet> {
                       if (widget.customerId == null) ...[
                         CustomerSelectField(
                           api: widget.api,
-                          onSelected: (picked) => setState(() {
-                            customerId = picked.id;
-                            customers = [
-                              {
-                                'id': picked.id,
-                                'fullName': picked.name,
-                                'phone': picked.phone,
-                              },
-                            ];
-                          }),
+                          onSelected: (picked) {
+                            setState(() {
+                              customerId = picked.id;
+                              customers = [
+                                {
+                                  'id': picked.id,
+                                  'fullName': picked.name,
+                                  'phone': picked.phone,
+                                },
+                              ];
+                            });
+                            unawaited(_loadCustomerExtras());
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // HEDİYE ÇEKİ ŞERİDİ — otomatik seçim sessiz kalmaz.
+                      if (_giftCards.isNotEmpty) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: .10),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: AppColors.warning.withValues(alpha: .40)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.card_giftcard_rounded, size: 15, color: AppColors.warning),
+                                  SizedBox(width: 6),
+                                  Text('BU MÜŞTERİNİN HEDİYE ÇEKİ VAR',
+                                      style: TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: .6,
+                                          color: AppColors.warning)),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              for (final g in _giftCards)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 2),
+                                  child: Text(
+                                    _giftCardLine(g),
+                                    style: const TextStyle(fontSize: 11.5, color: AppColors.ink),
+                                  ),
+                                ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _autoPicked
+                                    ? 'Çeke bağlı kalem aşağıda seçildi. İndirim, satıştan sonra adisyonda kart kodu girilerek uygulanır.'
+                                    : 'İndirim, satıştan sonra adisyonda kart kodu girilerek uygulanır.',
+                                style: const TextStyle(fontSize: 10.5, color: AppColors.muted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // SADAKAT PUANI — puanla neyi hediye edebilirim?
+                      if ((_loyaltyPoints ?? 0) > 0) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6B4AA0).withValues(alpha: .08),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFF6B4AA0).withValues(alpha: .30)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Row(
+                                    children: [
+                                      Icon(Icons.star_rounded, size: 15, color: Color(0xFF6B4AA0)),
+                                      SizedBox(width: 6),
+                                      Text('SADAKAT PUANI',
+                                          style: TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w800,
+                                              letterSpacing: .6,
+                                              color: Color(0xFF6B4AA0))),
+                                    ],
+                                  ),
+                                  Text('$_loyaltyPoints P',
+                                      style: const TextStyle(
+                                          fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF6B4AA0))),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              if (_giftableWithPoints.isEmpty)
+                                const Text(
+                                  'Bu puanla hediye edilebilecek hizmet/paket yok.',
+                                  style: TextStyle(fontSize: 11, color: AppColors.muted),
+                                )
+                              else ...[
+                                const Text('Bu puanla hediye edilebilecekler:',
+                                    style: TextStyle(fontSize: 11, color: AppColors.muted)),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    for (final x in _giftableWithPoints)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.surface,
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(color: const Color(0xFFD9C8EF)),
+                                        ),
+                                        child: Text(
+                                          '${x['name'] ?? ''} · ${(x['loyaltyPointCost'] as num?)?.toInt() ?? 0} P',
+                                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 12),
                       ],
