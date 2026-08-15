@@ -13,9 +13,10 @@
 // SAYFA BOYUTU TASARIMIN ORANIDIR (A4 DEĞİL): 1062 × 1555 px → 595.28 × 871.4 pt. A4'e
 // sığdırmak zemini ya kırpardı ya da kenarlarda beyaz bırakırdı; ikisi de "birebir" değil.
 //
-// İKİ ŞABLON:
-//   • form-yonetici.png — "KURUM YÖNETİCİSİ GİRİŞ BİLGİLERİ" ve "YÖNETİCİ" zemine BASILI.
-//   • form-personel.png — başlık ve kişi etiketi YOK; personel varyantında bu ikisini biz yazarız.
+// TEK ŞABLON: form-base.png — tamamen nötr. Başlık, kurum adı, kişi etiketi, kişi adı ve LOGO
+// KUTUSU yok; hepsi üzerine yazılır. Yönetici ve personel belgeleri aynı zemini paylaşır ve
+// ikisinde de logo görünür (önceki sürümde logo beyaz bir kutuya sıkışıyordu, kutu da yalnız
+// yönetici şablonunda vardı).
 //
 // E-posta ve şifre GERÇEK METİNDİR (zemine gömülü değil): PDF'ten seçilip kopyalanabilir.
 //
@@ -64,13 +65,22 @@ export interface CredentialsPdfData {
   filenameBase?: string
 }
 
-/** Belgeye gömülecek şablonlar (data-URL). Şablon inmezse belge zeminsiz çıkar. */
+/** Belgeye gömülecek şablon (data-URL). İnmezse belge zeminsiz çıkar. */
 export interface CredentialsPdfAssets {
-  /** Kurum yöneticisi şablonu (`/credentials/form-yonetici.png`). */
-  templateOwner?: string | null
-  /** Personel şablonu (`/credentials/form-personel.png`). */
-  templateStaff?: string | null
+  /** Nötr şablon (`/credentials/form-base.png`) — her iki varyant da bunu kullanır. */
+  templateBase?: string | null
 }
+
+/*
+ * LOGO ALANI (tasarım px) — SABİT.
+ *
+ * Yeni şablonda beyaz kutu yok; logo doğrudan pembe bandın sağ boşluğuna oturur. Alan sabittir:
+ * serif logotip 497 px'te bittiği için 700'den başlar, bant 395 px'te bittiği için 330'u geçmez.
+ * Logo bu alana `fit` ile sığdırılır — en/boy oranı korunur, alandan TAŞMAZ. Ortalama/hizalama
+ * denenmez: pdfmake mutlak konumlu düğümde `alignment` uygulamıyor, hizalamayı sayfaya göre
+ * yapıp görseli alanın dışına atıyordu (canlı çıktıda logo şablonu taşırmıştı).
+ */
+const LOGO_BOX = { x: 706, y: 96, w: 288, h: 214 }
 
 function slugFilename(name: string): string {
   return name
@@ -115,35 +125,28 @@ export function buildCredentialsDoc(
 ): TDocumentDefinitions {
   const link = data.loginUrl || fallbackLoginUrl
   const meta = [data.roleLine, data.branchName].filter(Boolean).join('   ·   ')
-  /** Personel belgesinde başlık ve kişi etiketi zeminde YOK — bizim yazmamız gerekir. */
-  const isStaff = data.subjectLabel !== 'YÖNETİCİ'
-  const template = isStaff ? assets.templateStaff : assets.templateOwner
-
   const content: Content[] = []
 
   // ---- Zemin: tasarımın kendisi, tam sayfa ---------------------------------------------------
-  if (template) {
-    content.push({ image: template, width: PAGE_W, absolutePosition: { x: 0, y: 0 } })
+  if (assets.templateBase) {
+    content.push({ image: assets.templateBase, width: PAGE_W, absolutePosition: { x: 0, y: 0 } })
   }
 
-  // ---- Personel varyantında zeminde olmayan iki metin ----------------------------------------
-  if (isStaff) {
-    // Başlık — tasarımda 74 px sol, 236 px üst.
-    content.push(at(px(74), px(232), {
-      text: data.heading,
-      fontSize: fitFontSize(data.heading, px(620), 17, 13),
-      bold: true,
-      color: INK,
-    }))
-    // Kişi etiketi — 41 px sol, 491 px üst.
-    content.push(at(px(41), px(489), {
-      text: data.subjectLabel,
-      fontSize: 20,
-      bold: true,
-      characterSpacing: 5,
-      color: INK,
-    }))
-  }
+  // ---- Başlık ve kişi etiketi — her iki varyantta da BİZ yazarız (zemin nötr) -----------------
+  // Başlık 74 px sol / 236 px üst; kişi etiketi 41 px sol / 491 px üst.
+  content.push(at(px(74), px(232), {
+    text: data.heading,
+    fontSize: fitFontSize(data.heading, px(600), 17, 12),
+    bold: true,
+    color: INK,
+  }))
+  content.push(at(px(41), px(489), {
+    text: data.subjectLabel,
+    fontSize: 20,
+    bold: true,
+    characterSpacing: 5,
+    color: INK,
+  }))
 
   // ---- Kurum adı (bandın içinde, başlığın altında; tasarımda 71 px × 291 px) ------------------
   content.push(at(px(71), px(288), {
@@ -154,20 +157,20 @@ export function buildCredentialsDoc(
     width: px(620),
   }))
 
-  // ---- Kurum logosu: şablondaki beyaz kutunun içine (728..978 px × 160..418 px) ---------------
+  // ---- Kurum logosu: pembe bandın sağ boşluğundaki SABİT alana sığdırılır ---------------------
   if (data.logoDataUrl) {
-    content.push(at(px(742), px(174), {
+    content.push(at(px(LOGO_BOX.x), px(LOGO_BOX.y), {
       image: data.logoDataUrl,
-      fit: [px(222), px(230)],
-      alignment: 'center',
-      width: px(222),
+      fit: [px(LOGO_BOX.w), px(LOGO_BOX.h)],
     }))
   }
 
   // ---- Kişi bilgileri (552 px ve 603 px) ------------------------------------------------------
   content.push(at(px(42), px(545), {
     text: data.personName,
-    fontSize: fitFontSize(data.personName, px(620), 27, 14),
+    // Punto 22: tasarımdaki serif ad DAR olduğu için genişlikten geri hesaplanan 27, Roboto'da
+    // satırı şişirip alt satıra (görev/şube) yapıştırıyordu. Ölçüt yükseklik olmalı.
+    fontSize: fitFontSize(data.personName, px(620), 22, 13),
     characterSpacing: 1.5,
     color: INK,
     width: px(620),
@@ -186,7 +189,7 @@ export function buildCredentialsDoc(
   }))
 
   /*
-   * Şifre: zemindeki koyu kutunun (280..469 px × 828..867 px) içine BEYAZ yazılır.
+   * Şifre: zemindeki koyu kutunun (299..469 px × 828..867 px) içine BEYAZ yazılır.
    *
    * SOLA DAYALI: tasarımda metin kutunun sol kenarından 2 px içeriden başlıyor ve kutuyu
    * neredeyse dolduruyor. `alignment: 'center'` DENENDİ ve OLMADI — mutlak konumlu düğümde
@@ -195,9 +198,9 @@ export function buildCredentialsDoc(
    * ile 11 karakterlik bir şifre 16 punto'da hiç küçülmeden çizilip çipi ~90 px aşıyordu (canlı
    * çıktıda iki yandan kırpılmış görünüyordu). Sığmak, kutuyu doldurmaktan önce gelir.
    */
-  content.push(at(px(296), px(833), {
+  content.push(at(px(306), px(833), {
     text: data.initialPassword,
-    fontSize: fitFontSize(data.initialPassword, px(177), 14, 7, 0.78),
+    fontSize: fitFontSize(data.initialPassword, px(158), 14, 7, 0.78),
     bold: true,
     color: WHITE,
   }))

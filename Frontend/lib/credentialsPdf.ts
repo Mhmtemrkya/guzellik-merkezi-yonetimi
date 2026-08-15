@@ -51,12 +51,9 @@ function loadAsset(path: string): Promise<string | null> {
 }
 
 export async function generateCredentialsPdf(data: CredentialsPdfData): Promise<void> {
-  // Belge ZEMİNİ tasarımın kendisidir; iki varyantın şablonu da yüklenir (önbellekli).
-  const [templateOwner, templateStaff] = await Promise.all([
-    loadAsset('/credentials/form-yonetici.png'),
-    loadAsset('/credentials/form-personel.png'),
-  ])
+  // Belge ZEMİNİ tasarımın kendisidir; iki varyant da aynı nötr şablonu kullanır.
+  const templateBase = await loadAsset('/credentials/form-base.png')
 
-  const doc = buildCredentialsDoc(data, { templateOwner, templateStaff }, defaultLoginUrl())
+  const doc = buildCredentialsDoc(data, { templateBase }, defaultLoginUrl())
   pdfMake.createPdf(doc).download(credentialsFilename(data))
 }
