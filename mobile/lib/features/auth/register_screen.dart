@@ -19,8 +19,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final nameController = TextEditingController();
   final phoneController = TextEditingController();
   final emailController = TextEditingController();
+  // İSTEĞE BAĞLI: doğum tarihi ve cinsiyet randevu almak için gerekmez, bu yüzden zorunlu
+  // tutulamaz (App Store 5.1.1(v)). Cinsiyet varsayılanı "Belirtmek istemiyorum".
   DateTime? birthDate;
-  int gender = 1; // 1 Kadın (varsayılan), 2 Erkek, 3 Diğer
+  int gender = 0; // 0 Belirtilmemiş (varsayılan), 1 Kadın, 2 Erkek, 3 Diğer
   bool loading = false;
   String? error;
 
@@ -28,6 +30,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool otpStage = false;
   String? otpInfo;
   final otpCodeController = TextEditingController();
+  CustomerOtpChannel otpChannel = CustomerOtpChannel.sms;
+  CustomerOtpChannels? otpChannels;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadChannels();
+  }
+
+  Future<void> _loadChannels() async {
+    final available = await widget.auth.customerOtpChannels();
+    if (!mounted) return;
+    setState(() {
+      otpChannels = available;
+      otpChannel = available.preferred;
+    });
+  }
 
   @override
   void dispose() {
@@ -38,10 +57,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  String? _birthStr() {
+    final d = birthDate;
+    if (d == null) return null;
+    return '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
   Future<void> submit() async {
     if (!formKey.currentState!.validate()) return;
-    if (birthDate == null) {
-      setState(() => error = 'Doğum tarihinizi seçin.');
+    // E-posta kanalı seçildiyse adres zorunlu: kodun gideceği yer başka türlü bilinmez.
+    if (otpChannel == CustomerOtpChannel.email && emailController.text.trim().isEmpty) {
+      setState(() => error = 'E-posta ile kod almak için e-posta adresinizi girin.');
       return;
     }
     setState(() {
@@ -49,25 +75,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
       error = null;
     });
     try {
-      final d = birthDate!;
-      final birth =
-          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-      // KAYIT DA OTP'DEN GEÇER: hesap yalnız telefon sahipliği kanıtlandıktan sonra açılır.
+      // KAYIT DA OTP'DEN GEÇER: hesap yalnız bir kanalın sahipliği kanıtlandıktan sonra açılır.
       if (!otpStage) {
         final res = await widget.auth.customerOtpRequest(
           fullName: nameController.text,
           phone: phoneController.text,
-          birthDate: birth,
           purpose: 1,
+          channel: otpChannel.code,
+          email: emailController.text,
         );
         final devCode = res['devCode'];
+        final hint = res['hint']?.toString();
         if (mounted) {
           setState(() {
             otpStage = true;
-            otpInfo = devCode == null
-                ? 'WhatsApp numaranıza 6 haneli doğrulama kodu gönderildi. Kod 5 dakika geçerlidir.'
+            final base = devCode == null
+                ? '6 haneli doğrulama kodunuz gönderildi. Kod 5 dakika geçerlidir.'
                 : 'Doğrulama kodu gönderildi. (Test ortamı kodu: $devCode)';
+            otpInfo = (hint == null || hint.isEmpty) ? base : '$base $hint';
           });
         }
         return;
@@ -75,17 +100,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       final code = otpCodeController.text.trim();
       if (code.length != 6) {
-        setState(() => error = 'WhatsApp ile gelen 6 haneli kodu girin.');
+        setState(() => error = 'Size gönderilen 6 haneli kodu girin.');
         return;
       }
       await widget.auth.customerOtpVerify(
         fullName: nameController.text,
         phone: phoneController.text,
-        birthDate: birth,
         code: code,
         purpose: 1,
         gender: gender,
         email: emailController.text,
+        birthDate: _birthStr(),
       );
       // Başarılıysa AuthController durumu signedIn olur ve router otomatik yönlendirir.
     } catch (e) {
@@ -93,6 +118,46 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  /// Kodun hangi kanaldan geleceğini seçtirir (yalnız yapılandırılmış kanallar).
+  List<Widget> _channelPicker() {
+    final options = otpChannels?.enabled ??
+        CustomerOtpChannel.values.where((c) => c != CustomerOtpChannel.auto).toList();
+    if (options.length < 2) return const [];
+
+    IconData iconOf(CustomerOtpChannel c) => switch (c) {
+      CustomerOtpChannel.sms => Icons.sms_outlined,
+      CustomerOtpChannel.email => Icons.mail_outline_rounded,
+      _ => Icons.chat_outlined,
+    };
+
+    return [
+      const SizedBox(height: 14),
+      const Text(
+        'Doğrulama kodu nereye gelsin?',
+        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.ink),
+      ),
+      const SizedBox(height: 6),
+      SizedBox(
+        width: double.infinity,
+        child: SegmentedButton<CustomerOtpChannel>(
+          segments: options
+              .map((c) => ButtonSegment(
+                    value: c,
+                    icon: Icon(iconOf(c), size: 17),
+                    label: Text(c.label),
+                  ))
+              .toList(),
+          selected: {options.contains(otpChannel) ? otpChannel : options.first},
+          showSelectedIcon: false,
+          onSelectionChanged: (s) => setState(() {
+            otpChannel = s.first;
+            error = null;
+          }),
+        ),
+      ),
+    ];
   }
 
   @override
@@ -175,6 +240,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                             ),
                             const SizedBox(height: 12),
+                            TextFormField(
+                              controller: emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              autocorrect: false,
+                              validator: (v) {
+                                final t = (v ?? '').trim();
+                                if (t.isEmpty) return null; // opsiyonel
+                                return t.contains('@') && t.contains('.')
+                                    ? null
+                                    : 'Geçerli bir e-posta girin.';
+                              },
+                              decoration: InputDecoration(
+                                labelText: otpChannel == CustomerOtpChannel.email
+                                    ? 'E-posta (kod bu adrese gelecek)'
+                                    : 'E-posta (opsiyonel)',
+                                prefixIcon: const Icon(Icons.mail_outline_rounded),
+                              ),
+                            ),
+                            // KANAL SEÇİMİ (App Store 3.2.2(v)) — WhatsApp tek yol değil.
+                            if (!otpStage) ..._channelPicker(),
+                            // --- İSTEĞE BAĞLI PROFİL BİLGİLERİ ---
+                            // Randevu almak için gerekmediklerinden ZORUNLU DEĞİL (App Store 5.1.1(v)).
+                            const SizedBox(height: 16),
+                            const Text(
+                              'İsteğe bağlı — doğum günü kutlamaları ve size uygun kampanyalar için',
+                              style: TextStyle(fontSize: 11.5, color: AppColors.muted, height: 1.35),
+                            ),
+                            const SizedBox(height: 8),
                             InkWell(
                               onTap: () async {
                                 final now = DateTime.now();
@@ -187,13 +280,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 if (picked != null) setState(() => birthDate = picked);
                               },
                               child: InputDecorator(
-                                decoration: const InputDecoration(
-                                  labelText: 'Doğum Tarihi',
-                                  prefixIcon: Icon(Icons.cake_outlined),
+                                decoration: InputDecoration(
+                                  labelText: 'Doğum Tarihi (isteğe bağlı)',
+                                  prefixIcon: const Icon(Icons.cake_outlined),
+                                  // Girilen tarihi geri almanın yolu olsun: seçim tek yönlü kalmasın.
+                                  suffixIcon: birthDate == null
+                                      ? null
+                                      : IconButton(
+                                          tooltip: 'Temizle',
+                                          onPressed: () => setState(() => birthDate = null),
+                                          icon: const Icon(Icons.close_rounded, size: 18),
+                                        ),
                                 ),
                                 child: Text(
                                   birthDate == null
-                                      ? 'Seçilmedi'
+                                      ? 'Belirtmek istemiyorum'
                                       : '${birthDate!.day.toString().padLeft(2, '0')}.${birthDate!.month.toString().padLeft(2, '0')}.${birthDate!.year}',
                                   style: TextStyle(
                                     color: birthDate == null ? AppColors.muted : AppColors.ink,
@@ -202,7 +303,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                             ),
                             const SizedBox(height: 12),
-                            const Text('Cinsiyet',
+                            const Text('Cinsiyet (isteğe bağlı)',
                                 style: TextStyle(
                                     fontSize: 12.5,
                                     fontWeight: FontWeight.w600,
@@ -210,31 +311,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             const SizedBox(height: 6),
                             SegmentedButton<int>(
                               segments: const [
+                                ButtonSegment(value: 0, label: Text('Belirtmiyorum')),
                                 ButtonSegment(value: 1, label: Text('Kadın')),
                                 ButtonSegment(value: 2, label: Text('Erkek')),
-                                ButtonSegment(value: 3, label: Text('Diğer')),
                               ],
-                              selected: {gender},
+                              selected: {gender == 3 ? 0 : gender},
+                              showSelectedIcon: false,
                               onSelectionChanged: (s) => setState(() => gender = s.first),
                             ),
-                            const SizedBox(height: 12),
-                            TextFormField(
-                              controller: emailController,
-                              keyboardType: TextInputType.emailAddress,
-                              autocorrect: false,
-                              validator: (v) {
-                                final t = (v ?? '').trim();
-                                if (t.isEmpty) return null; // opsiyonel
-                                return t.contains('@') && t.contains('.')
-                                    ? null
-                                    : 'Geçerli bir e-posta girin.';
-                              },
-                              decoration: const InputDecoration(
-                                labelText: 'E-posta (opsiyonel)',
-                                prefixIcon: Icon(Icons.mail_outline_rounded),
-                              ),
-                            ),
-                            // Adım 2: WhatsApp'a gelen kod. Hesap yalnız kod doğrulanınca açılır.
+                            // Adım 2: gelen kod. Hesap yalnız kod doğrulanınca açılır.
                             if (otpStage) ...[
                               const SizedBox(height: 12),
                               TextFormField(
@@ -242,8 +327,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 keyboardType: TextInputType.number,
                                 maxLength: 6,
                                 decoration: const InputDecoration(
-                                  labelText: 'WhatsApp doğrulama kodu',
-                                  prefixIcon: Icon(Icons.sms_outlined),
+                                  labelText: 'Doğrulama kodu',
+                                  prefixIcon: Icon(Icons.verified_outlined),
                                   counterText: '',
                                 ),
                               ),

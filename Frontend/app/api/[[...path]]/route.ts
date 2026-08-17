@@ -216,6 +216,9 @@ const TOKEN_ISSUING_PATHS = new Set([
   '/api/auth/login',
   '/api/auth/refresh',
   '/api/auth/customer/otp/verify',
+  // Self-servis kurum kaydının son adımı da oturum döndürür; refresh token'ı aynı HttpOnly
+  // çereze taşınmalı. Listede olmasaydı token tarayıcı depolamasında kalır ve XSS'e açılırdı.
+  '/api/public/signup/verify-phone',
 ])
 
 /** Bu uçlara giden istekte gövdedeki refreshToken çerezden doldurulur. */

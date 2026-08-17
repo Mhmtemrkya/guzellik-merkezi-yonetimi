@@ -39,7 +39,7 @@ public sealed class AuditRoundSevenPhase1Tests
     // ── C1: kurum profili güncellemesi aboneliğe DOKUNAMAZ ────────────────────────────────
 
     private static TenantService NewTenants(GuzellikDbContext db) =>
-        new(db, new PlainPasswordHasher(), new AllowAllFeatureService(), new NoopAuditLogger());
+        new(db, new PlainPasswordHasher(), new AllowAllFeatureService(), new NoopAuditLogger(), TestSearchIndex.Create());
 
     /// <summary>
     /// ASIL İDDİA: profil güncellemesi paketi, dönemi ve durumu DEĞİŞTİREMEZ. Askıya alınmış bir

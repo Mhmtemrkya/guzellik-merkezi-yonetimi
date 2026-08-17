@@ -476,6 +476,12 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.Property(x => x.TaxNumber).HasMaxLength(40);
         builder.Property(x => x.Currency).HasMaxLength(8).IsRequired();
         builder.HasIndex(x => x.Slug).IsUnique();
+        // Kurum kodu (BA-01) ve telefon blind index'i ŞİFRELENMEZ — Name/Phone şifreli olduğu için
+        // arama ve mükerrer kontrolü ancak bu düz kolonlardan yapılabilir (bkz. Tenant.Code notu).
+        builder.Property(x => x.Code).HasMaxLength(20);
+        builder.HasIndex(x => x.Code).IsUnique();
+        builder.Property(x => x.PhoneIndex).HasMaxLength(64);
+        builder.HasIndex(x => x.PhoneIndex);
         builder.HasQueryFilter(x => !x.IsDeleted);
         builder.HasMany(x => x.Branches).WithOne(x => x.Tenant).HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         builder.HasMany(x => x.Users).WithOne(x => x.Tenant).HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);

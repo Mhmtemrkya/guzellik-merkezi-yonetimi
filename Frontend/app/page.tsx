@@ -13,6 +13,8 @@ import {
   CreditCard, FileBarChart, Globe, Landmark, Layers, MessageCircle, Package, PlayCircle, Quote,
   ShieldCheck, Sparkles, Star, UserCog, Users, Wallet, type LucideIcon,
 } from 'lucide-react'
+import PaymentBadges, { LegalLinkRow } from '@/components/legal/PaymentBadges'
+import { legalLinks } from '@/lib/legal/company'
 
 /** Paket kataloğu ISR ile tazelenir: platformda plan güncellenince tanıtım sayfası da güncellenir. */
 export const revalidate = 300
@@ -139,9 +141,9 @@ function SiteNav() {
           <Link href="/salonlar" className="whitespace-nowrap rounded-full border border-[#EEC9D7] bg-white px-3.5 py-1.5 text-[12.5px] text-[#4A3A44] transition-colors hover:border-[#EF6F94]">
             Randevu<span className="hidden sm:inline"> al</span>
           </Link>
-          <a href="#fiyat" className="whitespace-nowrap rounded-full bg-[#EF6F94] px-4 py-1.5 text-[12.5px] font-medium text-white transition-transform hover:-translate-y-px">
-            Demo<span className="hidden sm:inline"> talep et</span>
-          </a>
+          <Link href="/kayit" className="whitespace-nowrap rounded-full bg-[#EF6F94] px-4 py-1.5 text-[12.5px] font-medium text-white transition-transform hover:-translate-y-px">
+            Ücretsiz<span className="hidden sm:inline"> dene</span>
+          </Link>
         </div>
       </div>
     </header>
@@ -189,12 +191,12 @@ function Hero() {
             <Reveal delay={260}>
               <div className="mt-9 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
                 <Magnetic>
-                  <a
-                    href="#fiyat"
+                  <Link
+                    href="/kayit"
                     className="inline-flex items-center gap-2 rounded-full bg-[#EF6F94] px-7 py-3.5 text-[15px] font-medium text-white shadow-[0_20px_44px_-18px_rgba(239,111,148,0.95)] transition-shadow duration-300 hover:shadow-[0_28px_56px_-16px_rgba(239,111,148,1)]"
                   >
-                    Ücretsiz demo al <ArrowRight className="h-4 w-4" />
-                  </a>
+                    14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
+                  </Link>
                 </Magnetic>
                 <Magnetic>
                   <a
@@ -592,6 +594,16 @@ function Pricing({ plans }: { plans: PublicPlan[] | null }) {
             Kurulum bir kereliktir: hesap açılışı, kullanıcılar, paket tanımları ve online eğitim dahil.
           </p>
         </Reveal>
+
+        {/* SATIN ALMA NOKTASINDA ÖDEME + YASAL BİLGİ.
+            Ödeme kuruluşu incelemesi bu bilgileri yalnız footer'da değil, fiyatın görüldüğü
+            yerde de arar; kullanıcı da hangi kartla ödeyeceğini burada görmek ister. */}
+        <Reveal delay={100}>
+          <div className="mx-auto mt-6 flex max-w-[760px] flex-col items-center gap-3 rounded-[18px] border border-[#EEC9D7] bg-white/80 px-6 py-5 text-center">
+            <PaymentBadges />
+            <LegalLinkRow className="justify-center text-[#705A66]" />
+          </div>
+        </Reveal>
       </div>
     </section>
   )
@@ -670,11 +682,11 @@ function FinalCta() {
         <Reveal>
           <h2 className="display-lg mx-auto max-w-[20ch] text-white">Merkezinizi bir üst seviyeye taşıyın.</h2>
           <p className="mx-auto mt-5 max-w-[50ch] text-[16.5px] leading-relaxed text-white/95">
-            Ücretsiz demo alın, farkı ilk günden görün. Mevcut danışan ve paket kayıtlarınızı biz aktarıyoruz.
+            Kartsız, 14 gün ücretsiz deneyin; farkı ilk günden görün. Mevcut danışan ve paket kayıtlarınızı biz aktarıyoruz.
           </p>
           <div className="mt-9 flex flex-wrap justify-center gap-3">
-            <Link href="/login" className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[15px] font-medium text-[#8E3F5B] transition-transform hover:-translate-y-0.5">
-              Ücretsiz demo al <ArrowRight className="h-4 w-4" />
+            <Link href="/kayit" className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[15px] font-medium text-[#8E3F5B] transition-transform hover:-translate-y-0.5">
+              14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
             </Link>
             <Link href="/salonlar" className="inline-flex items-center gap-2 rounded-full border border-white/40 px-7 py-3.5 text-[15px] text-white transition-colors hover:bg-white/10">
               <MessageCircle className="h-4 w-4" /> Salonları keşfet
@@ -695,10 +707,17 @@ function FinalCta() {
 }
 
 function SiteFooter() {
+  // YASAL SÜTUN ZORUNLU: ödeme kuruluşu (iyzico) üye iş yeri incelemesinde hakkımızda,
+  // mesafeli satış, teslimat/iade ve gizlilik metinlerinin siteden ulaşılabilir olmasını arar.
+  // Eskiden buradaki `/kvkk` bağlantısı 404 veriyordu (o rota kuruma özel `/kvkk/[slug]`),
+  // yerine platformun kendi metinleri kondu.
   const columns = [
     { title: 'Ürün', links: [['#tur', 'Ürün turu'], ['#moduller', 'Modüller'], ['#nasil', 'Nasıl çalışır'], ['#fiyat', 'Fiyatlandırma']] },
     { title: 'Danışanlar', links: [['/salonlar', 'Salonları keşfet'], ['/salonlar', 'Randevu al'], ['/randevu', 'Randevularım']] },
-    { title: 'Kurumsal', links: [['#referans', 'Referanslar'], ['/login', 'Giriş yap'], ['/gizlilik', 'Gizlilik'], ['/kvkk', 'KVKK']] },
+    // "Hakkımızda" YASAL sütununda duruyor (kriterler listesinde sözleşmelerle birlikte aranır),
+    // burada tekrar edilmez.
+    { title: 'Kurumsal', links: [['#referans', 'Referanslar'], ['/login', 'Giriş yap']] },
+    { title: 'Yasal', links: legalLinks.map((link) => [link.href, link.label] as [string, string]) },
   ]
 
   return (
@@ -723,10 +742,10 @@ function SiteFooter() {
             <div className="flex shrink-0 flex-wrap gap-3">
               <Magnetic>
                 <Link
-                  href="/login"
+                  href="/kayit"
                   className="inline-flex items-center gap-2 rounded-full bg-[#EF6F94] px-6 py-3 text-[14.5px] font-medium text-white shadow-[0_18px_40px_-20px_rgba(239,111,148,0.95)] transition-shadow hover:shadow-[0_24px_50px_-18px_rgba(239,111,148,1)]"
                 >
-                  Ücretsiz demo al <ArrowRight className="h-4 w-4" />
+                  14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
                 </Link>
               </Magnetic>
               <Link
@@ -740,7 +759,7 @@ function SiteFooter() {
         </Reveal>
       </div>
 
-      <div className="mx-auto grid max-w-[1200px] gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
+      <div className="mx-auto grid max-w-[1200px] gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))]">
         <div>
           <Link href="/" className="flex items-center gap-3">
             <Image src="/logo.png" alt="" width={52} height={52} className="h-13 w-13 object-contain" />
@@ -757,6 +776,8 @@ function SiteFooter() {
               </span>
             ))}
           </div>
+          {/* Ödeme altyapısı şeridi — kabul edilen kartlar + iyzico markası. */}
+          <PaymentBadges className="mt-6" />
         </div>
 
         {columns.map((col) => (

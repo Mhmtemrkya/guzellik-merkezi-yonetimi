@@ -36,7 +36,7 @@ public sealed class LoginScopeAndEntitlementTests
     private static AuthService NewAuth(GuzellikDbContext db) =>
         new(db, new PlainPasswordHasher(), new StubTokenService(), new FixedClock(),
             new NoopAuditLogger(), new TestCurrentUser(UserRole.InstitutionOwner),
-            new AllowAllFeatureService(), null!);
+            new AllowAllFeatureService(), null!, TestSearchIndex.Create());
 
     /// <summary>Aynı e-posta, iki kurum, FARKLI parolalar.</summary>
     [Fact]

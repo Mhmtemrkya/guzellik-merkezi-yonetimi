@@ -41,6 +41,15 @@ interface AuthContextValue {
   logout: () => Promise<void>
   refresh: () => Promise<AuthSession | null>
   setSession: (session: AuthSession | null) => void
+  /**
+   * Sunucudan HAZIR gelen bir oturumu benimser (parola akışı olmadan).
+   *
+   * Self-servis kurum kaydı sonunda backend zaten bir oturum döndürüyor; kullanıcıyı yeni
+   * öğrendiği geçici parolayı elle yazmaya zorlamak gereksiz sürtünme olurdu. Oturum
+   * normalizasyonu `login` ile AYNI yerden geçer — iki kopya olsa biri unutulur ve yalnız o
+   * yoldan girenlerde eksik profil alanları oluşurdu.
+   */
+  adoptSession: (response: ApiLoginResponse) => AuthSession
 }
 
 interface LoginInput {
@@ -204,6 +213,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [persist],
   )
 
+  const adoptSession = useCallback(
+    (response: ApiLoginResponse): AuthSession => {
+      // Kayıt akışı "beni hatırla" sormaz; kurum sahibi kendi cihazından kaydoluyor.
+      setRememberMe(true)
+      const next = normalizeSession(response)
+      persist(next)
+      return next
+    },
+    [persist],
+  )
+
   const logout = useCallback(async (): Promise<void> => {
     // Çıkışta da token gövdede taşınmaz; proxy çerezden ekler ve çerezi siler.
     try {
@@ -297,8 +317,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       refresh,
       setSession: persist,
+      adoptSession,
     }),
-    [hydrated, session, authError, loginScope, login, logout, refresh, persist],
+    [hydrated, session, authError, loginScope, login, logout, refresh, persist, adoptSession],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
@@ -316,6 +337,11 @@ const fallbackAuth: AuthContextValue = {
   logout: async () => {},
   refresh: async () => null,
   setSession: () => {},
+  // Provider dışında çağrılırsa oturum kurulamaz; SESSİZCE "başarılı" gibi davranmak, kullanıcıyı
+  // giriş yapmış sanıp panele göndermek olurdu. Görünür hata daha iyi.
+  adoptSession: () => {
+    throw new Error('AuthProvider dışında oturum benimsenemez.')
+  },
 }
 
 export function useAuth(): AuthContextValue {

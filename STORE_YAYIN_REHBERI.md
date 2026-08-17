@@ -131,13 +131,108 @@ npm run tauri build
 
 ---
 
-## 5. Yayın öncesi kontrol listesi
+## 5. App Store reddi (1.0/5) ve yapılan düzeltmeler — 7 Ağu 2026
+
+Apple üç gerekçeyle reddetti. Üçü de **kodda** kapatıldı; kalan iş **canlı yapılandırma**.
+
+| Gerekçe | Sorun | Çözüm |
+|---|---|---|
+| **3.2.2(v)** İş modeli | Müşteri girişi doğrulama kodunu **yalnız WhatsApp'a** gönderiyordu → "uygulama kullanıcıyı WhatsApp kullanıcılarıyla sınırlıyor" | Kod artık **SMS / e-posta / WhatsApp** kanallarından gider. Kullanıcı seçer; sadece platformda kurulu kanallar gösterilir (`GET /api/auth/customer/otp/channels`) |
+| **2.1** Bilgi eksik | `admin@beautyasist.test` **yalnızca Development seed'inde** vardı; canlı API'de o hesap hiç olmadı → denetçi giremedi | `AppReview:*` ile açılan **canlı inceleme hesabı kurucusu** (kurum + yönetici + demo müşteri + örnek veri) |
+| **5.1.1(v)** Gizlilik | Girişte **doğum tarihi zorunluydu** — randevu almak için gerekmiyor | Doğum tarihi kimlikten **çıkarıldı**. Kayıtta yalnızca **isteğe bağlı** (doğum günü kampanyaları için) |
+
+### 5.1 ZORUNLU: en az bir WhatsApp-DIŞI kanal kur
+
+> **Bu adım atlanırsa 3.2.2(v) AYNEN tekrar reddedilir.** Kod hazır ama tek kurulu kanal WhatsApp
+> kalırsa kullanıcı yine WhatsApp'a mahkûmdur. Backend açılışta bunu fark eder ve
+> `APP STORE 3.2.2(v) RİSKİ` diye **hata seviyesinde** loglar — yüklemeden önce logu kontrol edin.
+
+Panelden: **Platform → Sistem Ayarları → Mesajlaşma**
+
+- **E-posta (önerilen, en hızlı):** SMTP host/port/kullanıcı/şifre + gönderen adres → *Etkin* → **Test et**.
+- **SMS (Netgsm / Twilio):** API anahtarı + gönderen başlık → *Etkin* → **Test et**.
+
+Testin **simülasyon değil gerçek** gönderim döndürdüğünü doğrulayın: simülasyon teslimat sayılmaz,
+kod hiç gitmez. Backend bunu bilerek başarısız sayar (kullanıcıyı boş kod ekranında bırakmamak için).
+
+> **E-posta kanalının sınırı:** girişte kod, **kurumun kayıtlarındaki** adrese gider — kullanıcıya
+> adres sorulmaz (yanlış adres yazılırsa sessizce kaybolurdu). Kaydında e-postası olmayan müşteri
+> e-posta kanalıyla kod alamaz; bu yüzden **SMS'i de açmak** en sağlamıdır.
+
+### 5.2 İnceleme hesabını canlıda aç
+
+Canlı `appsettings.Production.json` (ya da ortam değişkenleri):
+
+```jsonc
+"AppReview": {
+  "Enabled": true,
+  "TenantName": "BeautyAsist Demo Merkezi",
+  "TenantSlug": "beautyasist-app-review",
+  "OwnerEmail": "review@beautyasist.app",
+  "OwnerPassword": "<en az 8 karakter, güçlü>",
+  "OwnerName": "Demo Yonetici",
+  "CustomerFullName": "Demo Musteri",
+  "CustomerPhone": "+90 5XX XXX XX XX",
+  "CustomerEmail": "review.customer@beautyasist.app",
+  "CustomerOtpCode": "424242"
+}
+```
+
+Backend'i yeniden başlatın. Loglarda `MAĞAZA İNCELEME HESABI OLUŞTURULDU` görmelisiniz.
+
+Bu kurucu **Development seeder'ından farklıdır**: parola koda gömülü değil config'ten gelir, DB
+silmez, şemaya dokunmaz, yalnız kendi kurumunu oluşturur ve **idempotenttir** (tekrar çalıştırmak
+güvenli — parolayı config'ten tazeler).
+
+- Kuruma **tüm özellikleri açan plan** atanır; aksi hâlde denetçi "paketiniz izin vermiyor" (409)
+  duvarına çarpar. Planlar yoksa `Database:SeedReferenceData=true` ile bir kez oluşturun.
+- `CustomerPhone` + `CustomerOtpCode` dolu olduğunda **yalnız bu numara için** kod rastgele
+  üretilmez/gönderilmez, **sabit** kod kullanılır — denetçi hiçbir kanaldan mesaj alamaz.
+  Doğrulamanın geri kalanı (kimlik eşleşmesi, tek kullanım, 5 deneme freni) aynen işler.
+
+### 5.3 App Store Connect → "App Review Information" alanına yazılacak metin
+
+```
+DEMO ACCOUNT (Staff / Business owner)
+  Sign-in mode: "Personel / Yönetici" tab
+  Username: review@beautyasist.app
+  Password: <AppReview:OwnerPassword ile aynı>
+
+DEMO ACCOUNT (Client / Consumer)
+  Sign-in mode: "Müşteri" tab
+  Full name: Demo Musteri
+  Phone: +90 5XX XXX XX XX
+  Verification code: 424242   (fixed code for this review account)
+
+NOTES
+- The verification code can be delivered by SMS, e-mail or WhatsApp; the user
+  chooses the channel on the sign-in screen. WhatsApp is optional, never required.
+- For the demo client account above, the code is fixed (424242) because the
+  reviewer cannot receive real messages. Enter it directly in the code field.
+- Date of birth is no longer requested at sign-in. It is optional at sign-up.
+```
+
+`+90 5XX XXX XX XX` ve parolayı gerçek değerlerle **doldurun** — Apple 2.1'i tam olarak burada verdi.
+
+### 5.4 İnceleme onaylandıktan SONRA
+
+- [ ] `AppReview:Enabled` → `false`, `OwnerPassword` ve `CustomerOtpCode` temizlendi
+- [ ] Backend yeniden başlatıldı (loglarda artık `MAĞAZA İNCELEME HESABI AÇIK` uyarısı YOK)
+- [ ] `beautyasist-app-review` kurumu platform panelinden askıya alındı / silindi
+
+---
+
+## 6. Yayın öncesi kontrol listesi
 
 - [ ] `mobile/android/key.properties` oluşturuldu, `.jks` yedeklendi
 - [ ] `API_BASE_URL` canlı HTTPS'e ayarlı build alındı (Android AAB + iOS IPA)
 - [ ] Backend canlıda HTTPS + `Jwt:SigningKey`, `Encryption:MasterKeyBase64` gerçek gizli değerlerle
+- [ ] **SMS ya da e-posta kanalı canlıda kurulu ve GERÇEK gönderim test edildi** (§5.1 — 3.2.2(v))
+- [ ] **`AppReview:*` dolduruldu, loglarda hesap oluştu** (§5.2 — 2.1)
+- [ ] **App Store Connect "App Review Information" metni yazıldı** (§5.3 — 2.1)
+- [ ] Build numarası artırıldı (`pubspec.yaml` → `1.0.0+6`; Apple aynı numarayı kabul etmez)
 - [ ] Gizlilik politikası URL'si yayında (Play + App Store)
-- [ ] Play Data safety / App Privacy formları dolduruldu
+- [ ] Play Data safety / App Privacy formları dolduruldu — **doğum tarihi artık "zorunlu" değil**
 - [ ] (Push isteniyorsa) Firebase 4 adımı + APNs anahtarı tamam, loglarda gerçek gönderim
 - [ ] Masaüstü installer imzalandı (Windows sertifika / macOS notarization)
 - [ ] Masaüstü `main` penceresi hedef URL'si (localhost:3000 vs canlı) netleştirildi

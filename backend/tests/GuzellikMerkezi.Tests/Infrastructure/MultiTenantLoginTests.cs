@@ -36,7 +36,7 @@ public sealed class MultiTenantLoginTests
     private static AuthService NewService(GuzellikDbContext db) =>
         new(db, new PlainPasswordHasher(), new StubTokenService(), new FixedClock(),
             new NoopAuditLogger(), new TestCurrentUser(UserRole.InstitutionOwner),
-            new AllowAllFeatureService(), null!);
+            new AllowAllFeatureService(), null!, TestSearchIndex.Create());
 
     /// <summary>Aynı e-posta + rol ile İKİ kurumda sahiplik.</summary>
     private static async Task<(Guid FirstTenantId, Guid SecondTenantId, Guid SecondBranchId)> SeedAsync(

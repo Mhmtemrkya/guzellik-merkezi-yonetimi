@@ -10,6 +10,54 @@ import 'auth_session.dart';
 
 enum AuthStatus { loading, signedOut, signedIn }
 
+/// Müşteri doğrulama kodunun gideceği kanal — sunucudaki `CustomerOtpChannel` ile birebir.
+///
+/// WhatsApp TEK KANAL DEĞİLDİR: App Store 3.2.2(v) reddi tam olarak bunu söyledi ("uygulama
+/// müşteri kullanıcılarını WhatsApp kullanıcılarıyla sınırlıyor"). Kod SMS ya da kayıtlı
+/// e-posta adresine de gönderilebilir.
+enum CustomerOtpChannel {
+  auto(0, 'Otomatik'),
+  whatsApp(1, 'WhatsApp'),
+  sms(2, 'SMS'),
+  email(3, 'E-posta');
+
+  const CustomerOtpChannel(this.code, this.label);
+
+  /// Sunucuya gönderilen sayı (enum sırası değişse bile bozulmasın diye açıkça yazılır).
+  final int code;
+  final String label;
+}
+
+/// Platformda hangi kanallar gerçekten yapılandırılmış? (İstemci yalnız çalışanları göstersin.)
+class CustomerOtpChannels {
+  const CustomerOtpChannels({
+    required this.whatsApp,
+    required this.sms,
+    required this.email,
+  });
+
+  final bool whatsApp;
+  final bool sms;
+  final bool email;
+
+  bool supports(CustomerOtpChannel channel) => switch (channel) {
+    CustomerOtpChannel.whatsApp => whatsApp,
+    CustomerOtpChannel.sms => sms,
+    CustomerOtpChannel.email => email,
+    CustomerOtpChannel.auto => whatsApp || sms || email,
+  };
+
+  /// Varsayılan kanal: SMS → e-posta → WhatsApp sırasıyla ilk çalışan.
+  CustomerOtpChannel get preferred =>
+      [CustomerOtpChannel.sms, CustomerOtpChannel.email, CustomerOtpChannel.whatsApp]
+          .firstWhere(supports, orElse: () => CustomerOtpChannel.sms);
+
+  List<CustomerOtpChannel> get enabled =>
+      [CustomerOtpChannel.sms, CustomerOtpChannel.email, CustomerOtpChannel.whatsApp]
+          .where(supports)
+          .toList();
+}
+
 class AuthController extends ChangeNotifier {
   AuthController({required this.api, required this.storage});
 
@@ -132,47 +180,73 @@ class AuthController extends ChangeNotifier {
   /// MÜŞTERİ KİMLİK KAPISI = OTP.
   ///
   /// Doğrudan token veren `/customer/login` ve `/customer/register` uçları kapatıldı (410):
-  /// ad + telefon + doğum tarihi bilinen bir müşterinin hesabı OTP'siz ele geçirilebiliyordu.
+  /// ad + telefon bilinen bir müşterinin hesabı OTP'siz ele geçirilebiliyordu.
   /// Giriş de kayıt da iki adımlıdır: kod iste → kodu doğrula.
+  ///
+  /// KİMLİKTE DOĞUM TARİHİ YOK: App Store 5.1.1(v) gereği girişte zorunlu tutulamaz (randevu
+  /// almak için gerekmez). Kayıtta yalnızca İSTEĞE BAĞLI olarak alınır.
 
-  /// OTP adım 1: telefona 6 haneli kod gönderilir. Güvenlik için kimlik eşleşmese de aynı yanıt
-  /// döner (hesap keşfi engellenir). Development ortamında kod yanıtta ('devCode') gelir.
-  /// [purpose]: 0 giriş, 1 kayıt.
+  /// Platformda hangi kanallardan kod gönderilebilir? Çalışmayan kanalı seçenek olarak
+  /// göstermemek için. Uç okunamazsa hepsi açık varsayılır (sunucu yine doğru kanala düşer).
+  Future<CustomerOtpChannels> customerOtpChannels() async {
+    try {
+      final data = await api.getPublic('/api/auth/customer/otp/channels');
+      final map = (data as Map).cast<String, dynamic>();
+      return CustomerOtpChannels(
+        whatsApp: map['whatsApp'] == true,
+        sms: map['sms'] == true,
+        email: map['email'] == true,
+      );
+    } catch (_) {
+      return const CustomerOtpChannels(whatsApp: true, sms: true, email: true);
+    }
+  }
+
+  /// OTP adım 1: seçilen kanaldan (SMS / e-posta / WhatsApp) 6 haneli kod gönderilir. Güvenlik
+  /// için kimlik eşleşmese de aynı yanıt döner (hesap keşfi engellenir). Development ortamında
+  /// kod yanıtta ('devCode') gelir.
+  ///
+  /// [purpose]: 0 giriş, 1 kayıt. [channel]: 0 otomatik, 1 WhatsApp, 2 SMS, 3 e-posta.
+  /// [email] YALNIZCA kayıtta anlamlıdır — girişte kod, kurum kayıtlarındaki adrese gider.
   Future<Map<String, dynamic>> customerOtpRequest({
     required String fullName,
     required String phone,
-    required String birthDate,
     int purpose = 0,
+    int channel = 0,
+    String? email,
   }) async {
+    final trimmedEmail = email?.trim();
     final data = await api.postPublic('/api/auth/customer/otp/request', {
       'fullName': fullName.trim(),
       'phone': phone.trim(),
-      'birthDate': birthDate,
       'purpose': purpose,
+      'channel': channel,
+      'email': (trimmedEmail == null || trimmedEmail.isEmpty) ? null : trimmedEmail,
     });
     return (data as Map).cast<String, dynamic>();
   }
 
   /// OTP adım 2: kod doğruysa giriş yapılır; [purpose] = 1 ise hesap açılıp giriş yapılır.
   /// gender: 0 Belirtilmemiş, 1 Kadın, 2 Erkek, 3 Diğer (Domain.Enums.Gender ile aynı).
+  /// [birthDate] isteğe bağlıdır ve yalnız kayıtta profile yazılır ('yyyy-MM-dd').
   Future<void> customerOtpVerify({
     required String fullName,
     required String phone,
-    required String birthDate,
     required String code,
     int purpose = 0,
     int gender = 0,
     String? email,
+    String? birthDate,
   }) async {
     final trimmedEmail = email?.trim();
     final data = await api.postPublic('/api/auth/customer/otp/verify', {
       'fullName': fullName.trim(),
       'phone': phone.trim(),
-      'birthDate': birthDate,
       'code': code.trim(),
       'purpose': purpose,
       'gender': gender,
       'email': (trimmedEmail == null || trimmedEmail.isEmpty) ? null : trimmedEmail,
+      'birthDate': (birthDate == null || birthDate.isEmpty) ? null : birthDate,
     });
     session = AuthSession.fromJson((data as Map).cast<String, dynamic>());
     _remember = true;

@@ -6,6 +6,7 @@ using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Application.Features.Tenants;
+using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
@@ -23,22 +24,58 @@ public sealed class TenantService : ITenantService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IFeatureService _features;
     private readonly IAuditLogger _audit;
+    private readonly ISearchIndexService _search;
 
-    public TenantService(GuzellikDbContext db, IPasswordHasher passwordHasher, IFeatureService features, IAuditLogger audit)
+    public TenantService(GuzellikDbContext db, IPasswordHasher passwordHasher, IFeatureService features, IAuditLogger audit, ISearchIndexService search)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _features = features;
         _audit = audit;
+        _search = search;
     }
 
+    /// <summary>
+    /// Kurum listesi (platform paneli) — kod / slug / ad ile arama.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>ARAMA NEDEN İKİ AŞAMALI?</b> <c>Tenant.Name</c> at-rest AES-GCM (rastgele nonce) ile
+    /// şifreli: aynı düz metin her satırda farklı ciphertext ürettiği için <c>Name.Contains(...)</c>
+    /// SQL'de HİÇBİR ZAMAN eşleşmez — eski kod tam olarak bunu yapıyordu ve ada göre arama sessizce
+    /// boş dönüyordu. <c>Code</c> ve <c>Slug</c> düz metindir, onlar SQL'de aranır; ada göre arama
+    /// ise çözülmüş değerler üzerinde bellekte yapılır.
+    /// </para>
+    /// <para>
+    /// ÖLÇEK: bellek yolu yalnız ARAMA yapıldığında ve yalnız kurum tablosunda çalışır (kurum sayısı
+    /// binler mertebesinde). Onbinleri geçerse ada da blind index eklenmeli.
+    /// </para>
+    /// </remarks>
     public async Task<Result<PagedResult<TenantDto>>> ListAsync(PageRequest request, CancellationToken cancellationToken = default)
     {
         var query = _db.Tenants.AsNoTracking().Include(x => x.Branches).Include(x => x.SubscriptionPlan).Where(x => x.Status != TenantStatus.Cancelled).OrderBy(x => x.Name).AsQueryable();
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var search = request.Search.Trim();
-            query = query.Where(x => x.Name.Contains(search) || x.Slug.Contains(search));
+            // Kod aramasında biçim toleransı: "ba1", "BA-1", "1" hepsi BA-01'i bulmalı.
+            var codeNumber = TenantCodeAllocator.ParseNumber(search);
+            var normalizedCode = codeNumber > 0 ? TenantCodeAllocator.Format(codeNumber) : null;
+
+            var all = await query.ToArrayAsync(cancellationToken);
+            var filtered = all
+                .Where(x =>
+                    (x.Code is not null && (
+                        x.Code.Contains(search, StringComparison.OrdinalIgnoreCase)
+                        || (normalizedCode is not null && x.Code.Equals(normalizedCode, StringComparison.OrdinalIgnoreCase))))
+                    || x.Slug.Contains(search, StringComparison.OrdinalIgnoreCase)
+                    || SearchText.FoldedContains(x.Name, search))
+                .ToArray();
+
+            var pageItems = filtered
+                .Skip(request.Skip).Take(request.SafePageSize)
+                .Select(x => x.ToDto()).ToArray();
+            return Result<PagedResult<TenantDto>>.Success(
+                new PagedResult<TenantDto>(pageItems, filtered.Length, request.SafePage, request.SafePageSize));
         }
 
         var total = await query.CountAsync(cancellationToken);
@@ -144,9 +181,14 @@ public sealed class TenantService : ITenantService
         }
 
         var tenant = new Tenant(request.Name, request.Slug, request.Plan, TenantStatus.Trial);
+        // Kurum kodu (BA-01) HER İKİ yoldan da atanır — platform paneli ve self-servis kayıt.
+        // Tek kaynak TenantCodeAllocator; iki yerde ayrı hesaplanırsa numaralar çakışır.
+        tenant.AssignCode(await TenantCodeAllocator.NextAsync(_db, 0, cancellationToken));
         tenant.SetProfile(request.Domain, request.OwnerName);
         tenant.SetContact(request.Phone, null);
         tenant.SetProfileExtras(null, null, NormalizeEmailCandidate(request.Email));
+        // Telefon şifreli olduğu için mükerrer kontrolü ancak blind index ile yapılabilir.
+        tenant.SetPhoneIndex(_search.BuildPhoneKey(request.Phone));
 
         if (!string.IsNullOrWhiteSpace(request.DefaultBranchName) && !string.IsNullOrWhiteSpace(request.DefaultBranchCity))
         {
@@ -374,15 +416,60 @@ public sealed class TenantService : ITenantService
         return Result<TenantDto>.Success(tenant.ToDto());
     }
 
+    /// <summary>
+    /// KURUMU VERİTABANINDAN GERÇEKTEN SİLER — geri alınamaz.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Eskiden bu metot yalnız <c>tenant.Cancel()</c> çağırıyordu: kurum listeden kayboluyor ama
+    /// tüm satırları (müşteriler, randevular, tahsilatlar, şifreli kişisel veriler) veritabanında
+    /// kalıyordu. Platform panelindeki "Sil" düğmesi böylece gerçekte silmiyordu; KVKK silme
+    /// talebini de karşılamıyordu.
+    /// </para>
+    /// <para>
+    /// Silme TEK TRANSACTION içinde yapılır: yarıda hata olursa hiçbir şey silinmez. Yarım
+    /// silinmiş kurum (şubesi gitmiş, müşterisi kalmış) hiç silinmemişten kötüdür.
+    /// </para>
+    /// <para>
+    /// Silinen kurumun <b>kodu yeniden dağıtılmaz</b> (bkz. <see cref="TenantCodeAllocator"/>):
+    /// eski destek kayıtları yanlış kurumu göstermesin.
+    /// </para>
+    /// </remarks>
     public async Task<Result> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var tenant = await _db.Tenants.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        // IgnoreQueryFilters: daha önce iptal edilmiş (soft-delete) kurumlar da silinebilmeli —
+        // aksi hâlde eski davranışla iptal edilenler kalıcı olarak temizlenemezdi.
+        var tenant = await _db.Tenants.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (tenant is null) return Result.Failure(Error.NotFound("Kurum bulunamadı."));
-        if (tenant.Status == TenantStatus.Cancelled) return Result.Success();
 
-        tenant.Cancel();
+        var name = tenant.Name;
+        var code = tenant.Code;
+
+        // Denetim kaydı silmeden ÖNCE yazılır: kayıt kurumun kendi satırlarıyla birlikte silinecek
+        // olsa bile, platform genelindeki log tablosunda iz kalması gerekiyor.
+        await _audit.LogAsync(id, null, "DeleteTenant", "Tenant", id,
+            $"Kurum veritabanından KALICI olarak silindi: {name} ({code ?? "kodsuz"}).", null, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
-        return Result.Success();
+
+        // Takip edilen varlıklar ham SQL silmesiyle çakışmasın (silinmiş satırı güncellemeye
+        // çalışan bir SaveChanges concurrency hatası verirdi).
+        _db.ChangeTracker.Clear();
+
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational
+            ? await _db.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+        var deleted = await TenantPurge.PurgeAsync(_db, id, null, cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
+
+        _features.InvalidateTenant(id);
+
+        var rows = deleted.Values.Sum();
+        return rows > 0 || deleted.Count > 0
+            ? Result.Success()
+            : Result.Failure(Error.NotFound("Kurum bulunamadı."));
     }
 
     public async Task<Result> GrantAccessAsync(Guid tenantId, GrantTenantAccessRequest request, CancellationToken cancellationToken = default)

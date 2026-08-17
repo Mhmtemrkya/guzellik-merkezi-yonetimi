@@ -105,15 +105,49 @@ export interface PortalAppointment {
   isOnline: boolean
 }
 
+/**
+ * Müşteri girişinin kimliği: ad soyad + telefon.
+ *
+ * DOĞUM TARİHİ YOK: App Store 5.1.1(v) gereği girişte zorunlu tutulamaz (randevu almak için
+ * gerekmez). Kayıtta isteğe bağlı olarak alınır — bkz. CustomerRegisterInput.
+ */
 export interface CustomerLoginInput {
   fullName: string
   phone: string
-  birthDate: string // 'yyyy-MM-dd'
 }
 
 export interface CustomerRegisterInput extends CustomerLoginInput {
   gender: number // Gender enum: 0 Unspecified, 1 Female, 2 Male, 3 Other
   email: string | null
+  birthDate?: string | null // 'yyyy-MM-dd' — İSTEĞE BAĞLI (doğum günü kampanyaları için)
+}
+
+/**
+ * Doğrulama kodunun gideceği kanal. WhatsApp TEK kanal değildir (App Store 3.2.2(v)).
+ * Sunucu tarafındaki sayılarla birebir: Auto 0, WhatsApp 1, Sms 2, Email 3.
+ */
+export type CustomerOtpChannel = 'whatsapp' | 'sms' | 'email'
+
+const channelCode = (channel?: CustomerOtpChannel): number =>
+  channel === 'whatsapp' ? 1 : channel === 'sms' ? 2 : channel === 'email' ? 3 : 0
+
+export interface CustomerOtpChannels {
+  whatsApp: boolean
+  sms: boolean
+  email: boolean
+}
+
+/**
+ * Platformda hangi kanallardan kod gönderilebilir? Dönen bilgi platform yapılandırmasıdır;
+ * kullanıcı kimliğiyle ilgisi yoktur. Amaç: çalışmayan bir kanalı seçenek olarak göstermemek.
+ */
+export async function getCustomerOtpChannels(): Promise<CustomerOtpChannels> {
+  try {
+    return await portalRequest<CustomerOtpChannels>('/api/auth/customer/otp/channels', { auth: false })
+  } catch {
+    // Uç okunamazsa seçenekleri kapatmak yerine hepsini göster: sunucu yine doğru kanala düşer.
+    return { whatsApp: true, sms: true, email: true }
+  }
 }
 
 // ---- Oturum saklama ----
@@ -189,19 +223,26 @@ export type CustomerOtpPurpose = 'login' | 'register'
 
 const purposeCode = (purpose: CustomerOtpPurpose): number => (purpose === 'register' ? 1 : 0)
 
-/** OTP adım 1: telefona 6 haneli kod gönderilir (dev ortamında kod yanıtta döner). */
+/**
+ * OTP adım 1: seçilen kanaldan (SMS / WhatsApp / e-posta) 6 haneli kod gönderilir.
+ * Dev ortamında kod yanıtta döner.
+ *
+ * `email` YALNIZCA kayıt akışında anlamlıdır: girişte kod, kurum kayıtlarındaki adrese gider —
+ * kullanıcıdan adres istemek, yanlış yazıldığında sessiz başarısızlığa dönüşürdü.
+ */
 export function customerOtpRequest(
-  input: CustomerLoginInput,
+  input: CustomerLoginInput & { channel?: CustomerOtpChannel; email?: string | null },
   purpose: CustomerOtpPurpose = 'login',
-): Promise<{ message?: string; devCode?: string | null }> {
-  return portalRequest<{ message?: string; devCode?: string | null }>('/api/auth/customer/otp/request', {
+): Promise<{ message?: string; hint?: string | null; devCode?: string | null }> {
+  return portalRequest<{ message?: string; hint?: string | null; devCode?: string | null }>('/api/auth/customer/otp/request', {
     method: 'POST',
     auth: false,
     body: {
       fullName: input.fullName,
       phone: input.phone,
-      birthDate: input.birthDate,
       purpose: purposeCode(purpose),
+      channel: channelCode(input.channel),
+      email: input.email || null,
     },
   })
 }
@@ -213,6 +254,7 @@ export async function customerOtpVerify(
     purpose?: CustomerOtpPurpose
     gender?: number
     email?: string | null
+    birthDate?: string | null
   },
 ): Promise<CustomerSession> {
   const purpose = input.purpose ?? 'login'
@@ -222,11 +264,12 @@ export async function customerOtpVerify(
     body: {
       fullName: input.fullName,
       phone: input.phone,
-      birthDate: input.birthDate,
       code: input.code,
       purpose: purposeCode(purpose),
       gender: input.gender ?? 0,
       email: input.email || null,
+      // İsteğe bağlı: yalnız kayıtta ve yalnız kullanıcı girdiyse profile yazılır.
+      birthDate: input.birthDate || null,
     },
   })
   storeCustomerSession(session)

@@ -108,8 +108,67 @@ public sealed class Tenant : Entity
     /// <summary>Ücretli abonelik bitiş tarihi. Null ise süresiz; süre dolduğunda trial gibi otomatik Suspended olur.</summary>
     public DateTime? SubscriptionEndsAtUtc { get; private set; }
 
+    /// <summary>
+    /// İnsan-okur kurum kodu — <c>BA-01</c>, <c>BA-02</c>, … Destek ve platform ekibi kurumu bu kodla bulur.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ŞİFRELENMEZ. <see cref="Name"/> ve <see cref="Phone"/> at-rest AES-GCM (rastgele nonce) ile
+    /// şifreli olduğundan o kolonlarda SQL eşitliği/araması çalışmaz. Kod düz metin + UNIQUE
+    /// indekslidir; hem aranabilir hem de mükerrer kayda karşı gerçek bir kapıdır.
+    /// </para>
+    /// <para>
+    /// Eski kurumlarda NULL olabilir (migration geriye dönük kod üretmez; backfill doldurur).
+    /// </para>
+    /// </remarks>
+    public string? Code { get; private set; }
+
+    /// <summary>
+    /// Kurum telefonunun blind index'i (HMAC) — <b>yalnızca mükerrer kayıt kontrolü için</b>.
+    /// </summary>
+    /// <remarks>
+    /// Telefon şifreli saklandığı için "bu numarayla kurum var mı?" sorusu SQL'de sorulamaz; her
+    /// kaydı çözmek 10 bin kurumda kabul edilemez. Bu kolon ham numarayı İÇERMEZ (anahtar olmadan
+    /// geri döndürülemez) ama eşitlik karşılaştırmasına ve UNIQUE olmayan indekse izin verir.
+    /// Doldurulması <see cref="SetPhoneIndex"/> ile altyapı katmanına aittir (anahtar orada).
+    /// </remarks>
+    public string? PhoneIndex { get; private set; }
+
+    /// <summary>
+    /// Kurum kendi kendine mi kayıt oldu (self-servis 14 gün deneme)? Platform panelinden açılan
+    /// kurumlarda false. Denetim ve destek için ayrımı korumak gerekiyor.
+    /// </summary>
+    public bool IsSelfSignup { get; private set; }
+
     public ICollection<Branch> Branches { get; private set; } = new List<Branch>();
     public ICollection<TenantUser> Users { get; private set; } = new List<TenantUser>();
+
+    /// <summary>
+    /// Kurum kodunu atar. Kod DEĞİŞMEZ: bir kez atandıktan sonra üzerine yazılamaz — destek
+    /// kayıtlarında, PDF'lerde ve yazışmalarda geçtiği için sabit kalmak zorundadır.
+    /// </summary>
+    public void AssignCode(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) throw new DomainException("Kurum kodu boş olamaz.");
+        if (!string.IsNullOrWhiteSpace(Code) && Code != code.Trim())
+            throw new DomainException($"Kurum kodu değiştirilemez (mevcut: {Code}).");
+        Code = code.Trim().ToUpperInvariant();
+        Touch();
+    }
+
+    /// <summary>Telefon blind index'ini yazar (altyapı katmanı üretir). Boş → temizler.</summary>
+    public void SetPhoneIndex(string? index)
+    {
+        PhoneIndex = string.IsNullOrWhiteSpace(index) ? null : index.Trim();
+        Touch();
+    }
+
+    /// <summary>Self-servis kayıt işareti — yalnızca kayıt akışı çağırır.</summary>
+    public void MarkSelfSignup()
+    {
+        IsSelfSignup = true;
+        Touch();
+    }
 
     public void Rename(string name)
     {

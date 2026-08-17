@@ -152,16 +152,53 @@ public sealed class SecurityHardeningTests
     // =====================================================================================
 
     [Fact]
-    public async Task CustomerRegister_IsRejected_WithoutPhoneVerification()
+    public async Task CustomerRegister_IsRejected_WithoutAnyVerifiedChannel()
     {
         var options = NewOptions();
         await using var db = NewDb(options);
-        // phoneVerified:false ERKEN döner; hiçbir bağımlılığa dokunulmaz.
-        var service = new AuthService(db, null!, null!, null!, null!, null!, null!, null!);
+        // Hiçbir kanal kanıtlanmadıysa ERKEN döner; hiçbir bağımlılığa dokunulmaz.
+        var service = new AuthService(db, null!, null!, null!, null!, null!, null!, null!, null!);
 
         var result = await service.CustomerRegisterAsync(
             new CustomerRegisterRequest("Ayşe Yılmaz", "05551112233", new DateOnly(1990, 1, 1), Gender.Female, null),
-            phoneVerified: false);
+            phoneVerified: false,
+            verifiedEmail: null);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Unauthorized", result.Error.Code);
+    }
+
+    /// <summary>
+    /// E-POSTA İLE DOĞRULAMANIN SINIRI: kod e-postaya gittiyse telefon sahipliği kanıtlanmamıştır.
+    /// Bu yüzden başkasının numarasını yazan biri, o numaraya ait MEVCUT hesabı sahiplenemez —
+    /// aksi hâlde e-posta kanalı bir hesap ele geçirme yoluna dönüşürdü.
+    /// </summary>
+    [Fact]
+    public async Task CustomerRegister_WithEmailProofOnly_CannotClaimAnotherPersonsPhone()
+    {
+        var options = NewOptions();
+        Guid tenantId;
+        await using (var seed = NewDb(options))
+        {
+            var tenant = new Tenant("Bireysel Müşteriler", SystemTenant.IndividualSlug, "Sistem", TenantStatus.Active);
+            var branch = tenant.AddBranch(SystemTenant.IndividualBranchName, "—", true);
+            seed.Tenants.Add(tenant);
+            await seed.SaveChangesAsync();
+            tenantId = tenant.Id;
+
+            // Numaranın gerçek sahibi — e-postası saldırganın adresi DEĞİL.
+            var owner = new Customer(tenantId, branch.Id, "Ayşe Yılmaz", "05551112233", "ayse@example.com");
+            seed.Customers.Add(owner);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = NewDb(options);
+        var service = new AuthService(db, null!, null!, null!, null!, null!, null!, null!, null!);
+
+        var result = await service.CustomerRegisterAsync(
+            new CustomerRegisterRequest("Saldırgan Kişi", "05551112233", null, Gender.Unspecified, "saldirgan@example.com"),
+            phoneVerified: false,
+            verifiedEmail: "saldirgan@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal("Unauthorized", result.Error.Code);

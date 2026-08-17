@@ -404,6 +404,75 @@ public static class DatabaseBootstrap
     }
 
     /// <summary>
+    /// KURUM KODU BACKFILL'İ — mevcut kurumlara <c>BA-01</c>, <c>BA-02</c>, … atar.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Kod kolonu sonradan eklendiği için eski kurumlarda NULL'dur; destek ekibi onları kodla
+    /// bulamaz. Veri-only + idempotent: yalnız <c>Code IS NULL</c> satırlara dokunur.
+    /// </para>
+    /// <para>
+    /// Sıra <b>oluşturma tarihine</b> göredir; en eski kurum BA-01 olur. Alfabetik sıra kullanmak,
+    /// yeni bir kurum eklendiğinde numaraların anlamını değiştirmezdi ama "1 numara ilk müşteri"
+    /// beklentisini bozardı.
+    /// </para>
+    /// <para>
+    /// Telefon blind index'i de burada doldurulur: mükerrer kurum kontrolü ona bağlı ve şifreli
+    /// kolondan SQL'le hesaplanamaz.
+    /// </para>
+    /// </remarks>
+    public static async Task BackfillTenantCodesAsync(IServiceProvider services)
+    {
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("TenantCodeBackfill");
+        try
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<GuzellikDbContext>();
+            var search = scope.ServiceProvider.GetRequiredService<Application.Abstractions.ISearchIndexService>();
+
+            // IgnoreQueryFilters: iptal edilmiş kurumlar da kod almalı (destek kaydı onlara da bakar).
+            var all = await db.Tenants.IgnoreQueryFilters().OrderBy(t => t.CreatedAtUtc).ToListAsync();
+            if (all.Count == 0) return;
+
+            var next = all.Max(t => Services.TenantCodeAllocator.ParseNumber(t.Code));
+            var codeCount = 0;
+            var indexCount = 0;
+
+            foreach (var tenant in all)
+            {
+                if (string.IsNullOrWhiteSpace(tenant.Code))
+                {
+                    tenant.AssignCode(Services.TenantCodeAllocator.Format(++next));
+                    codeCount++;
+                }
+                // Telefonu olan ama indeksi olmayan kurumlar (kolon yeni eklendi).
+                if (tenant.PhoneIndex is null && !string.IsNullOrWhiteSpace(tenant.Phone))
+                {
+                    var key = search.BuildPhoneKey(tenant.Phone);
+                    if (key is not null)
+                    {
+                        tenant.SetPhoneIndex(key);
+                        indexCount++;
+                    }
+                }
+            }
+
+            if (codeCount > 0 || indexCount > 0)
+            {
+                await db.SaveChangesAsync();
+                logger.LogInformation(
+                    "{Codes} kuruma kod atandı, {Indexes} kurumun telefon indeksi oluşturuldu.",
+                    codeCount, indexCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Şema henüz yoksa açılış bundan ötürü durmamalı; kod olmadan da sistem çalışır.
+            logger.LogWarning(ex, "Kurum kodu backfill'i tamamlanamadı.");
+        }
+    }
+
+    /// <summary>
     /// İPTAL ARŞİVİ BAKIMI — her ortamda çalışır, veri-only ve idempotenttir.
     /// <list type="number">
     ///   <item>

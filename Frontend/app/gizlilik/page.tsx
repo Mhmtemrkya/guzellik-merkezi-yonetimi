@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import LegalPage, { LegalFacts, LegalList, LegalSection, MailLink } from '@/components/legal/LegalPage'
+import { company } from '@/lib/legal/company'
 
 export const metadata: Metadata = {
   title: 'Gizlilik Politikası — BeautyAsist',
@@ -6,147 +8,137 @@ export const metadata: Metadata = {
     'BeautyAsist güzellik merkezi yönetim uygulamasının kişisel verileri işleme, saklama ve koruma esaslarını açıklayan gizlilik politikası.',
 }
 
-const SON_GUNCELLEME = '8 Temmuz 2026'
-const ILETISIM_EPOSTA = 'oguzhan.mindivanli@gmail.com'
-const SIRKET = 'Maydanoz Yazılım'
-
-function Bolum({ baslik, children }: { baslik: string; children: React.ReactNode }) {
-  return (
-    <section className="mt-8">
-      <h2 className="text-lg font-semibold text-neutral-900">{baslik}</h2>
-      <div className="mt-2 space-y-2 text-[15px] leading-relaxed text-neutral-700">{children}</div>
-    </section>
-  )
-}
-
 export default function GizlilikPage() {
   return (
-    <main className="mx-auto min-h-screen max-w-3xl bg-white px-5 py-12 text-neutral-800 sm:px-8">
-      <header className="border-b border-neutral-200 pb-6">
-        <p className="text-sm font-medium text-neutral-500">BeautyAsist</p>
-        <h1 className="mt-1 text-2xl font-bold text-neutral-900 sm:text-3xl">Gizlilik Politikası</h1>
-        <p className="mt-2 text-sm text-neutral-500">Son güncelleme: {SON_GUNCELLEME}</p>
-      </header>
-
-      <div className="mt-6">
-        <p className="text-[15px] leading-relaxed text-neutral-700">
-          Bu gizlilik politikası, <strong>BeautyAsist</strong> mobil ve masaüstü uygulaması ile web panelinin
-          (“Uygulama”) kişisel verileri nasıl topladığını, kullandığını, sakladığını ve koruduğunu açıklar.
-          Uygulama, güzellik merkezleri ve klinikler için randevu, müşteri, stok, paket satış ve finans yönetimi
-          amacıyla işletme çalışanları tarafından kullanılır.
-        </p>
-      </div>
-
-      <Bolum baslik="1. Veri Sorumlusu">
+    <LegalPage
+      eyebrow="Yasal"
+      title="Gizlilik Politikası"
+      intro={
+        <>
+          Bu politika, <strong>{company.brand}</strong> mobil, masaüstü ve web uygulamasının
+          (“Uygulama”) kişisel verileri nasıl topladığını, kullandığını, sakladığını ve koruduğunu
+          açıklar. Uygulama; güzellik merkezleri ve klinikler için randevu, müşteri, stok, paket
+          satış ve finans yönetimi amacıyla işletme çalışanları tarafından kullanılır.
+        </>
+      }
+    >
+      <LegalSection title="1. Veri sorumlusu">
         <p>
-          Uygulama {SIRKET} tarafından geliştirilmiştir. Uygulamayı kullanan güzellik merkezi/işletme, kendi
-          müşterilerine ait verilerin işlenmesinden birinci derecede sorumlu olan veri sorumlusudur. {SIRKET},
-          işletmeler adına verileri işleyen hizmet sağlayıcı (veri işleyen) konumundadır.
+          Uygulama {company.shortName} tarafından geliştirilmiştir. Uygulamayı kullanan güzellik
+          merkezi/işletme, kendi müşterilerine ait verilerin işlenmesinden birinci derecede sorumlu
+          olan <strong>veri sorumlusudur</strong>. {company.shortName}, işletmeler adına verileri
+          işleyen hizmet sağlayıcı (<strong>veri işleyen</strong>) konumundadır.
         </p>
-      </Bolum>
+      </LegalSection>
 
-      <Bolum baslik="2. Topladığımız Veriler">
+      <LegalSection title="2. Topladığımız veriler">
         <p>Uygulama, işletmenin operasyonlarını yürütmesi için aşağıdaki verileri işleyebilir:</p>
-        <ul className="ml-5 list-disc space-y-1">
-          <li>
-            <strong>Kullanıcı (çalışan) hesap bilgileri:</strong> ad-soyad, e-posta, telefon, rol ve şifre (şifreler
-            geri döndürülemez şekilde hash’lenerek saklanır).
-          </li>
-          <li>
-            <strong>Müşteri bilgileri:</strong> ad-soyad, telefon numarası, T.C. kimlik numarası (girildiyse),
-            e-posta, adres ve müşteriye ait notlar.
-          </li>
-          <li>
-            <strong>Operasyonel veriler:</strong> randevular, seanslar, paket ve hizmet satışları, stok, ödeme/kasa
-            kayıtları ve finansal işlemler.
-          </li>
-          <li>
-            <strong>Cihaz ve bildirim verileri:</strong> anlık bildirim (push) gönderebilmek için cihazın bildirim
-            token’ı ve temel cihaz/platform bilgisi.
-          </li>
-          <li>
-            <strong>Teknik kayıtlar:</strong> güvenlik ve hata takibi amacıyla oturum, IP adresi ve işlem (audit)
-            günlükleri.
-          </li>
-        </ul>
-      </Bolum>
+        <LegalList
+          items={[
+            <><strong>Kullanıcı (çalışan) hesap bilgileri:</strong> ad-soyad, e-posta, telefon, rol ve şifre (şifreler geri döndürülemez şekilde hash’lenerek saklanır).</>,
+            <><strong>Müşteri bilgileri:</strong> ad-soyad, telefon numarası, T.C. kimlik numarası (girildiyse), e-posta, adres ve müşteriye ait notlar.</>,
+            <><strong>Operasyonel veriler:</strong> randevular, seanslar, paket ve hizmet satışları, stok, ödeme/kasa kayıtları ve finansal işlemler.</>,
+            <><strong>Abonelik ve fatura verileri:</strong> abonelik paketi, dönem, fatura kayıtları ve ödeme sonuçları.</>,
+            <><strong>Cihaz ve bildirim verileri:</strong> anlık bildirim (push) gönderebilmek için cihazın bildirim token’ı ve temel cihaz/platform bilgisi.</>,
+            <><strong>Teknik kayıtlar:</strong> güvenlik ve hata takibi amacıyla oturum, IP adresi ve işlem (audit) günlükleri.</>,
+          ]}
+        />
+      </LegalSection>
 
-      <Bolum baslik="3. Verileri Kullanma Amaçlarımız">
-        <ul className="ml-5 list-disc space-y-1">
-          <li>Randevu, müşteri, paket, stok ve finans yönetimi hizmetini sunmak,</li>
-          <li>Randevu hatırlatmaları ve işlemlerle ilgili anlık bildirimler göndermek,</li>
-          <li>Hesap güvenliğini sağlamak, yetkisiz erişimi tespit etmek ve önlemek,</li>
-          <li>Yasal yükümlülükleri yerine getirmek ve hizmeti iyileştirmek.</li>
-        </ul>
+      <LegalSection title="3. Verileri kullanma amaçlarımız">
+        <LegalList
+          items={[
+            'Randevu, müşteri, paket, stok ve finans yönetimi hizmetini sunmak,',
+            'Randevu hatırlatmaları ve işlemlerle ilgili anlık bildirimler göndermek,',
+            'Abonelik bedelini tahsil etmek ve fatura düzenlemek,',
+            'Hesap güvenliğini sağlamak, yetkisiz erişimi tespit etmek ve önlemek,',
+            'Yasal yükümlülükleri yerine getirmek ve hizmeti iyileştirmek.',
+          ]}
+        />
         <p>Verileriniz pazarlama amacıyla üçüncü taraflara satılmaz veya kiralanmaz.</p>
-      </Bolum>
+      </LegalSection>
 
-      <Bolum baslik="4. Veri Güvenliği">
+      <LegalSection title="4. Ödeme verileri">
         <p>
-          Ad, telefon, T.C. kimlik numarası, adres ve notlar gibi hassas müşteri alanları veritabanında
-          <strong> AES-256-GCM</strong> ile şifrelenerek saklanır. Tüm veri iletişimi <strong>HTTPS</strong> üzerinden
-          şifreli olarak yapılır. Şifreler güçlü algoritmalarla hash’lenir ve düz metin olarak tutulmaz. Erişim,
-          rol tabanlı yetkilendirme ile sınırlandırılır.
+          Abonelik ödemeleri <strong>{company.paymentProvider}</strong> altyapısı üzerinden alınır.
+          Kart numarası, son kullanma tarihi ve CVV gibi bilgiler{' '}
+          <strong>hiçbir aşamada sunucularımıza iletilmez</strong>; ödeme, ödeme kuruluşunun
+          barındırdığı güvenli sayfada tamamlanır.
         </p>
-      </Bolum>
+        <p>
+          Kartınızı kaydetmeyi seçerseniz, kart bilgisi yerine ödeme kuruluşunun ürettiği ve tek
+          başına kart bilgisi taşımayan <strong>jeton (token)</strong> saklanır; bu jeton
+          veritabanında şifrelenir ve yalnızca abonelik yenilemelerinde kullanılır. Kartınızı
+          panelden dilediğiniz zaman kaldırabilirsiniz.
+        </p>
+      </LegalSection>
 
-      <Bolum baslik="5. Üçüncü Taraf Hizmetler">
+      <LegalSection title="5. Veri güvenliği">
+        <p>
+          Ad, telefon, T.C. kimlik numarası, adres ve notlar gibi hassas müşteri alanları
+          veritabanında <strong>AES-256-GCM</strong> ile şifrelenerek saklanır. Tüm veri iletişimi{' '}
+          <strong>HTTPS</strong> üzerinden şifreli olarak yapılır. Şifreler güçlü algoritmalarla
+          hash’lenir ve düz metin olarak tutulmaz. Erişim, rol tabanlı yetkilendirme ile
+          sınırlandırılır ve kritik işlemler denetim günlüğüne yazılır.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="6. Üçüncü taraf hizmetler">
         <p>Uygulama, işlevini yerine getirmek için sınırlı sayıda güvenilir hizmetten yararlanır:</p>
-        <ul className="ml-5 list-disc space-y-1">
-          <li>
-            <strong>Firebase Cloud Messaging (Google):</strong> anlık bildirimlerin iletilmesi için cihaz token’ı
-            kullanılır.
-          </li>
-          <li>
-            <strong>Apple Push Notification service (Apple):</strong> iOS cihazlara bildirim iletimi için kullanılır.
-          </li>
-          <li>
-            <strong>Barındırma/altyapı sağlayıcıları:</strong> verilerin güvenli sunucularda saklanması için
-            kullanılır.
-          </li>
-        </ul>
-      </Bolum>
+        <LegalList
+          items={[
+            <><strong>{company.paymentProvider}:</strong> abonelik ödemelerinin güvenli şekilde tahsil edilmesi.</>,
+            <><strong>Firebase Cloud Messaging (Google):</strong> anlık bildirimlerin iletilmesi için cihaz token’ı kullanılır.</>,
+            <><strong>Apple Push Notification service (Apple):</strong> iOS cihazlara bildirim iletimi için kullanılır.</>,
+            <><strong>Mesajlaşma sağlayıcıları:</strong> randevu hatırlatma ve bilgilendirme için WhatsApp, SMS ve e-posta servisleri.</>,
+            <><strong>Barındırma/altyapı sağlayıcıları:</strong> verilerin güvenli sunucularda saklanması için kullanılır.</>,
+          ]}
+        />
+      </LegalSection>
 
-      <Bolum baslik="6. Verilerin Saklanması ve Silinmesi">
+      <LegalSection title="7. Verilerin saklanması ve silinmesi">
         <p>
-          Kişisel veriler, hizmetin sunulması ve yasal saklama süreleri boyunca tutulur. İşletme veya ilgili kişi
-          talep ettiğinde, yasal yükümlülükler saklı kalmak kaydıyla veriler silinir veya anonim hale getirilir.
+          Kişisel veriler, hizmetin sunulması ve yasal saklama süreleri boyunca tutulur. İşletme veya
+          ilgili kişi talep ettiğinde, yasal yükümlülükler saklı kalmak kaydıyla veriler silinir veya
+          anonim hâle getirilir.
         </p>
-      </Bolum>
+      </LegalSection>
 
-      <Bolum baslik="7. Haklarınız (KVKK / GDPR)">
+      <LegalSection title="8. Haklarınız (KVKK / GDPR)">
         <p>
-          İlgili kişi olarak; verilerinize erişme, düzeltilmesini veya silinmesini isteme, işlenmesine itiraz etme ve
-          verilerinizin bir kopyasını talep etme haklarına sahipsiniz. Bu haklarınızı kullanmak için aşağıdaki
-          iletişim adresinden bize ulaşabilirsiniz.
+          İlgili kişi olarak; verilerinize erişme, düzeltilmesini veya silinmesini isteme, işlenmesine
+          itiraz etme ve verilerinizin bir kopyasını talep etme haklarına sahipsiniz. Bu haklarınızı
+          kullanmak için aşağıdaki iletişim adresinden bize ulaşabilirsiniz.
         </p>
-      </Bolum>
+      </LegalSection>
 
-      <Bolum baslik="8. Çocukların Gizliliği">
+      <LegalSection title="9. Çocukların gizliliği">
         <p>
-          Uygulama bir işletme yönetim aracıdır ve 13 yaşın altındaki bireylere yönelik değildir; bu kişilerden
-          bilerek veri toplamayız.
+          Uygulama bir işletme yönetim aracıdır ve 13 yaşın altındaki bireylere yönelik değildir; bu
+          kişilerden bilerek veri toplamayız.
         </p>
-      </Bolum>
+      </LegalSection>
 
-      <Bolum baslik="9. Değişiklikler">
+      <LegalSection title="10. Değişiklikler">
         <p>
-          Bu politika zaman zaman güncellenebilir. Güncellemeler bu sayfada yayımlandığı tarihte yürürlüğe girer.
+          Bu politika zaman zaman güncellenebilir. Güncellemeler bu sayfada yayımlandığı tarihte
+          yürürlüğe girer.
         </p>
-      </Bolum>
+      </LegalSection>
 
-      <Bolum baslik="10. İletişim">
-        <p>
-          Gizlilikle ilgili soru ve talepleriniz için:{' '}
-          <a className="font-medium text-indigo-600 underline" href={`mailto:${ILETISIM_EPOSTA}`}>
-            {ILETISIM_EPOSTA}
-          </a>
-        </p>
-      </Bolum>
-
-      <footer className="mt-12 border-t border-neutral-200 pt-6 text-sm text-neutral-400">
-        © {new Date().getFullYear()} {SIRKET} — BeautyAsist
-      </footer>
-    </main>
+      <LegalSection title="11. İletişim">
+        <LegalFacts
+          rows={[
+            { label: 'Ticaret unvanı', value: company.legalName },
+            { label: 'Adres', value: company.address },
+            {
+              label: 'E-posta',
+              value: <MailLink />,
+            },
+            { label: 'Telefon', value: company.phone },
+          ]}
+        />
+      </LegalSection>
+    </LegalPage>
   )
 }

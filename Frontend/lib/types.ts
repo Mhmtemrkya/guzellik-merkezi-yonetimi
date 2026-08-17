@@ -212,6 +212,13 @@ export interface ApiTenant {
   subscriptionPeriod?: string | null
   /** Ücretli abonelik bitiş tarihi (ISO). Null ise süresiz/deneme. */
   subscriptionEndsAtUtc?: string | null
+  /**
+   * İnsan-okur kurum kodu (`BA-01`) — destek ekibi kurumu bu kodla bulur.
+   * Kod kolonu sonradan eklendiği için çok eski kayıtlarda null olabilir (backfill doldurur).
+   */
+  code?: string | null
+  /** Kurum kendi kendine mi kaydoldu (self-servis 14 gün deneme)? */
+  isSelfSignup?: boolean
 }
 
 export interface ApiTenantAvailabilityConflict {
@@ -318,6 +325,10 @@ export interface Tenant {
   subscriptionPeriod: string | null
   /** Ücretli abonelik bitiş tarihi (ISO). Null ise süresiz/deneme. */
   subscriptionEndsAt: string | null
+  /** İnsan-okur kurum kodu (`BA-01`). Çok eski kayıtlarda boş olabilir. */
+  code: string
+  /** Kurum kendi kendine mi kaydoldu (self-servis 14 gün deneme)? */
+  isSelfSignup: boolean
 }
 
 // ---------------------------------------------------------------------------

@@ -5,22 +5,32 @@ using GuzellikMerkezi.Application.Features.Auth;
 
 namespace GuzellikMerkezi.Api.Endpoints;
 
-/// <summary>OTP kod isteği — kimlik alanları + akış (giriş / kayıt).</summary>
+/// <summary>
+/// OTP kod isteği — kimlik alanları + akış (giriş / kayıt) + kodun gideceği kanal.
+/// </summary>
+/// <remarks>
+/// <paramref name="BirthDate"/> KABUL EDİLİR AMA KULLANILMAZ. Doğum tarihi kimlikten çıkarıldı
+/// (App Store 5.1.1(v)); alan yalnızca mağazada inceleme bekleyen eski istemciler (1.0/5) hâlâ
+/// gönderdiği için duruyor — backend önce yayına alınırsa o sürüm kırılmasın. Kayıt akışında
+/// verilirse müşteri profiline yazılır.
+/// </remarks>
 public sealed record CustomerOtpRequestBody(
     string FullName,
     string Phone,
-    DateOnly BirthDate,
-    Services.CustomerOtpPurpose Purpose = Services.CustomerOtpPurpose.Login);
+    DateOnly? BirthDate = null,
+    Services.CustomerOtpPurpose Purpose = Services.CustomerOtpPurpose.Login,
+    Services.CustomerOtpChannel Channel = Services.CustomerOtpChannel.Auto,
+    string? Email = null);
 
 /// <summary>
-/// OTP doğrulama isteği — kimlik alanları + WhatsApp'a gelen 6 haneli kod.
-/// Kayıt akışında ayrıca cinsiyet/e-posta taşınır (kod doğrulanınca hesap açılır).
+/// OTP doğrulama isteği — kimlik alanları + gelen 6 haneli kod.
+/// Kayıt akışında ayrıca cinsiyet/e-posta/doğum tarihi taşınır (kod doğrulanınca hesap açılır).
 /// </summary>
 public sealed record CustomerOtpVerifyRequest(
     string FullName,
     string Phone,
-    DateOnly BirthDate,
     string Code,
+    DateOnly? BirthDate = null,
     Services.CustomerOtpPurpose Purpose = Services.CustomerOtpPurpose.Login,
     GuzellikMerkezi.Domain.Enums.Gender Gender = GuzellikMerkezi.Domain.Enums.Gender.Unspecified,
     string? Email = null);
@@ -49,17 +59,36 @@ public static class AuthEndpoints
         group.MapPost("/customer/login", OtpRequired).RequireRateLimiting("customer-auth");
         group.MapPost("/customer/register", OtpRequired).RequireRateLimiting("customer-auth");
 
-        // Adım 1: kimlik eşleşirse (kayıtta her hâlükârda) WhatsApp'a 6 haneli kod gider.
+        // Hangi kanallardan kod gönderilebilir? İstemci yalnız çalışan seçenekleri göstersin diye
+        // AÇIK bir uç: dönen bilgi platform yapılandırmasıdır, kimlikle ilgisi yoktur (sızıntı değil).
+        //
+        // KOVA AYRIMI: bu uç giriş ekranı her açıldığında çağrılır. "customer-auth" kovasında
+        // (5 dakikada 10 istek) olsaydı, ekranlar arasında gezinen kullanıcı kendi GİRİŞ DENEME
+        // bütçesini tüketip 429'a düşerdi. Salt-okunur ve ucuz olduğu için genel gezinme kovası.
+        group.MapGet("/customer/otp/channels", async (Services.CustomerOtpService otp, HttpContext http, CancellationToken ct) =>
+        {
+            var channels = await otp.GetAvailableChannelsAsync(ct);
+            return Results.Ok(ApiResponse<object>.Ok(new
+            {
+                whatsApp = channels.WhatsApp,
+                sms = channels.Sms,
+                email = channels.Email,
+            }, http.TraceIdentifier));
+        }).RequireRateLimiting("public-browse");
+
+        // Adım 1: kimlik eşleşirse (kayıtta her hâlükârda) seçilen kanaldan 6 haneli kod gider.
         // Simülasyon modunda gerçek gönderim yapılmaz; Development'ta kod yanıtta döner.
         group.MapPost("/customer/otp/request", async (CustomerOtpRequestBody request, Services.CustomerOtpService otp, HttpContext http, CancellationToken ct) =>
             (await otp.RequestAsync(
-                new CustomerLoginRequest(request.FullName, request.Phone, request.BirthDate),
-                request.Purpose, ct)).ToHttpResult(http)).RequireRateLimiting("customer-auth");
+                new CustomerLoginRequest(request.FullName, request.Phone),
+                request.Email,
+                request.Purpose,
+                request.Channel, ct)).ToHttpResult(http)).RequireRateLimiting("customer-auth");
 
         // Adım 2: kod doğruysa giriş yapılır ya da (kayıt akışında) hesap açılıp giriş yapılır.
         group.MapPost("/customer/otp/verify", async (CustomerOtpVerifyRequest request, Services.CustomerOtpService otp, HttpContext http, CancellationToken ct) =>
         {
-            var identity = new CustomerLoginRequest(request.FullName, request.Phone, request.BirthDate);
+            var identity = new CustomerLoginRequest(request.FullName, request.Phone);
             var registration = request.Purpose == Services.CustomerOtpPurpose.Register
                 ? new CustomerRegisterRequest(request.FullName, request.Phone, request.BirthDate, request.Gender, request.Email)
                 : null;

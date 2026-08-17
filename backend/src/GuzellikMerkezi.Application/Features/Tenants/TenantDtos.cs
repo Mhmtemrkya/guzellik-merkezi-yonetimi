@@ -26,7 +26,14 @@ public sealed record TenantDto(
     string? Email = null,
     string? SubscriptionPeriod = null,
     DateTime? SubscriptionEndsAtUtc = null,
-    decimal SubscriptionPlanYearlyPriceTRY = 0);
+    decimal SubscriptionPlanYearlyPriceTRY = 0,
+    /// <summary>
+    /// İnsan-okur kurum kodu (<c>BA-01</c>). Destek/platform ekibi kurumu bu kodla bulur.
+    /// Eski kurumlarda null olabilir — backfill doldurur.
+    /// </summary>
+    string? Code = null,
+    /// <summary>Kurum kendi kendine mi kaydoldu (self-servis 14 gün deneme)?</summary>
+    bool IsSelfSignup = false);
 
 /// <summary>
 /// Kurum oluşturma isteği. <see cref="BillingPeriod"/> değeri "Trial" (varsayılan), "Monthly" veya "Yearly".

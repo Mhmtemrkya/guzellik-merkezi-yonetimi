@@ -9,6 +9,8 @@ import {
   Check,
   Lock,
   Mail,
+  MessageCircle,
+  MessageSquare,
   Phone,
   ShieldCheck,
   Sparkles,
@@ -19,7 +21,10 @@ import {
 import {
   customerOtpRequest,
   customerOtpVerify,
+  getCustomerOtpChannels,
   getCustomerSession,
+  type CustomerOtpChannel,
+  type CustomerOtpChannels,
 } from '@/lib/customerPortalApi'
 
 const sectionVariants: Variants = {
@@ -53,21 +58,31 @@ function FeatureRow({ icon: Icon, title, desc }: { icon: LucideIcon; title: stri
 }
 
 const genderOptions = [
+  { value: 0, label: 'Belirtmek istemiyorum' },
   { value: 1, label: 'Kadın' },
   { value: 2, label: 'Erkek' },
-  { value: 0, label: 'Belirtmek istemiyorum' },
 ]
 
 type Mode = 'login' | 'register'
+
+/** Kanal seçenekleri — WhatsApp yalnızca SEÇENEKLERDEN BİRİ (bkz. App Store 3.2.2(v) notu). */
+const channelOptions: { key: CustomerOtpChannel; label: string; icon: LucideIcon; hint: string }[] = [
+  { key: 'sms', label: 'SMS', icon: MessageSquare, hint: 'Kod telefonunuza SMS ile gelir.' },
+  { key: 'email', label: 'E-posta', icon: Mail, hint: 'Kod, kayıtlı e-posta adresinize gönderilir.' },
+  { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, hint: 'Kod WhatsApp mesajı olarak gelir.' },
+]
 
 export default function CustomerLoginPage() {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>('login')
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
+  // Doğum tarihi ARTIK GİRİŞTE SORULMAZ; yalnızca kayıtta ve İSTEĞE BAĞLI (App Store 5.1.1(v)).
   const [birthDate, setBirthDate] = useState('')
-  const [gender, setGender] = useState(1)
+  const [gender, setGender] = useState(0)
   const [email, setEmail] = useState('')
+  const [channel, setChannel] = useState<CustomerOtpChannel>('sms')
+  const [channels, setChannels] = useState<CustomerOtpChannels | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -83,7 +98,29 @@ export default function CustomerLoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
 
-  // WhatsApp OTP/2FA akışı: 'idle' → kod istendi ('code') → doğrula.
+  // Çalışmayan kanalı seçenek olarak göstermeyelim: platformda hangileri kurulu?
+  useEffect(() => {
+    let cancelled = false
+    void getCustomerOtpChannels().then((available) => {
+      if (cancelled) return
+      setChannels(available)
+      // Varsayılan: SMS → e-posta → WhatsApp sırasıyla ilk çalışan kanal.
+      const preferred: CustomerOtpChannel[] = ['sms', 'email', 'whatsapp']
+      const first = preferred.find((key) =>
+        key === 'sms' ? available.sms : key === 'email' ? available.email : available.whatsApp,
+      )
+      if (first) setChannel(first)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const enabledChannels = channelOptions.filter(({ key }) =>
+    !channels ? true : key === 'sms' ? channels.sms : key === 'email' ? channels.email : channels.whatsApp,
+  )
+
+  // OTP akışı: 'idle' → kod istendi ('code') → doğrula.
   const [otpStage, setOtpStage] = useState<'idle' | 'code'>('idle')
   const [otpCode, setOtpCode] = useState('')
   const [otpInfo, setOtpInfo] = useState('')
@@ -100,8 +137,10 @@ export default function CustomerLoginPage() {
       setError('Lütfen geçerli bir telefon numarası girin (örn. 05XX XXX XX XX).')
       return null
     }
-    if (!birthDate) {
-      setError('Doğum tarihi zorunlu.')
+    // KAYITTA e-posta kanalı seçildiyse adres zorunlu: kodun gideceği yer başka türlü bilinmez.
+    // (Girişte adres sorulmaz — kod kurum kayıtlarındaki adrese gider.)
+    if (mode === 'register' && channel === 'email' && !email.trim()) {
+      setError('E-posta ile kod almak için e-posta adresinizi girin.')
       return null
     }
     return { name, normalizedPhone: phoneDigits.length === 10 ? `0${phoneDigits}` : phoneDigits }
@@ -114,16 +153,22 @@ export default function CustomerLoginPage() {
     try {
       setLoading(true)
       const res = await customerOtpRequest(
-        { fullName: id.name, phone: id.normalizedPhone, birthDate },
+        {
+          fullName: id.name,
+          phone: id.normalizedPhone,
+          channel,
+          email: mode === 'register' ? email.trim() || null : null,
+        },
         mode === 'register' ? 'register' : 'login',
       )
       setOtpStage('code')
       setOtpCode('')
-      setOtpInfo(
-        res?.devCode
-          ? `Doğrulama kodu WhatsApp numaranıza gönderildi. (Test ortamı kodu: ${res.devCode})`
-          : 'Bilgiler kayıtlarımızla eşleşiyorsa WhatsApp numaranıza 6 haneli doğrulama kodu gönderildi. Kod 5 dakika geçerlidir.',
-      )
+      // `hint` sunucudan gelir: kod gelmediğinde ne yapılacağını söyler. Yalnız e-posta kanalının
+      // kurulu olduğu bir platformda, kayıtlarda adresi olmayan kullanıcı için tek çıkış yolu bu.
+      const base = res?.devCode
+        ? `Doğrulama kodu gönderildi. (Test ortamı kodu: ${res.devCode})`
+        : 'Bilgileriniz kayıtlarımızla eşleşiyorsa 6 haneli doğrulama kodunuz gönderildi. Kod 5 dakika geçerlidir.'
+      setOtpInfo(res?.hint ? `${base} ${res.hint}` : base)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Kod gönderilemedi. Lütfen tekrar deneyin.')
     } finally {
@@ -145,17 +190,18 @@ export default function CustomerLoginPage() {
         return
       }
       if (otpCode.trim().length !== 6) {
-        setError('WhatsApp ile gelen 6 haneli kodu girin.')
+        setError('Size gönderilen 6 haneli kodu girin.')
         return
       }
       await customerOtpVerify({
         fullName: name,
         phone: normalizedPhone,
-        birthDate,
         code: otpCode.trim(),
         purpose: mode === 'register' ? 'register' : 'login',
         gender,
         email: email.trim() || null,
+        // Yalnız kayıtta ve yalnız kullanıcı girdiyse profile yazılır.
+        birthDate: mode === 'register' ? birthDate || null : null,
       })
       router.push(nextTarget())
     } catch (err: unknown) {
@@ -343,36 +389,58 @@ export default function CustomerLoginPage() {
                 </div>
               </div>
 
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div>
-                  <label className={labelCls}>Telefon</label>
-                  <div className={inputWrap}>
-                    <Phone className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="05XX XXX XX XX"
-                      className={inputCls}
-                      autoComplete="tel"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className={labelCls}>Doğum Tarihi</label>
-                  <div className={inputWrap}>
-                    <CalendarDays className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
-                    <input
-                      type="date"
-                      value={birthDate}
-                      onChange={(e) => setBirthDate(e.target.value)}
-                      max={new Date().toISOString().slice(0, 10)}
-                      className={inputCls}
-                      autoComplete="bday"
-                    />
-                  </div>
+              <div>
+                <label className={labelCls}>Telefon</label>
+                <div className={inputWrap}>
+                  <Phone className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="05XX XXX XX XX"
+                    className={inputCls}
+                    autoComplete="tel"
+                  />
                 </div>
               </div>
+
+              {/* KANAL SEÇİMİ — kod tek bir uygulamaya mahkûm değildir. WhatsApp'ı olmayan da
+                  SMS ya da e-posta ile giriş yapar (App Store 3.2.2(v)). */}
+              {enabledChannels.length > 1 && (
+                <div>
+                  <label className={labelCls}>Doğrulama Kodu Nereye Gelsin?</label>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {enabledChannels.map(({ key, label, icon: Icon }) => {
+                      const active = channel === key
+                      return (
+                        <motion.button
+                          key={key}
+                          whileTap={{ scale: 0.985 }}
+                          type="button"
+                          onClick={() => {
+                            setChannel(key)
+                            setError('')
+                          }}
+                          className={`flex items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-[12.5px] font-medium transition-colors ${
+                            active
+                              ? 'border-[#c85776] bg-[#fff0f5] text-[#2f1724] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
+                              : 'border-[#ead8df] bg-white/80 text-[#352432]/[0.70] hover:border-[#e798b4]'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4 shrink-0" strokeWidth={1.7} />
+                          {label}
+                        </motion.button>
+                      )
+                    })}
+                  </div>
+                  <p className="mt-2 text-[11.5px] leading-relaxed text-[#352432]/[0.55]">
+                    {channelOptions.find((c) => c.key === channel)?.hint}
+                    {channel === 'email' && mode === 'login'
+                      ? ' Salonun kayıtlarında e-posta adresiniz yoksa kod telefonunuza gönderilir.'
+                      : ''}
+                  </p>
+                </div>
+              )}
 
               <AnimatePresence mode="popLayout">
                 {mode === 'register' && (
@@ -386,7 +454,23 @@ export default function CustomerLoginPage() {
                   >
                     <div className="space-y-5 pt-1">
                       <div>
-                        <label className={labelCls}>Cinsiyet</label>
+                        {/* İSTEĞE BAĞLI: doğum tarihi randevu almak için gerekmez, yalnız doğum
+                            günü kampanyalarında kullanılır (App Store 5.1.1(v)). */}
+                        <label className={labelCls}>Doğum Tarihi (isteğe bağlı)</label>
+                        <div className={inputWrap}>
+                          <CalendarDays className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                          <input
+                            type="date"
+                            value={birthDate}
+                            onChange={(e) => setBirthDate(e.target.value)}
+                            max={new Date().toISOString().slice(0, 10)}
+                            className={inputCls}
+                            autoComplete="bday"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Cinsiyet (isteğe bağlı)</label>
                         <div className="grid gap-2 sm:grid-cols-3">
                           {genderOptions.map((option) => {
                             const active = gender === option.value
@@ -416,7 +500,9 @@ export default function CustomerLoginPage() {
                         </div>
                       </div>
                       <div>
-                        <label className={labelCls}>E-posta (isteğe bağlı)</label>
+                        <label className={labelCls}>
+                          {channel === 'email' ? 'E-posta' : 'E-posta (isteğe bağlı)'}
+                        </label>
                         <div className={inputWrap}>
                           <Mail className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
                           <input
@@ -428,6 +514,11 @@ export default function CustomerLoginPage() {
                             autoComplete="email"
                           />
                         </div>
+                        {channel === 'email' && (
+                          <p className="mt-2 text-[11.5px] text-[#352432]/[0.55]">
+                            Doğrulama kodu bu adrese gönderilecek.
+                          </p>
+                        )}
                       </div>
                     </div>
                   </motion.div>
@@ -447,7 +538,7 @@ export default function CustomerLoginPage() {
                     <div className="rounded-2xl border border-[#e798b4]/50 bg-[#fff0f5]/70 p-4">
                       <div className="text-[12px] leading-relaxed text-[#352432]/[0.70]">{otpInfo}</div>
                       <div className="mt-3">
-                        <label className={labelCls}>WhatsApp Doğrulama Kodu</label>
+                        <label className={labelCls}>Doğrulama Kodu</label>
                         <div className={inputWrap}>
                           <Check className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
                           <input
@@ -521,12 +612,12 @@ export default function CustomerLoginPage() {
               </motion.button>
 
               {/* Ayrı "WhatsApp kodu ile giriş" butonu kaldırıldı: kod artık ALTERNATİF değil,
-                  tek yol. Ana buton önce kodu gönderir, sonra doğrular. */}
+                  tek yol. Ana buton önce kodu gönderir, sonra doğrular. Kanalı kullanıcı seçer. */}
 
               <p className="flex items-center justify-center gap-2 pt-1 text-center text-[11px] text-[#352432]/[0.45]">
                 <Lock className="h-3.5 w-3.5 text-[#c85776]/70" strokeWidth={1.6} />
                 {otpStage === 'code'
-                  ? 'Güvenliğiniz için WhatsApp numaranıza gönderilen kodu girmeniz gerekir.'
+                  ? 'Güvenliğiniz için size gönderilen doğrulama kodunu girmeniz gerekir.'
                   : mode === 'login'
                     ? 'Kaydınız yoksa "Kayıt Ol" sekmesinden saniyeler içinde hesap oluşturabilirsiniz.'
                     : 'Bilgileriniz yalnızca randevu işlemleriniz için kullanılır.'}

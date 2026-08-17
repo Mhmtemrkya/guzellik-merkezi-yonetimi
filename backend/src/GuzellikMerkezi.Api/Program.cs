@@ -3,6 +3,7 @@ using GuzellikMerkezi.Api.Development;
 using GuzellikMerkezi.Api.Endpoints;
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Api.Middleware;
+using GuzellikMerkezi.Api.Setup;
 using GuzellikMerkezi.Application;
 using GuzellikMerkezi.Infrastructure;
 using GuzellikMerkezi.Infrastructure.Payments;
@@ -38,6 +39,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddApplication();
+// Ortam bayrağı köprüsü: Infrastructure, Hosting'e referans vermediği için IAppEnvironment
+// üzerinden okur. AddInfrastructure'dan ÖNCE kaydedilir (oradaki servisler bunu enjekte ediyor).
+builder.Services.AddSingleton<GuzellikMerkezi.Application.Abstractions.IAppEnvironment,
+    GuzellikMerkezi.Api.Services.HostAppEnvironment>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApiServices(builder.Configuration);
 // Müşteri OTP girişi — kodlar bellekte 5 dk tutulur (tek örnekli dağıtım).
@@ -167,6 +172,11 @@ builder.Services.AddRateLimiter(options =>
     // Herkese açık salon vitrini (anonim gezinme): IP başına dakikada 60 istek.
     options.AddPolicy("public-browse", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    // SELF-SERVİS KURUM KAYDI: her istek e-posta/SMS gönderebiliyor, yani PARA harcıyor.
+    // Kendi kovasında durur — müşteri girişiyle bütçe paylaşmaz. Servis tarafında ayrıca
+    // e-posta bazlı fren var (aynı adrese 30 dakikada en çok 3 kayıt denemesi).
+    options.AddPolicy("tenant-signup", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 12, Window = TimeSpan.FromMinutes(15), QueueLimit = 0 }));
     // ÖDEME DÖNÜŞÜ (anonim): sağlayıcı ya da kullanıcı tarayıcısı çağırır, oturum taşımaz. Her
     // istek sağlayıcıya bir SORGU (dış çağrı) tetikler; sınırsız bırakıldığında uydurma
     // anahtarlarla hem sağlayıcı kotası tüketilir hem sonuç deneme-yanılması yapılırdı. Meşru
@@ -275,10 +285,19 @@ else if (bool.TryParse(app.Configuration["Database:SeedReferenceData"], out var 
     await DatabaseBootstrap.EnsureDefaultSubscriptionPlansAsync(app.Services, app.Configuration);
 }
 
+// MAĞAZA İNCELEME HESABI (App Store / Play Store denetçileri). Opt-in: AppReview:Enabled=true.
+// Development seeder'ının aksine kodda gömülü parola yoktur, DB silmez, şemaya dokunmaz ve
+// yalnızca kendi kurumunu oluşturur/güncellerse idempotenttir. Bkz. AppReviewAccountSeeder.
+await app.SeedAppReviewAccountAsync();
+
 // Şifreli ad/telefon/e-posta üzerinde arama yapabilmek için blind index'i doldur. Her ortamda çalışır:
 // veri-only + idempotent (yalnızca SearchIndex NULL satırlara dokunur), DDL yapmaz. Kolon henüz yoksa
 // (migration uygulanmamış) sessizce uyarı loglar. Bitene kadar arama tam-tarama moduna düşer, sonuç doğrudur.
 await DatabaseBootstrap.BackfillCustomerSearchIndexAsync(app.Services);
+
+// Kurum kodu (BA-01) + kurum telefonu blind index'i. Veri-only + idempotent: eski kurumlar
+// destek ekibinin arayabileceği bir koda kavuşur, mükerrer kurum kontrolü çalışır hâle gelir.
+await DatabaseBootstrap.BackfillTenantCodesAsync(app.Services);
 
 // İptal arşivi bakımı: ham SQL migration'ının bıraktığı DÜZ METİN yedekleri şifreler ve iptal edilmiş
 // satışların tahsilatlarını kalıcı deftere (archived_sale_payments) taşır. Yedek şifreli olduğundan
@@ -403,6 +422,8 @@ app.MapCustomServiceCategoryEndpoints();
 app.MapAppointmentEndpoints();
 app.MapRatingEndpoints();
 app.MapPublicSalonEndpoints();
+// Self-servis kurum kaydı (anonim, 14 gün deneme) — bkz. TenantSignupEndpoints.
+app.MapTenantSignupEndpoints();
 app.MapWhatsAppEndpoints();
 app.MapCustomerAccountEndpoints();
 app.MapAdisyonEndpoints();

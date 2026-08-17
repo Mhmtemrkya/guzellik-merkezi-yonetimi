@@ -206,6 +206,8 @@ export function normalizeTenant(tenant: ApiTenant | null | undefined, index = 0)
     trialEndsAt: tenant?.trialEndsAtUtc ?? null,
     subscriptionPeriod: tenant?.subscriptionPeriod ?? null,
     subscriptionEndsAt: tenant?.subscriptionEndsAtUtc ?? null,
+    code: tenant?.code || '',
+    isSelfSignup: Boolean(tenant?.isSelfSignup),
   }
 }
 

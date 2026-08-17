@@ -3939,6 +3939,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<bool>("AllowStaffScreenshots")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("Code")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -3972,6 +3976,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("IsSelfSignup")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("LegalName")
                         .HasColumnType("longtext");
 
@@ -3996,6 +4003,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<string>("Phone")
                         .HasMaxLength(40)
                         .HasColumnType("longtext");
+
+                    b.Property<string>("PhoneIndex")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
 
                     b.Property<string>("Plan")
                         .IsRequired()
@@ -4039,6 +4050,11 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .HasColumnType("char(36)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("PhoneIndex");
 
                     b.HasIndex("Slug")
                         .IsUnique();

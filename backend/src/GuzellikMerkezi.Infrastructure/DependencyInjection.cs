@@ -91,6 +91,9 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<GuzellikDbContext>());
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ITenantService, TenantService>();
+        // Self-servis kurum kaydı (14 gün deneme). Taslakları IMemoryCache'te tutar — tek örnek
+        // kurulum varsayımı CustomerOtpService ile aynı (bkz. servisin sınıf notu).
+        services.AddScoped<Application.Features.TenantSignup.ITenantSignupService, TenantSignupService>();
         services.AddScoped<IBranchService, BranchService>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IDataImportService, DataImportService>();

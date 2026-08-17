@@ -474,7 +474,23 @@ export default function PlatformKurumlarPage() {
                             {initialsFromName(t.name)}
                           </div>
                           <div className="min-w-0">
-                            <div className="font-semibold text-[#3b2330] md:truncate">{t.name}</div>
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="font-semibold text-[#3b2330] md:truncate">{t.name}</span>
+                              {/* KURUM KODU — destek ekibi kurumu bu kodla bulur; aramada da geçer. */}
+                              {t.code && (
+                                <span className="shrink-0 rounded-md border border-[#f0d5df] bg-white px-1.5 py-0.5 font-mono text-[9px] tracking-wider text-[#a84f69]">
+                                  {t.code}
+                                </span>
+                              )}
+                              {t.isSelfSignup && (
+                                <span
+                                  title="Kurum kendi kaydoldu (self-servis deneme)"
+                                  className="shrink-0 rounded-md bg-[#fff1f6] px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-[#c85776]"
+                                >
+                                  SELF
+                                </span>
+                              )}
+                            </div>
                             <div className="text-[10px] text-[#9d7386] md:truncate">
                               {t.branchCount || t.branches.length} şube · {t.domain}
                             </div>
@@ -668,14 +684,46 @@ export default function PlatformKurumlarPage() {
                                 </button>
                               }
                             />
+                            {/*
+                              KALICI SİLME — geri alınamaz. Kurum ARTIK sadece "iptal" edilmiyor;
+                              tüm satırları (müşteriler, randevular, tahsilatlar) veritabanından
+                              siliniyor. Bu yüzden tek tıkla değil, kurum kodunu YAZARAK onaylanır:
+                              yanlış satıra tıklamak bir işletmenin tüm verisini yok edebilirdi.
+                            */}
                             <ConfirmDialog
                               destructive
                               icon={Trash2}
-                              title={`${t.name} silinsin mi?`}
-                              description={`Kurum iptal edilir ve listeden kaldırılır; ${t.branchCount || t.branches.length} şube ve tüm verileri pasife alınır. Bu işlemi yalnızca gerçekten gerekiyorsa yap.`}
-                              confirmLabel="Kurumu sil"
+                              title={`${t.name} kalıcı olarak silinsin mi?`}
+                              description={
+                                <>
+                                  Bu işlem <b>geri alınamaz</b>. {t.branchCount || t.branches.length} şube,{' '}
+                                  {Number(t.customers || 0).toLocaleString('tr-TR')} müşteri ve kuruma ait tüm
+                                  randevu, tahsilat, adisyon ve stok kayıtları <b>veritabanından tamamen silinir</b>.
+                                  {t.code ? (
+                                    <>
+                                      {' '}Onaylamak için kurum kodunu (<b>{t.code}</b>) yazın.
+                                    </>
+                                  ) : (
+                                    <> Onaylamak için kurum adını yazın.</>
+                                  )}
+                                </>
+                              }
+                              reasonLabel={t.code ? `Kurum kodu (${t.code})` : 'Kurum adı'}
+                              reasonPlaceholder={t.code || t.name}
+                              reasonMinLength={2}
+                              confirmLabel="Kalıcı olarak sil"
                               cancelLabel="Vazgeç"
-                              onConfirm={async () => {
+                              onConfirm={async (typed) => {
+                                // Eşleşme kontrolü İSTEMCİDE yapılır: sunucu Id ile siler, kodu görmez.
+                                // Amaç yetkilendirme değil, yanlış satıra tıklamayı durdurmaktır.
+                                const expected = (t.code || t.name).trim().toLocaleLowerCase('tr-TR')
+                                if (typed.trim().toLocaleLowerCase('tr-TR') !== expected) {
+                                  throw new Error(
+                                    t.code
+                                      ? `Kod eşleşmedi. Silmek için tam olarak "${t.code}" yazın.`
+                                      : `Ad eşleşmedi. Silmek için tam olarak "${t.name}" yazın.`,
+                                  )
+                                }
                                 await platformApi.deleteTenant(t.id)
                                 await reload()
                               }}

@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
+import PaymentBadges, { LegalLinkRow } from '@/components/legal/PaymentBadges'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
@@ -390,6 +392,25 @@ export default function PaketPage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* ÖDEME NOKTASINDA BİLGİLENDİRME.
+                Kabul edilen kartlar, ödeme kuruluşu ve satış koşulları ödemenin yapıldığı
+                ekranda görünür olmalı (mesafeli satış mevzuatı + iyzico üye iş yeri kriteri). */}
+            <div className="mt-4 flex flex-col gap-2.5 border-t border-[#f2dfe7] pt-4">
+              <PaymentBadges />
+              <p className="text-[11.5px] leading-relaxed text-[#4a3a44]">
+                Paket seçip ödemeyi tamamladığınızda{' '}
+                <Link href="/mesafeli-satis-sozlesmesi" target="_blank" className="font-semibold text-[#A5556E] underline underline-offset-2">
+                  Mesafeli Satış Sözleşmesi
+                </Link>{' '}
+                ve{' '}
+                <Link href="/teslimat-ve-iade" target="_blank" className="font-semibold text-[#A5556E] underline underline-offset-2">
+                  Teslimat ve İade Şartları
+                </Link>
+                ’nı kabul etmiş sayılırsınız.
+              </p>
+              <LegalLinkRow className="text-[#74616A]" />
             </div>
           </motion.section>
         )}

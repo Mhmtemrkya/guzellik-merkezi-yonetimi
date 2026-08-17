@@ -136,6 +136,10 @@ class ApiClient {
   Future<dynamic> postPublic(String path, Map<String, dynamic> body) =>
       _request('POST', path, body: body, isPublic: true);
 
+  /// Oturum gerektirmeyen GET (giriş ekranından çağrılır — henüz token yok).
+  Future<dynamic> getPublic(String path, {Map<String, dynamic>? query}) =>
+      _request('GET', path, query: query, isPublic: true);
+
   Future<dynamic> put(String path, Map<String, dynamic> body) =>
       _request('PUT', path, body: body);
 

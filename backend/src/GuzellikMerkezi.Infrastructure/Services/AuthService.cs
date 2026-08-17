@@ -25,6 +25,7 @@ public sealed class AuthService : IAuthService
     private readonly ICurrentUser _currentUser;
     private readonly Application.Features.Features.IFeatureService _features;
     private readonly Application.Features.AppNotifications.IAppNotificationService _notifications;
+    private readonly ISearchIndexService _search;
 
     public AuthService(
         GuzellikDbContext db,
@@ -34,7 +35,8 @@ public sealed class AuthService : IAuthService
         IAuditLogger audit,
         ICurrentUser currentUser,
         Application.Features.Features.IFeatureService features,
-        Application.Features.AppNotifications.IAppNotificationService notifications)
+        Application.Features.AppNotifications.IAppNotificationService notifications,
+        ISearchIndexService search)
     {
         _db = db;
         _passwordHasher = passwordHasher;
@@ -44,6 +46,7 @@ public sealed class AuthService : IAuthService
         _currentUser = currentUser;
         _features = features;
         _notifications = notifications;
+        _search = search;
     }
 
     public async Task<Result<LoginScopeResponse>> GetLoginScopeAsync(LoginScopeRequest request, CancellationToken cancellationToken = default)
@@ -349,24 +352,21 @@ public sealed class AuthService : IAuthService
 
     public async Task<Result<LoginResponse>> CustomerLoginAsync(CustomerLoginRequest request, CancellationToken cancellationToken = default)
     {
-        var key = PhoneMask.LoginKey(request.Phone);
+        const string mismatch = "Bilgiler eşleşmedi. Ad soyad ve telefon numaranızı kontrol edin.";
         var name = NormalizeName(request.FullName);
-        if (key.Length < 10 || string.IsNullOrWhiteSpace(name) || request.BirthDate == default)
-            return Result<LoginResponse>.Failure(Error.Unauthorized("Bilgiler eşleşmedi. Ad soyad, telefon ve doğum tarihini kontrol edin."));
+        if (!CustomerIdentityLookup.IsUsablePhone(request.Phone) || string.IsNullOrWhiteSpace(name))
+            return Result<LoginResponse>.Failure(Error.Unauthorized(mismatch));
 
-        // Ad/telefon şifreli saklandığı için eşleştirme materyalize edilmiş (çözülmüş) değerler üzerinde
-        // bellekte yapılır. Doğum tarihiyle birlikte üç bilginin tamamı eşleşmeli.
-        var candidates = await _db.Customers
-            .IgnoreQueryFilters()
-            .Where(c => !c.IsDeleted && c.BirthDate == request.BirthDate)
-            .ToListAsync(cancellationToken);
-
-        var matches = candidates
-            .Where(c => PhoneMask.LoginKey(c.Phone) == key && NormalizeName(c.FullName) == name)
-            .ToList();
+        // Ad/telefon şifreli saklandığı için kesin eşleştirme çözülmüş değerler üzerinde bellekte
+        // yapılır; SQL yalnızca aday kümesini daraltır (blind index — bkz. CustomerIdentityLookup).
+        // DOĞUM TARİHİ ARANMAZ: kimlikten çıkarıldı (App Store 5.1.1(v)). Girişin gerçek kanıtı bu
+        // metoda gelinmeden önce doğrulanan koddur (CustomerOtpService).
+        var candidates = await CustomerIdentityLookup.FindByPhoneAsync(
+            _db.Customers.IgnoreQueryFilters(), _search, request.Phone, cancellationToken);
+        var matches = CustomerIdentityLookup.WithName(candidates, request.FullName);
 
         if (matches.Count == 0)
-            return Result<LoginResponse>.Failure(Error.Unauthorized("Bilgiler eşleşmedi. Ad soyad, telefon ve doğum tarihini kontrol edin."));
+            return Result<LoginResponse>.Failure(Error.Unauthorized(mismatch));
 
         // Aynı kişi hem bireysel (pazaryeri) hem bir kurumda kayıtlı olabilir. Giriş kimliği olarak
         // bireysel kaydı tercih et (pazaryeri deneyimi); yoksa tek kurum kaydı; birden fazla kurum + bireysel yoksa belirsiz.
@@ -393,50 +393,72 @@ public sealed class AuthService : IAuthService
         return Result<LoginResponse>.Success(new LoginResponse(accessToken, refreshToken, expiresAt, profile));
     }
 
-    /// <summary>Ad soyad eşleştirme anahtarı: kırp, küçült (TR), çoklu boşlukları teke indir.</summary>
-    private static string NormalizeName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return string.Empty;
-        var collapsed = string.Join(' ', name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        return collapsed.ToLowerInvariant();
-    }
+    /// <summary>
+    /// Ad soyad eşleştirme anahtarı. Kod isteği (CustomerOtpService) ile giriş AYNI kuralı
+    /// kullanmak zorunda olduğundan tanım ortak sınıftadır.
+    /// </summary>
+    private static string NormalizeName(string? name) => CustomerIdentityLookup.NormalizeName(name);
 
     /// <summary>
     /// Bireysel müşteri kaydı + otomatik giriş.
     /// <para>
-    /// KRİTİK: bu metot mevcut bir müşteriyi YALNIZ telefon + doğum tarihiyle eşleyip onun adına token
-    /// üretebilir. Bu yüzden yalnızca telefon sahipliği OTP ile KANITLANDIKTAN sonra çağrılabilir;
-    /// <paramref name="phoneVerified"/> false ise reddeder. Anonim <c>/customer/register</c> ucu
-    /// kapatılmıştır (bkz. AuthEndpoints).
+    /// KRİTİK: bu metot mevcut bir müşteriyi bulup ONUN ADINA token üretebilir. Bu yüzden yalnızca
+    /// bir iletişim kanalının sahipliği doğrulama koduyla KANITLANDIKTAN sonra çağrılabilir; iki
+    /// kanıt da yoksa reddeder. Anonim <c>/customer/register</c> ucu kapatılmıştır (bkz. AuthEndpoints).
+    /// </para>
+    /// <para>
+    /// <b>E-POSTA İLE DOĞRULAMA SINIRI:</b> kod e-postaya gittiyse kanıtlanan şey telefon değil,
+    /// e-posta sahipliğidir. O yüzden e-posta kanıtıyla yalnızca <b>e-postası o adres olan</b> kayıt
+    /// sahiplenilebilir. Aksi hâlde başkasının telefon numarasını yazan biri, o numaraya ait mevcut
+    /// hesabın randevu/iletişim geçmişine girerdi.
     /// </para>
     /// </summary>
-    public async Task<Result<LoginResponse>> CustomerRegisterAsync(CustomerRegisterRequest request, bool phoneVerified = false, CancellationToken cancellationToken = default)
+    public async Task<Result<LoginResponse>> CustomerRegisterAsync(CustomerRegisterRequest request, bool phoneVerified = false, string? verifiedEmail = null, CancellationToken cancellationToken = default)
     {
-        if (!phoneVerified)
+        var provedEmail = CustomerIdentityLookup.NormalizeEmail(verifiedEmail);
+        if (!phoneVerified && provedEmail.Length == 0)
         {
             return Result<LoginResponse>.Failure(Error.Unauthorized(
-                "Telefon doğrulaması gerekli. WhatsApp'a gelen kodla devam edin."));
+                "Doğrulama gerekli. Telefonunuza ya da e-postanıza gelen kodla devam edin."));
         }
 
         var name = request.FullName?.Trim() ?? string.Empty;
         var key = PhoneMask.LoginKey(request.Phone);
-        if (name.Length < 3 || key.Length < 10 || request.BirthDate == default)
-            return Result<LoginResponse>.Failure(Error.Validation("Ad soyad, geçerli telefon ve doğum tarihi zorunludur."));
+        // DOĞUM TARİHİ ZORUNLU DEĞİL (App Store 5.1.1(v)) — verilirse profile yazılır.
+        if (name.Length < 3 || key.Length < 10)
+            return Result<LoginResponse>.Failure(Error.Validation("Ad soyad ve geçerli bir telefon numarası zorunludur."));
 
         var (tenantId, branchId) = await GetOrCreateIndividualTenantAsync(cancellationToken);
 
-        // Aynı kişi (bireysel kayıtta telefon+doğum tarihi) zaten varsa yeni kayıt açma — onunla giriş yap.
-        // Eşleşme TELEFONA göre yapılır: OTP ile kanıtlanan şey telefon sahipliğidir. Eskiden
-        // (telefon + doğum tarihi) aranıyordu; aynı telefonla farklı doğum tarihi girilerek mükerrer
-        // hesap açılabiliyordu.
+        // Aynı kişi zaten kayıtlıysa yeni kayıt açma — onunla giriş yap. Eşleşme KANITLANAN kanala
+        // göre yapılır: telefon kanıtlandıysa numaradan, e-posta kanıtlandıysa adresten.
         var existingIndividuals = await _db.Customers.IgnoreQueryFilters()
             .Where(c => c.TenantId == tenantId && !c.IsDeleted)
             .ToListAsync(cancellationToken);
-        var customer = existingIndividuals.FirstOrDefault(c => PhoneMask.LoginKey(c.Phone) == key);
+        var byPhone = existingIndividuals.FirstOrDefault(c => PhoneMask.LoginKey(c.Phone) == key);
+        var byEmail = provedEmail.Length == 0
+            ? null
+            : existingIndividuals.FirstOrDefault(c => CustomerIdentityLookup.NormalizeEmail(c.Email) == provedEmail);
+
+        Customer? customer;
+        if (phoneVerified)
+        {
+            customer = byPhone ?? byEmail;
+        }
+        else
+        {
+            // Yalnız e-posta kanıtlandı: bu numaraya ait BAŞKA bir hesap varsa devam edilmez.
+            if (byPhone is not null && !ReferenceEquals(byPhone, byEmail))
+            {
+                return Result<LoginResponse>.Failure(Error.Unauthorized(
+                    "Bu telefon numarasıyla devam etmek için telefonunuza gelen kodu kullanın (SMS ya da WhatsApp)."));
+            }
+            customer = byEmail;
+        }
 
         if (customer is null)
         {
-            customer = new Customer(tenantId, branchId, name, request.Phone.Trim(), request.Email);
+            customer = new Customer(tenantId, branchId, name, request.Phone.Trim(), request.Email ?? verifiedEmail);
             customer.UpdateProfile(request.BirthDate, request.Gender, kvkkConsent: true, notes: null);
             _db.Customers.Add(customer);
         }

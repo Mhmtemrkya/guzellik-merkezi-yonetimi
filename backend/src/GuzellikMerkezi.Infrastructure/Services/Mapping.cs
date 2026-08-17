@@ -31,7 +31,9 @@ internal static class Mapping
         tenant.Email,
         tenant.SubscriptionPeriod?.ToString(),
         tenant.SubscriptionEndsAtUtc,
-        tenant.SubscriptionPlan?.YearlyPriceTRY ?? 0m);
+        tenant.SubscriptionPlan?.YearlyPriceTRY ?? 0m,
+        tenant.Code,
+        tenant.IsSelfSignup);
     /// <summary><paramref name="staffCount"/> = şubeye kayıtlı aktif personel sayısı (çağıran sayar; elle girilen kapasite alanı kaldırıldı).</summary>
     public static BranchDto ToDto(this Branch branch, int staffCount = 0) => new(branch.Id, branch.TenantId, branch.Name, branch.City, branch.IsDefault, staffCount);
     public static CustomerDto ToDto(this Customer customer) => new(customer.Id, customer.TenantId, customer.BranchId, customer.FullName, customer.Phone, customer.Email, customer.BirthDate, customer.Gender, customer.KvkkConsent, customer.Notes, customer.PhotoUrl, customer.IsBlacklisted, customer.BlacklistReason, customer.CreatedAtUtc, customer.IsVip);

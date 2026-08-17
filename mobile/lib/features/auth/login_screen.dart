@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/auth_controller.dart';
+import '../../core/network/api_config.dart';
 import '../../core/theme/app_theme.dart';
 
-/// Giriş modu: personel/yönetici (e-posta + şifre) veya müşteri (ad soyad + telefon + doğum tarihi).
+/// Giriş modu: personel/yönetici (e-posta + şifre) veya müşteri (ad soyad + telefon + doğrulama kodu).
 enum LoginMode { staff, customer }
 
 class LoginScreen extends StatefulWidget {
@@ -24,14 +26,16 @@ class _LoginScreenState extends State<LoginScreen> {
   // Personel/yönetici
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
-  // Müşteri
+  // Müşteri — kimlik: ad soyad + telefon. DOĞUM TARİHİ SORULMAZ (App Store 5.1.1(v)):
+  // randevu almak için gerekmediği hâlde zorunlu tutulduğu için uygulama reddedildi.
   final phoneController = TextEditingController();
   final nameController = TextEditingController();
-  DateTime? birthDate;
-  // Müşteri WhatsApp OTP/2FA girişi (opsiyonel, daha güvenli): kod istendi mi + kod alanı + bilgi.
+  // Müşteri doğrulama kodu: kod istendi mi + kod alanı + bilgi + kanal.
   final otpCodeController = TextEditingController();
   bool otpStage = false;
   String? otpInfo;
+  CustomerOtpChannel otpChannel = CustomerOtpChannel.sms;
+  CustomerOtpChannels? otpChannels;
 
   Timer? debounce;
   bool obscure = true;
@@ -43,6 +47,23 @@ class _LoginScreenState extends State<LoginScreen> {
   List<Map<String, dynamic>> tenants = [];
   String? tenantId;
   String? branchId;
+
+  @override
+  void initState() {
+    super.initState();
+    // Çalışmayan kanalı seçenek olarak göstermeyelim (SMS kurulu değilse "SMS" sunmak,
+    // kullanıcıyı hiç gelmeyecek bir kodu beklemeye bırakır).
+    _loadChannels();
+  }
+
+  Future<void> _loadChannels() async {
+    final available = await widget.auth.customerOtpChannels();
+    if (!mounted) return;
+    setState(() {
+      otpChannels = available;
+      otpChannel = available.preferred;
+    });
+  }
 
   @override
   void dispose() {
@@ -70,9 +91,6 @@ class _LoginScreenState extends State<LoginScreen> {
       otpCodeController.clear();
     });
   }
-
-  String _birthStr(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   // ----------------------- Personel/yönetici kapsam çözümü -----------------------
 
@@ -162,30 +180,24 @@ class _LoginScreenState extends State<LoginScreen> {
     debounce?.cancel();
 
     if (mode == LoginMode.customer) {
-      if (birthDate == null) {
-        setState(() => error = 'Doğum tarihinizi seçin.');
-        return;
-      }
-      final d = birthDate!;
       setState(() {
         loading = true;
         error = null;
       });
       try {
         if (!otpStage) {
-          // KOD ZORUNLU: token yalnız telefon doğrulandıktan sonra üretilir.
+          // KOD ZORUNLU: token yalnız kanal sahipliği doğrulandıktan sonra üretilir.
           await _requestOtp();
           return;
         }
         final code = otpCodeController.text.trim();
         if (code.length != 6) {
-          setState(() => error = 'WhatsApp ile gelen 6 haneli kodu girin.');
+          setState(() => error = 'Size gönderilen 6 haneli kodu girin.');
           return;
         }
         await widget.auth.customerOtpVerify(
           fullName: nameController.text,
           phone: phoneController.text,
-          birthDate: _birthStr(d),
           code: code,
         );
       } catch (e) {
@@ -245,13 +257,24 @@ class _LoginScreenState extends State<LoginScreen> {
     await _doLogin(_tenantIdOf(chosenTenant), chosenBranchId);
   }
 
-  /// WhatsApp OTP adım 1: kimlik geçerliyse kodu iste, kod adımına geç.
+  /// KURUMSAL KAYIT — tarayıcıda web sitesindeki kayıt sayfasını açar.
+  ///
+  /// Akış bilerek uygulamaya taşınmadı: kurum kaydı iki faktörlü doğrulama (e-posta + telefon),
+  /// giriş bilgileri PDF'i ve abonelik/ödeme adımlarını içeriyor. Bunları mobilde ikinci kez
+  /// kurmak, iki yerde ayrışan ve biri her zaman geride kalan bir akış üretirdi. Uygulama
+  /// kullanıcıyı tek doğru yere gönderir.
+  Future<void> _openTenantSignup() async {
+    final uri = Uri.parse('${ApiConfig.publicWebBaseUrl}/kayit');
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      // Tarayıcı açılamadıysa adresi göster; kullanıcı elle yazabilsin.
+      setState(() => error = 'Tarayıcı açılamadı. Kayıt için: ${uri.toString()}');
+    }
+  }
+
+  /// OTP adım 1: kimlik geçerliyse seçilen kanaldan kodu iste, kod adımına geç.
   Future<void> _requestOtp() async {
     if (!formKey.currentState!.validate()) return;
-    if (birthDate == null) {
-      setState(() => error = 'Doğum tarihinizi seçin.');
-      return;
-    }
     setState(() {
       loading = true;
       error = null;
@@ -260,16 +283,20 @@ class _LoginScreenState extends State<LoginScreen> {
       final res = await widget.auth.customerOtpRequest(
         fullName: nameController.text,
         phone: phoneController.text,
-        birthDate: _birthStr(birthDate!),
+        channel: otpChannel.code,
       );
       if (!mounted) return;
       final devCode = res['devCode']?.toString();
+      // `hint` sunucudan gelir: kod gelmediğinde ne yapılacağını söyler. Yalnız e-posta kanalının
+      // kurulu olduğu bir platformda, kayıtlarda adresi olmayan kullanıcı için tek çıkış yolu bu.
+      final hint = res['hint']?.toString();
       setState(() {
         otpStage = true;
         otpCodeController.clear();
-        otpInfo = (devCode != null && devCode.isNotEmpty)
-            ? 'Doğrulama kodu WhatsApp numaranıza gönderildi. (Test kodu: $devCode)'
-            : 'Bilgiler kayıtlarımızla eşleşiyorsa WhatsApp numaranıza 6 haneli doğrulama kodu gönderildi. Kod 5 dakika geçerlidir.';
+        final base = (devCode != null && devCode.isNotEmpty)
+            ? 'Doğrulama kodu gönderildi. (Test kodu: $devCode)'
+            : 'Bilgileriniz kayıtlarımızla eşleşiyorsa 6 haneli doğrulama kodunuz gönderildi. Kod 5 dakika geçerlidir.';
+        otpInfo = (hint == null || hint.isEmpty) ? base : '$base $hint';
       });
     } catch (e) {
       if (mounted) setState(() => error = '$e');
@@ -560,15 +587,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ? (otpStage ? 'Kodu Doğrula ve Giriş Yap' : 'Giriş Yap')
                                   : 'Giriş Yap ve Devam Et'),
                             ),
-                            // WhatsApp kodlu giriş — daha güvenli alternatif / 2FA (yalnızca bilgi adımında).
-                            if (isCustomer && !otpStage) ...[
-                              const SizedBox(height: 8),
-                              OutlinedButton.icon(
-                                onPressed: loading ? null : _requestOtp,
-                                icon: const Icon(Icons.chat_outlined, size: 18),
-                                label: const Text('WhatsApp Kodu ile Giriş (önerilen)'),
-                              ),
-                            ],
+                            // Ayrı "WhatsApp kodu ile giriş" butonu kaldırıldı: kod artık ALTERNATİF
+                            // değil, tek yol; kanalı yukarıdaki seçici belirler.
                             if (isCustomer) ...[
                               const SizedBox(height: 6),
                               Center(
@@ -576,6 +596,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                   onPressed: loading ? null : () => context.push('/register'),
                                   icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
                                   label: const Text('Hesabın yok mu? Kayıt ol'),
+                                ),
+                              ),
+                            ] else ...[
+                              // KURUMSAL KAYIT WEB'DE YAPILIR (bkz. _openTenantSignup).
+                              const SizedBox(height: 6),
+                              Center(
+                                child: TextButton.icon(
+                                  onPressed: loading ? null : _openTenantSignup,
+                                  icon: const Icon(Icons.storefront_rounded, size: 18),
+                                  label: const Text('İşletmenizi kaydedin — 14 gün ücretsiz'),
                                 ),
                               ),
                             ],
@@ -703,32 +733,10 @@ class _LoginScreenState extends State<LoginScreen> {
             prefixIcon: Icon(Icons.phone_outlined),
           ),
         ),
-        const SizedBox(height: 12),
-        InkWell(
-          onTap: () async {
-            final now = DateTime.now();
-            final picked = await showDatePicker(
-              context: context,
-              firstDate: DateTime(now.year - 100),
-              lastDate: now,
-              initialDate: birthDate ?? DateTime(now.year - 25),
-            );
-            if (picked != null) setState(() => birthDate = picked);
-          },
-          child: InputDecorator(
-            decoration: const InputDecoration(
-              labelText: 'Doğum Tarihi',
-              prefixIcon: Icon(Icons.cake_outlined),
-            ),
-            child: Text(
-              birthDate == null
-                  ? 'Seçilmedi'
-                  : '${birthDate!.day.toString().padLeft(2, '0')}.${birthDate!.month.toString().padLeft(2, '0')}.${birthDate!.year}',
-              style: TextStyle(color: birthDate == null ? AppColors.muted : AppColors.ink),
-            ),
-          ),
-        ),
-        // WhatsApp kod adımı — kod istendiyse 6 haneli kodu gir.
+        // KANAL SEÇİMİ: kod tek bir uygulamaya mahkûm değildir. WhatsApp'ı olmayan kullanıcı
+        // SMS ya da e-posta ile giriş yapar (App Store 3.2.2(v)).
+        if (!otpStage) ..._channelPicker(),
+        // Kod adımı — kod istendiyse 6 haneli kodu gir.
         if (otpStage) ...[
           const SizedBox(height: 14),
           Container(
@@ -754,7 +762,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   autofocus: true,
                   onFieldSubmitted: (_) => submit(),
                   decoration: const InputDecoration(
-                    labelText: 'WhatsApp Doğrulama Kodu',
+                    labelText: 'Doğrulama Kodu',
                     hintText: '6 haneli kod',
                     prefixIcon: Icon(Icons.verified_outlined),
                     counterText: '',
@@ -784,6 +792,55 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ];
 
+  /// Kodun hangi kanaldan geleceğini seçtirir. Yalnızca platformda YAPILANDIRILMIŞ kanallar
+  /// gösterilir; tek kanal varsa seçim sorulmaz (gereksiz karar).
+  List<Widget> _channelPicker() {
+    final options = otpChannels?.enabled ?? CustomerOtpChannel.values.where((c) => c != CustomerOtpChannel.auto).toList();
+    if (options.length < 2) return const [];
+
+    IconData iconOf(CustomerOtpChannel c) => switch (c) {
+      CustomerOtpChannel.sms => Icons.sms_outlined,
+      CustomerOtpChannel.email => Icons.mail_outline_rounded,
+      _ => Icons.chat_outlined,
+    };
+
+    return [
+      const SizedBox(height: 14),
+      const Text(
+        'Doğrulama kodu nereye gelsin?',
+        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.ink),
+      ),
+      const SizedBox(height: 8),
+      SizedBox(
+        width: double.infinity,
+        child: SegmentedButton<CustomerOtpChannel>(
+          segments: options
+              .map((c) => ButtonSegment(
+                    value: c,
+                    icon: Icon(iconOf(c), size: 17),
+                    label: Text(c.label),
+                  ))
+              .toList(),
+          selected: {options.contains(otpChannel) ? otpChannel : options.first},
+          showSelectedIcon: false,
+          onSelectionChanged: (s) => setState(() {
+            otpChannel = s.first;
+            error = null;
+          }),
+        ),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        otpChannel == CustomerOtpChannel.email
+            ? 'Kod, salonun kayıtlarındaki e-posta adresinize gönderilir. Adresiniz kayıtlı değilse kod telefonunuza gelir.'
+            : otpChannel == CustomerOtpChannel.sms
+                ? 'Kod telefonunuza SMS ile gelir.'
+                : 'Kod WhatsApp mesajı olarak gelir.',
+        style: const TextStyle(color: AppColors.muted, fontSize: 11.5, height: 1.35),
+      ),
+    ];
+  }
+
   Widget _infoBox(bool isCustomer) => Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -810,7 +867,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     TextSpan(
                       text: isCustomer
-                          ? 'Telefonunuzu (başında 0 ile), ad soyadınızı ve doğum tarihinizi girin. Bilgileriniz eşleşirse giriş yaparsınız; şifre gerekmez. Hesabınız yoksa “Kayıt ol” ile oluşturabilirsiniz.'
+                          ? 'Ad soyadınızı ve telefonunuzu (başında 0 ile) girin; size gönderilen 6 haneli kodla giriş yaparsınız. Şifre gerekmez. Hesabınız yoksa “Kayıt ol” ile oluşturabilirsiniz.'
                           : 'Kurumsal e-posta ve şifrenizle giriş yapın.',
                       style: const TextStyle(
                         color: AppColors.muted,

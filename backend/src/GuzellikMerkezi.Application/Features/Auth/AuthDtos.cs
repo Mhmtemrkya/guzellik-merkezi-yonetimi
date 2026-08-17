@@ -22,12 +22,25 @@ public sealed record LoginRequest(string Email, string Password, UserRole Role, 
 /// <summary>İstemcinin login sırasında beyan ettiği cihaz bilgisi (cihaz güvenliği + log zenginleştirme).</summary>
 public sealed record LoginDeviceDto(string? Name = null, string? DeviceType = null, string? Platform = null, string? UserAgent = null, string? NetworkInfoJson = null);
 
-// Online portal müşteri girişi: ad soyad + telefon (baştaki 0 ile) + doğum tarihi eşleşmesi (şifresiz).
-// (Faz 2'de bu eşleşmenin üzerine SMS OTP doğrulaması eklenecek.)
-public sealed record CustomerLoginRequest(string FullName, string Phone, DateOnly BirthDate);
+/// <summary>
+/// Online portal müşteri girişinin KİMLİĞİ: ad soyad + telefon. Şifre yoktur; kimlik yalnızca
+/// doğrulama kodu (OTP) ile birlikte anlam taşır.
+/// </summary>
+/// <remarks>
+/// DOĞUM TARİHİ BİLEREK YOKTUR. Girişte doğum tarihi sormak, App Store 5.1.1(v) kuralına
+/// ("uygulama, çekirdek işlevi için gerekli olmayan kişisel bilgiyi ZORUNLU tutamaz") takılıyordu:
+/// randevu almak için doğum tarihi gerekmez. Kimlik doğrulamasının gerçek kanıtı zaten kodun
+/// gittiği kanaldır (telefon ya da kayıtlı e-posta) — doğum tarihi yalnızca zayıf bir "bilgi"
+/// faktörüydü. Eski istemciler alanı göndermeye devam edebilir; uç kabul edip YOK SAYAR
+/// (bkz. CustomerOtpRequestBody).
+/// </remarks>
+public sealed record CustomerLoginRequest(string FullName, string Phone);
 
-// Kendi kayıt olan (kuruma bağlı olmayan) müşteri. TC yok; e-posta opsiyonel.
-public sealed record CustomerRegisterRequest(string FullName, string Phone, DateOnly BirthDate, GuzellikMerkezi.Domain.Enums.Gender Gender, string? Email);
+/// <summary>
+/// Kendi kayıt olan (kuruma bağlı olmayan) müşteri. TC yok; e-posta ve doğum tarihi OPSİYONEL —
+/// doğum tarihi yalnızca müşteri kendi isterse profiline yazılır (doğum günü kampanyaları için).
+/// </summary>
+public sealed record CustomerRegisterRequest(string FullName, string Phone, DateOnly? BirthDate, GuzellikMerkezi.Domain.Enums.Gender Gender, string? Email);
 
 public sealed record RefreshTokenRequest(string RefreshToken);
 public sealed record LoginResponse(string AccessToken, string RefreshToken, DateTime ExpiresAtUtc, UserProfileDto User);

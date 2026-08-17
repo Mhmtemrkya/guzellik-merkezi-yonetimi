@@ -110,3 +110,9 @@ Thumbs.db
 
 # Duplicate root media copy; canonical sample video lives in Frontend/public/media/ornek.mp4
 Örnek.mp4
+
+# Musteri/kisisel veri disari cikmasin: gercek musteri listeleri ve kisisel belgeler
+# repoya girmemeli (bir kez push edilirse gecmisten silmek zordur).
+*.xlsx
+*.docx
+~*
