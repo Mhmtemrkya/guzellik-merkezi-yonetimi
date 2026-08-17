@@ -119,6 +119,19 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
             };
             msg.To.Add(toEmail);
 
+            // MESSAGE-ID ZORUNLU (RFC 5322). System.Net.Mail bu başlığı kendiliğinden ÜRETMEZ;
+            // başlıksız gelen postayı Gmail "550 5.7.1 Messages missing a valid Message-ID header"
+            // ile REDDEDER. Yani SMTP sunucusu doğru çalışsa bile doğrulama kodları, kayıt ve
+            // hoş geldin e-postaları hedefine hiç ulaşmıyordu.
+            //
+            // Alan adı gönderen adresten alınır: Message-ID'nin sağ tarafı gönderen alanla aynı
+            // olmalı, aksi hâlde spam filtreleri sahte üretilmiş sayar.
+            var senderDomain = s.EmailFromAddress!.Split('@').LastOrDefault();
+            if (!string.IsNullOrWhiteSpace(senderDomain))
+            {
+                msg.Headers.Add("Message-ID", $"<{Guid.NewGuid():N}@{senderDomain}>");
+            }
+
             // DNS REBINDING FRENİ: doğrulama ile bağlantı AYNI adresi kullanmalı. Eskiden host adı
             // doğrulanıp sonra istemciye ad olarak verildiği için DNS bağlantı anında yeniden
             // çözülüyor ve aradaki pencerede iç bir adrese döndürülebiliyordu. TLS kapalıyken
