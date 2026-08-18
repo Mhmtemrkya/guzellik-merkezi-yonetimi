@@ -87,6 +87,23 @@ function roleMetaFor(role: UserRole | string | null | undefined): RoleMeta | nul
   return roleMetas.find((m) => m.role === role) ?? null
 }
 
+/**
+ * Parola doğrulandıktan sonra 2. adımda gerekecek her şey.
+ * Oturum HENÜZ yok; kapsam seçimi burada saklanır ki kod ekranında kaybolmasın.
+ */
+interface PendingLogin {
+  challengeId: string
+  maskedEmail: string
+  devCode: string | null
+  tenantId: string | null
+  branchId: string | null
+  scope: ScopeState
+  /** Kod doğrulanınca gidilecek panel adresi (role göre). */
+  href: string
+  institutionId: string | null
+  branchScopeId: string | null
+}
+
 interface ScopeState {
   role: UserRole | string | null
   tenants: Institution[]
@@ -306,7 +323,45 @@ export default function LoginPage() {
   /** Dolu olduğunda kapsam seçim modalı açıktır ve giriş cevabı bekler. */
   const [selectionRequest, setSelectionRequest] = useState<ScopeState | null>(null)
   const { selectedInstitutionId, selectedBranchId, setScope: setBranchScope } = useBranch()
-  const { loginScope, login, hydrated, session, isAuthenticated } = useAuth()
+  const { loginScope, login, verifyLogin, hydrated, session, isAuthenticated } = useAuth()
+
+  /**
+   * PANEL GİRİŞİ İKİNCİ FAKTÖRÜ. Dolu olduğunda kod ekranı açıktır: parola doğrulandı,
+   * e-postaya kod gitti, oturum HENÜZ AÇILMADI.
+   */
+  const [pending, setPending] = useState<PendingLogin | null>(null)
+  const [otpCode, setOtpCode] = useState('')
+
+  /** Kodu doğrular ve oturumu kurar (adım 2). */
+  const submitOtp = async (submitted?: string): Promise<void> => {
+    if (!pending) return
+    const value = submitted ?? otpCode
+    if (value.length !== 6) {
+      setError('E-postanıza gelen 6 haneli kodu girin.')
+      return
+    }
+    setError('')
+    setLoading(true)
+    try {
+      const session = await verifyLogin(pending.challengeId, value, {
+        tenantId: pending.tenantId,
+        branchId: pending.branchId,
+        scope: pending.scope,
+      })
+      if (pending.institutionId && pending.branchScopeId) {
+        setBranchScope(pending.institutionId, pending.branchScopeId)
+      }
+      if (session?.user?.mustChangePassword) {
+        router.push('/change-password')
+        return
+      }
+      router.push(pending.href)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Kod doğrulanamadı.')
+    } finally {
+      setLoading(false)
+    }
+  }
   const [institutionId, setInstitutionId] = useState<string | null>(selectedInstitutionId)
   const [branchId, setBranchId] = useState<string | null>(selectedBranchId)
   const router = useRouter()
@@ -495,23 +550,27 @@ export default function LoginPage() {
 
     try {
       setLoading(true)
-      const session = await login({
+      // ADIM 1 — parola. Oturum AÇILMAZ: doğruysa e-postaya kod gider.
+      const challenge = await login({
         email: normalizedEmail,
         password,
         roleKey: effectiveMeta.role,
         tenantId: effectiveIsPlatform ? null : effectiveInstitution?.id ?? null,
         branchId: effectiveIsPlatform ? null : effectiveBranch?.id ?? null,
-        scope: { role: effectiveMeta.role, tenants: effectiveScope.tenants },
         remember,
       })
-      if (!effectiveIsPlatform && effectiveInstitution && effectiveBranch) {
-        setBranchScope(effectiveInstitution.id, effectiveBranch.id)
-      }
-      if (session?.user?.mustChangePassword) {
-        router.push('/change-password')
-        return
-      }
-      router.push(effectiveMeta.href)
+      setPending({
+        challengeId: challenge.challengeId,
+        maskedEmail: challenge.maskedEmail,
+        devCode: challenge.devCode ?? null,
+        tenantId: effectiveIsPlatform ? null : effectiveInstitution?.id ?? null,
+        branchId: effectiveIsPlatform ? null : effectiveBranch?.id ?? null,
+        scope: { role: effectiveMeta.role, tenants: effectiveScope.tenants },
+        href: effectiveMeta.href,
+        institutionId: effectiveInstitution?.id ?? null,
+        branchScopeId: effectiveBranch?.id ?? null,
+      })
+      setOtpCode('')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Giriş yapılamadı. Bilgileri kontrol edin.'
       setError(message || 'Giriş yapılamadı. Bilgileri kontrol edin.')
@@ -660,6 +719,85 @@ export default function LoginPage() {
             <span aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-[#f0aac2]/[0.22] blur-3xl" />
             <span aria-hidden className="pointer-events-none absolute -left-20 bottom-0 h-56 w-56 rounded-full bg-[#ffd3df]/[0.20] blur-3xl" />
 
+            {/*
+              İKİNCİ FAKTÖR EKRANI. Parola doğrulandı ama oturum HENÜZ açılmadı: kod girilmeden
+              hiçbir token istemciye verilmez. Parolanın tek engel olması, müşteri kişisel verisi
+              + tahsilat + kasa içeren bir panel için yeterli değildi.
+            */}
+            {pending ? (
+              <div className="relative">
+                <div className="text-center">
+                  <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-[#ead8df] bg-white text-[#c85776] shadow-[0_10px_26px_-18px_rgba(200,87,118,0.55)]">
+                    <ShieldCheck className="h-6 w-6" strokeWidth={1.5} />
+                  </div>
+                  <h2 className="mt-5 font-display text-[27px] leading-tight text-[#2f1724] sm:text-[32px]">
+                    Girişi doğrulayın
+                  </h2>
+                  <p className="mx-auto mt-2 max-w-sm text-[13px] leading-relaxed text-[#352432]/[0.60]">
+                    6 haneli kodu <b className="text-[#2f1724]">{pending.maskedEmail}</b> adresine gönderdik.
+                    Kod 10 dakika geçerlidir.
+                  </p>
+                </div>
+
+                <div className="mx-auto mt-7 max-w-sm">
+                  <label className="mb-2 block text-[10px] font-mono uppercase tracking-[0.22em] text-[#352432]/[0.55]">
+                    Doğrulama Kodu
+                  </label>
+                  <div className="flex items-center gap-3 rounded-xl border border-[#ead8df] bg-white px-4 transition-colors focus-within:border-[#e798b4] focus-within:shadow-[0_0_0_4px_rgba(240,170,194,0.18)]">
+                    <KeyRound className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      autoFocus
+                      value={otpCode}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/\D/g, '').slice(0, 6)
+                        setOtpCode(next)
+                        // 6. hane girilince kendiliğinden doğrula — ayrıca butona basmak gereksiz.
+                        if (next.length === 6) void submitOtp(next)
+                      }}
+                      placeholder="000000"
+                      className="min-h-12 w-full bg-transparent text-center text-[22px] font-semibold tracking-[0.5em] text-[#352432] outline-none placeholder:text-[#352432]/[0.25]"
+                    />
+                  </div>
+                  {pending.devCode && (
+                    <p className="mt-2 text-center text-[11px] text-[#9d7386]">Test ortamı kodu: {pending.devCode}</p>
+                  )}
+                </div>
+
+                {error && (
+                  <div className="mx-auto mt-5 max-w-sm rounded-2xl border border-rose-300/50 bg-rose-50 px-4 py-3 text-[12px] leading-relaxed text-rose-700">
+                    {error}
+                  </div>
+                )}
+
+                <div className="mx-auto mt-6 max-w-sm">
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void submitOtp()}
+                    className="w-full rounded-2xl bg-gradient-to-r from-[#e798b4] via-[#d4789a] to-[#b75a7e] py-4 text-[13px] font-semibold tracking-wide text-white shadow-[0_20px_44px_-18px_rgba(183,90,126,0.75)] disabled:opacity-60"
+                  >
+                    {loading ? 'Doğrulanıyor…' : 'Doğrula ve Panele Gir'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => {
+                      // Baştan başla: parola adımına dön. Meydan okuma sunucuda 10 dk sonra düşer.
+                      setPending(null)
+                      setOtpCode('')
+                      setError('')
+                    }}
+                    className="mt-3 w-full text-center text-[12px] text-[#9d7386] transition-colors hover:text-[#c85776] disabled:opacity-50"
+                  >
+                    ← Farklı hesapla giriş yap
+                  </button>
+                </div>
+              </div>
+            ) : (
+            <>
             <div className="relative text-center">
               <div className="text-[13px] font-medium text-[#c85776]">Hoş geldiniz</div>
               <h2 className="mt-1.5 flex items-center justify-center gap-3 font-display text-[32px] leading-tight tracking-tight text-[#2f1724] sm:text-[42px]">
@@ -993,6 +1131,8 @@ export default function LoginPage() {
                 Giriş sonrası yetkinize göre ilgili panele yönlendirileceksiniz.
               </p>
             </div>
+            </>
+            )}
           </form>
         </motion.div>
       </div>

@@ -37,6 +37,9 @@ public sealed record CustomerOtpVerifyRequest(
     /// <summary>KVKK aydınlatma metnine açık rıza — kayıt akışında ZORUNLU (bkz. CustomerRegisterRequest).</summary>
     bool KvkkConsent = false);
 
+/// <summary>Panel giriş 2. adımı — meydan okuma kimliği + e-postaya gelen 6 haneli kod.</summary>
+public sealed record PanelLoginVerifyRequest(string ChallengeId, string Code);
+
 public static class AuthEndpoints
 {
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
@@ -46,8 +49,16 @@ public static class AuthEndpoints
         group.MapPost("/login-scope", async (LoginScopeRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
             (await service.GetLoginScopeAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("auth-login");
 
-        group.MapPost("/login", async (LoginRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
-            (await service.LoginAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("auth-login");
+        // PANEL GİRİŞİ İKİ ADIMLIDIR: parola → e-postaya kod → oturum.
+        //
+        // /login artık OTURUM DÖNDÜRMEZ; parola ve tüm giriş kontrolleri geçerse bir "meydan
+        // okuma" döner. Oturum yalnız /login/verify'dan çıkar. Parolanın tek engel olması,
+        // müşteri kişisel verisi + tahsilat + kasa içeren bir panel için yeterli değildi.
+        group.MapPost("/login", async (LoginRequest request, Services.PanelLoginOtpService otp, HttpContext http, CancellationToken ct) =>
+            (await otp.StartAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("auth-login");
+
+        group.MapPost("/login/verify", async (PanelLoginVerifyRequest request, Services.PanelLoginOtpService otp, HttpContext http, CancellationToken ct) =>
+            (await otp.VerifyAsync(request.ChallengeId, request.Code, ct)).ToHttpResult(http)).RequireRateLimiting("auth-login");
 
         // --- Müşteri portalı kimlik doğrulaması: TEK KAPI = OTP ------------------------------
         // Doğrudan token üreten eski uçlar KAPATILDI. Ad + telefon + doğum tarihi bilinen bir

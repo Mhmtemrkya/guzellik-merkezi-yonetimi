@@ -48,6 +48,8 @@ builder.Services.AddApiServices(builder.Configuration);
 // Müşteri OTP girişi — kodlar bellekte 5 dk tutulur (tek örnekli dağıtım).
 builder.Services.AddMemoryCache();
 builder.Services.AddScoped<GuzellikMerkezi.Api.Services.CustomerOtpService>();
+// Panel girişinde ikinci faktör (parola + e-posta kodu) — bkz. PanelLoginOtpService.
+builder.Services.AddScoped<GuzellikMerkezi.Api.Services.PanelLoginOtpService>();
 builder.Services.AddHostedService<TrialExpirationBackgroundService>();
 builder.Services.AddHostedService<NotificationDispatchBackgroundService>();
 builder.Services.AddHostedService<MonthlyReportBackgroundService>();

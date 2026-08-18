@@ -1,5 +1,6 @@
 import type {
   ApiEnvelope,
+  ApiLoginChallenge,
   ApiLoginResponse,
   ApiLoginScopeResponse,
   ApiRequestOptions,
@@ -550,11 +551,26 @@ export const authApi = {
       token: null,
       scope: false,
     }),
-  login: ({ email, password, role, tenantId, branchId }: LoginPayload): Promise<ApiLoginResponse> =>
-    apiRequest<ApiLoginResponse>('/api/auth/login', {
+  /**
+   * PANEL GİRİŞİ ADIM 1 — parola ve tüm giriş kontrolleri.
+   *
+   * OTURUM DÖNDÜRMEZ: parola doğruysa e-postaya 6 haneli kod gider ve "meydan okuma" döner.
+   * Oturum yalnız {@link loginVerify}'dan çıkar. Parolanın tek engel olması, müşteri kişisel
+   * verisi + tahsilat + kasa içeren bir panel için yeterli değildi.
+   */
+  login: ({ email, password, role, tenantId, branchId }: LoginPayload): Promise<ApiLoginChallenge> =>
+    apiRequest<ApiLoginChallenge>('/api/auth/login', {
       method: 'POST',
       // Cihaz güvenliği: personel girişleri tanımlı cihaz kimliğiyle doğrulanır.
       body: { email, password, role, tenantId, branchId, deviceId: getDeviceId(), device: getDeviceInfo() },
+      token: null,
+      scope: false,
+    }),
+  /** PANEL GİRİŞİ ADIM 2 — e-postaya gelen kod doğruysa oturum teslim edilir. */
+  loginVerify: (challengeId: string, code: string): Promise<ApiLoginResponse> =>
+    apiRequest<ApiLoginResponse>('/api/auth/login/verify', {
+      method: 'POST',
+      body: { challengeId, code },
       token: null,
       scope: false,
     }),

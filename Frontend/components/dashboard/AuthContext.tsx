@@ -16,6 +16,7 @@ import {
   userRoles,
 } from '@/lib/apiClient'
 import type {
+  ApiLoginChallenge,
   ApiLoginResponse,
   ApiLoginScopeBranch,
   ApiLoginScopeResponse,
@@ -37,7 +38,13 @@ interface AuthContextValue {
   authError: string
   setAuthError: (value: string) => void
   loginScope: (input: { email: string; roleKey?: RoleKey | UserRole | null; password?: string }) => Promise<NormalizedScopeResponse>
-  login: (input: LoginInput) => Promise<AuthSession | null>
+  /**
+   * PANEL GİRİŞİ ADIM 1 — parola. OTURUM AÇMAZ; e-postaya kod gönderilir ve meydan okuma döner.
+   * Oturum yalnız {@link verifyLogin}'dan çıkar.
+   */
+  login: (input: LoginInput) => Promise<ApiLoginChallenge>
+  /** PANEL GİRİŞİ ADIM 2 — e-postaya gelen kod doğruysa oturum kurulur. */
+  verifyLogin: (challengeId: string, code: string, scope: LoginScopeInfo) => Promise<AuthSession | null>
   logout: () => Promise<void>
   refresh: () => Promise<AuthSession | null>
   setSession: (session: AuthSession | null) => void
@@ -61,6 +68,13 @@ interface LoginInput {
   scope?: NormalizedScopeResponse | null
   /** "Beni hatırla": true → kalıcı oturum (localStorage + otomatik yenileme), false → oturumluk. */
   remember?: boolean
+}
+
+/** 2. adımda oturuma yazılacak kapsam — 1. adımdaki seçim korunur. */
+interface LoginScopeInfo {
+  tenantId?: string | null
+  branchId?: string | null
+  scope?: NormalizedScopeResponse | null
 }
 
 interface NormalizedScopeResponse extends Omit<ApiLoginScopeResponse, 'tenants' | 'role'> {
@@ -192,20 +206,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const login = useCallback(
-    async ({ email, password, roleKey, tenantId, branchId, scope, remember = true }: LoginInput): Promise<AuthSession | null> => {
+    async ({ email, password, roleKey, tenantId, branchId, remember = true }: LoginInput): Promise<ApiLoginChallenge> => {
       setAuthError('')
-      // "Beni hatırla" tercihini persist'ten ÖNCE yaz; storeSession buna göre kalıcı/oturumluk seçer.
+      // "Beni hatırla" tercihi ŞİMDİ yazılır; 2. adımda storeSession buna göre kalıcı/oturumluk seçer.
       setRememberMe(remember)
       const role = resolveRole(roleKey)
-      const response = await authApi.login({ email, password, role, tenantId: tenantId || null, branchId: branchId || null })
-      const matchingTenant = (scope?.tenants || []).find(
-        (tenant) => tenant.id === tenantId || tenant.tenantId === tenantId,
+      // Yanıt OTURUM DEĞİL: parola doğruysa e-postaya kod gitti, meydan okuma döndü.
+      return authApi.login({ email, password, role, tenantId: tenantId || null, branchId: branchId || null })
+    },
+    [],
+  )
+
+  const verifyLogin = useCallback(
+    async (challengeId: string, code: string, info: LoginScopeInfo): Promise<AuthSession | null> => {
+      setAuthError('')
+      const response = await authApi.loginVerify(challengeId, code)
+      const matchingTenant = (info.scope?.tenants || []).find(
+        (tenant) => tenant.id === info.tenantId || tenant.tenantId === info.tenantId,
       )
-      const nextScope: SessionScope | null = matchingTenant ? { tenants: [matchingTenant] } : scope ? { tenants: scope.tenants } : null
+      const nextScope: SessionScope | null = matchingTenant
+        ? { tenants: [matchingTenant] }
+        : info.scope
+          ? { tenants: info.scope.tenants }
+          : null
       const nextSession = normalizeSession(response, {
         scope: nextScope,
-        selectedTenantId: tenantId || response?.user?.tenantId || null,
-        selectedBranchId: branchId || response?.user?.branchId || null,
+        selectedTenantId: info.tenantId || response?.user?.tenantId || null,
+        selectedBranchId: info.branchId || response?.user?.branchId || null,
       })
       persist(nextSession)
       return nextSession
@@ -314,12 +341,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthError,
       loginScope,
       login,
+      verifyLogin,
       logout,
       refresh,
       setSession: persist,
       adoptSession,
     }),
-    [hydrated, session, authError, loginScope, login, logout, refresh, persist, adoptSession],
+    [hydrated, session, authError, loginScope, login, verifyLogin, logout, refresh, persist, adoptSession],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
@@ -333,7 +361,10 @@ const fallbackAuth: AuthContextValue = {
   authError: '',
   setAuthError: () => {},
   loginScope: async () => ({ tenants: [], role: 'Staff' }),
-  login: async () => null,
+  login: async () => {
+    throw new Error('AuthProvider dışında giriş yapılamaz.')
+  },
+  verifyLogin: async () => null,
   logout: async () => {},
   refresh: async () => null,
   setSession: () => {},

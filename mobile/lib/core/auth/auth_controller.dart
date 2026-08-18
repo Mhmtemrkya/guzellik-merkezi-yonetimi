@@ -10,6 +10,24 @@ import 'auth_session.dart';
 
 enum AuthStatus { loading, signedOut, signedIn }
 
+/// Panel girişinin 1. adım yanıtı — HENÜZ OTURUM DEĞİL.
+/// Kod doğrulanana kadar hiçbir token cihazda saklanmaz.
+class PanelLoginChallenge {
+  const PanelLoginChallenge({
+    required this.challengeId,
+    required this.maskedEmail,
+    this.devCode,
+  });
+
+  final String challengeId;
+
+  /// Kodun gittiği adres, maskeli (yazım hatası fark edilsin).
+  final String maskedEmail;
+
+  /// Geliştirme ortamında kod; canlıda null.
+  final String? devCode;
+}
+
 /// Müşteri doğrulama kodunun gideceği kanal — sunucudaki `CustomerOtpChannel` ile birebir.
 ///
 /// WhatsApp TEK KANAL DEĞİLDİR: App Store 3.2.2(v) reddi tam olarak bunu söyledi ("uygulama
@@ -127,7 +145,12 @@ class AuthController extends ChangeNotifier {
     return [result];
   }
 
-  Future<void> login({
+  /// PANEL GİRİŞİ ADIM 1 — parola ve tüm giriş kontrolleri.
+  ///
+  /// OTURUM AÇMAZ: parola doğruysa e-postaya 6 haneli kod gider ve "meydan okuma" döner.
+  /// Oturum yalnız [verifyLogin]'dan çıkar. Parolanın tek engel olması, müşteri kişisel
+  /// verisi + tahsilat + kasa içeren bir panel için yeterli değildi.
+  Future<PanelLoginChallenge> login({
     required String email,
     required String password,
     required String role,
@@ -145,8 +168,23 @@ class AuthController extends ChangeNotifier {
       'deviceId': await DeviceIdentity.id(),
       'device': DeviceIdentity.info(),
     });
-    session = AuthSession.fromJson((data as Map).cast<String, dynamic>());
+    // "Beni hatırla" tercihi ŞİMDİ saklanır; 2. adımda oturum ona göre kalıcılaşır.
     _remember = remember;
+    final map = (data as Map).cast<String, dynamic>();
+    return PanelLoginChallenge(
+      challengeId: '${map['challengeId'] ?? ''}',
+      maskedEmail: '${map['maskedEmail'] ?? ''}',
+      devCode: map['devCode']?.toString(),
+    );
+  }
+
+  /// PANEL GİRİŞİ ADIM 2 — e-postaya gelen kod doğruysa oturum kurulur.
+  Future<void> verifyLogin({required String challengeId, required String code}) async {
+    final data = await api.postPublic('/api/auth/login/verify', {
+      'challengeId': challengeId,
+      'code': code.trim(),
+    });
+    session = AuthSession.fromJson((data as Map).cast<String, dynamic>());
     await _persistSession();
     status = AuthStatus.signedIn;
     passwordChangePending = session?.user.mustChangePassword == true;

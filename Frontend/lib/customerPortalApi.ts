@@ -177,12 +177,18 @@ export function storeCustomerSession(session: CustomerSession | null): void {
 
 export class PortalApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  /** Sunucunun ayırt edilebilir hata kodu (ör. 'CustomerEmailStage'). */
+  code: string | null
+  constructor(message: string, status: number, code: string | null = null) {
     super(message)
     this.name = 'PortalApiError'
     this.status = status
+    this.code = code
   }
 }
+
+/** Kayıt yarıda: telefon doğrulandı, sıra e-posta kodunda. Mesaj maskeli adresi taşır. */
+export const CUSTOMER_EMAIL_STAGE = 'CustomerEmailStage'
 
 async function portalRequest<T>(
   path: string,
@@ -209,7 +215,7 @@ async function portalRequest<T>(
   if (!response.ok || !envelope?.success) {
     if (response.status === 401 && auth) storeCustomerSession(null)
     const message = envelope?.error?.message || 'İşlem tamamlanamadı. Lütfen tekrar deneyin.'
-    throw new PortalApiError(message, response.status)
+    throw new PortalApiError(message, response.status, envelope?.error?.code ?? null)
   }
   return envelope.data as T
 }

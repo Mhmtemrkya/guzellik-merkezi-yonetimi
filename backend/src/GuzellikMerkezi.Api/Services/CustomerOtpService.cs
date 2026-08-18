@@ -202,6 +202,22 @@ public sealed class CustomerOtpService
         /// <summary>E-posta kanalında kodun gittiği adres (kayıt akışında kanıt olarak taşınır).</summary>
         public string? Target;
 
+        /// <summary>
+        /// KAYITTA İKİNCİ AŞAMA: SMS doğrulandıktan sonra e-posta kodu beklenir.
+        /// </summary>
+        /// <remarks>
+        /// Kayıt iki kanalı da doğrular: telefon (hesabın kimliği + bildirimler) ve e-posta
+        /// (bir sonraki girişin kodu oraya gidecek). E-posta doğrulanmadan hesap açılsaydı,
+        /// yanlış yazılmış bir adres kullanıcıyı ilk girişte kilitlerdi.
+        /// </remarks>
+        public bool AwaitingEmailStage;
+
+        /// <summary>Kayıt akışında 2. aşamada doğrulanacak e-posta adresi.</summary>
+        public string? PendingEmail;
+
+        /// <summary>1. aşamada doğrulanan telefon — 2. aşamada kayıt bununla açılır.</summary>
+        public bool PhoneProven;
+
         public int Attempts;
 
         /// <summary>
@@ -552,23 +568,51 @@ public sealed class CustomerOtpService
             var payload = registration ?? new CustomerRegisterRequest(
                 request.FullName, request.Phone, null, Domain.Enums.Gender.Unspecified, entry.Target, KvkkConsent: false);
 
-            // DOĞRULANAN ADRES KAZANIR.
+            // ---- AŞAMA 1: telefon doğrulandı, sıra E-POSTADA ----
             //
-            // Kod A adresine gönderilip doğrulama isteğinde e-posta alanı B yazılabiliyordu:
-            // sahipliği kanıtlanan adres A iken müşteri kaydına B yazılıyordu. Bu, hem başkasının
-            // adresini birinin hesabına iliştirmeye hem de "e-postası doğrulanmış" görünen sahte
-            // bir kayda yol açar. Kod e-postaya gittiyse kayda YALNIZ o adres yazılır.
-            if (entry.Channel == CustomerOtpChannel.Email && !string.IsNullOrWhiteSpace(entry.Target))
+            // Kayıt İKİ kanalı da doğrular: telefon (hesabın kimliği + randevu bildirimleri) ve
+            // e-posta (bir sonraki GİRİŞİN kodu oraya gidecek). E-posta doğrulanmadan hesap
+            // açılsaydı, yanlış yazılmış bir adres kullanıcıyı ilk girişte kilitlerdi.
+            if (!entry.AwaitingEmailStage)
             {
-                payload = payload with { Email = entry.Target };
+                var mail = CustomerIdentityLookup.NormalizeEmail(payload.Email);
+                if (mail.Length == 0)
+                {
+                    return Result<LoginResponse>.Failure(Error.Validation(
+                        "E-posta adresi zorunludur; girişte doğrulama kodu bu adrese gönderilir."));
+                }
+
+                var emailCode = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+                var sent = await SendCodeAsync(request.Phone, mail, emailCode, CustomerOtpChannel.Email,
+                    await GetAvailableChannelsAsync(ct), ct);
+                if (sent.Channel is null)
+                {
+                    return Result<LoginResponse>.Failure(Error.Unauthorized(
+                        "Doğrulama e-postası gönderilemedi. Adresinizi kontrol edip tekrar deneyin."));
+                }
+
+                // Aynı önbellek kaydı 2. aşamaya devreder: telefon kanıtı korunur.
+                var next = new OtpEntry
+                {
+                    Code = emailCode,
+                    Identity = entry.Identity,
+                    Channel = CustomerOtpChannel.Email,
+                    Target = mail,
+                    AwaitingEmailStage = true,
+                    PendingEmail = mail,
+                    PhoneProven = true,
+                };
+                _cache.Set(cacheKey, next, CodeLifetime);
+
+                // Akış TAMAMLANMADI: istemci ayırt edilebilir kodla "e-posta adımına geç" der.
+                // Mesaj alanı maskeli adresi taşır (ekranda gösterilecek tek bilgi budur).
+                return Result<LoginResponse>.Failure(
+                    Error.EmailStageRequired(TenantTextHelper.MaskEmail(mail)));
             }
 
-            // HANGİ KANAL KANITLANDI? Telefona giden kod telefon sahipliğini, e-postaya giden kod
-            // yalnızca e-posta sahipliğini kanıtlar. Kayıt akışı bu ayrımı bilmek zorundadır:
-            // e-posta kanıtıyla başkasının numarasına ait hesap sahiplenilemez (bkz. AuthService).
-            var phoneVerified = entry.Channel is CustomerOtpChannel.WhatsApp or CustomerOtpChannel.Sms;
-            var verifiedEmail = entry.Channel == CustomerOtpChannel.Email ? entry.Target : null;
-            return await _auth.CustomerRegisterAsync(payload, phoneVerified, verifiedEmail, ct);
+            // ---- AŞAMA 2: e-posta da doğrulandı → hesap açılır ----
+            payload = payload with { Email = entry.PendingEmail };
+            return await _auth.CustomerRegisterAsync(payload, entry.PhoneProven, entry.PendingEmail, ct);
         }
 
         // Kod doğru → kimlik yeniden doğrulanır, JWT üretilir.

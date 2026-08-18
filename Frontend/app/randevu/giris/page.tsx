@@ -18,9 +18,11 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import {
+  CUSTOMER_EMAIL_STAGE,
   customerOtpRequest,
   customerOtpVerify,
   getCustomerSession,
+  PortalApiError,
 } from '@/lib/customerPortalApi'
 
 const sectionVariants: Variants = {
@@ -91,6 +93,11 @@ export default function CustomerLoginPage() {
   const [otpStage, setOtpStage] = useState<'idle' | 'code'>('idle')
   const [otpCode, setOtpCode] = useState('')
   const [otpInfo, setOtpInfo] = useState('')
+  /**
+   * KAYITTA İKİNCİ AŞAMA: telefon doğrulandı, sıra e-posta kodunda.
+   * Kayıt iki kanalı da doğrular — telefon hesabın kimliği, e-posta ise bir sonraki GİRİŞİN kodu.
+   */
+  const [emailStage, setEmailStage] = useState<string | null>(null)
 
   /** Ortak kimlik doğrulaması — geçersizse hata basar ve null döner. */
   const validateIdentity = (): { name: string; normalizedPhone: string } | null => {
@@ -183,6 +190,14 @@ export default function CustomerLoginPage() {
       })
       router.push(nextTarget())
     } catch (err: unknown) {
+      // AŞAMA GEÇİŞİ — hata değil, bir sonraki adım. Sunucu ayırt edilebilir bir kod döner;
+      // mesajı metinden tanımaya çalışmak ufak bir düzeltmede sessizce bozulurdu.
+      if (err instanceof PortalApiError && err.code === CUSTOMER_EMAIL_STAGE) {
+        setEmailStage(err.message)
+        setOtpCode('')
+        setOtpInfo(`Son adım: 6 haneli kodu ${err.message} adresine gönderdik.`)
+        return
+      }
       const message = err instanceof Error ? err.message : ''
       setError(
         message ||
@@ -337,6 +352,7 @@ export default function CustomerLoginPage() {
                       setOtpStage('idle')
                       setOtpCode('')
                       setOtpInfo('')
+                      setEmailStage(null)
                     }}
                     className={`relative flex min-h-10 items-center justify-center gap-2 rounded-xl text-[12.5px] font-semibold transition-colors ${
                       active ? 'text-white' : 'text-[#352432]/[0.55] hover:text-[#c85776]'
@@ -396,15 +412,17 @@ export default function CustomerLoginPage() {
                 Seçim sunmak, kullanıcının seçtiği kanaldan kod gelmemesi anlamına gelirdi.
               */}
               <div className="flex items-start gap-3 rounded-2xl border border-[#ead8df] bg-white/70 px-4 py-3">
-                {mode === 'register' ? (
+                {mode === 'register' && !emailStage ? (
                   <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-[#c85776]" strokeWidth={1.7} />
                 ) : (
                   <Mail className="mt-0.5 h-4 w-4 shrink-0 text-[#c85776]" strokeWidth={1.7} />
                 )}
                 <p className="text-[12px] leading-relaxed text-[#352432]/[0.65]">
-                  {mode === 'register'
-                    ? 'Doğrulama kodu telefonunuza SMS ile gönderilecek.'
-                    : 'Doğrulama kodu kayıtlı e-posta adresinize gönderilecek.'}
+                  {mode === 'login'
+                    ? 'Doğrulama kodu kayıtlı e-posta adresinize gönderilecek.'
+                    : emailStage
+                      ? `Telefonunuz doğrulandı. Son adım: kod ${emailStage} adresine gönderildi.`
+                      : 'Önce telefonunuza SMS ile kod göndereceğiz, ardından e-postanızı doğrulayacağız.'}
                 </p>
               </div>
 

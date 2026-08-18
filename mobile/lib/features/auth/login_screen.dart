@@ -35,6 +35,11 @@ class _LoginScreenState extends State<LoginScreen> {
   bool otpStage = false;
   String? otpInfo;
 
+  /// PANEL GİRİŞİ İKİNCİ FAKTÖRÜ. Dolu olduğunda kod ekranı açıktır: parola doğrulandı,
+  /// e-postaya kod gitti, oturum HENÜZ açılmadı.
+  PanelLoginChallenge? panelChallenge;
+  final panelCodeController = TextEditingController();
+
   Timer? debounce;
   bool obscure = true;
   bool remember = true;
@@ -54,6 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
     phoneController.dispose();
     nameController.dispose();
     otpCodeController.dispose();
+    panelCodeController.dispose();
     super.dispose();
   }
 
@@ -238,6 +244,29 @@ class _LoginScreenState extends State<LoginScreen> {
     await _doLogin(_tenantIdOf(chosenTenant), chosenBranchId);
   }
 
+  /// Panel giriş kodunu doğrular ve oturumu kurar (adım 2).
+  Future<void> _verifyPanelCode([String? submitted]) async {
+    final challenge = panelChallenge;
+    if (challenge == null) return;
+    final code = (submitted ?? panelCodeController.text).trim();
+    if (code.length != 6) {
+      setState(() => error = 'E-postanıza gelen 6 haneli kodu girin.');
+      return;
+    }
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      await widget.auth.verifyLogin(challengeId: challenge.challengeId, code: code);
+      // Başarılıysa AuthController signedIn olur ve router otomatik yönlendirir.
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
   /// KURUMSAL KAYIT — tarayıcıda web sitesindeki kayıt sayfasını açar.
   ///
   /// Akış bilerek uygulamaya taşınmadı: kurum kaydı iki faktörlü doğrulama (e-posta + telefon),
@@ -294,7 +323,8 @@ class _LoginScreenState extends State<LoginScreen> {
       error = null;
     });
     try {
-      await widget.auth.login(
+      // ADIM 1 — parola. Oturum AÇILMAZ: doğruysa e-postaya kod gider.
+      final challenge = await widget.auth.login(
         email: emailController.text,
         password: passwordController.text,
         role: role!,
@@ -302,6 +332,11 @@ class _LoginScreenState extends State<LoginScreen> {
         branchId: role == 'PlatformAdmin' ? null : chosenBranchId,
         remember: remember,
       );
+      if (!mounted) return;
+      setState(() {
+        panelChallenge = challenge;
+        panelCodeController.clear();
+      });
     } catch (e) {
       if (mounted) setState(() => error = '$e');
     } finally {
@@ -540,7 +575,13 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             const SizedBox(height: 18),
-                            if (isCustomer) ..._customerFields() else ..._staffFields(),
+                            // PANEL 2FA: parola doğrulandıysa yalnız kod alanı gösterilir.
+                            if (panelChallenge != null)
+                              ..._panelCodeFields()
+                            else if (isCustomer)
+                              ..._customerFields()
+                            else
+                              ..._staffFields(),
                             if (error != null) ...[
                               const SizedBox(height: 12),
                               Text(
@@ -554,7 +595,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             ],
                             const SizedBox(height: 20),
                             FilledButton.icon(
-                              onPressed: loading ? null : submit,
+                              onPressed: loading
+                                  ? null
+                                  : (panelChallenge != null ? _verifyPanelCode : submit),
                               icon: loading
                                   ? const SizedBox.square(
                                       dimension: 18,
@@ -564,9 +607,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     )
                                   : const Icon(Icons.arrow_forward_rounded),
-                              label: Text(isCustomer
-                                  ? (otpStage ? 'Kodu Doğrula ve Giriş Yap' : 'Giriş Yap')
-                                  : 'Giriş Yap ve Devam Et'),
+                              label: Text(panelChallenge != null
+                                  ? 'Doğrula ve Panele Gir'
+                                  : isCustomer
+                                      ? (otpStage ? 'Kodu Doğrula ve Giriş Yap' : 'Giriş Yap')
+                                      : 'Giriş Yap ve Devam Et'),
                             ),
                             // Ayrı "WhatsApp kodu ile giriş" butonu kaldırıldı: kod artık ALTERNATİF
                             // değil, tek yol; kanalı yukarıdaki seçici belirler.
@@ -688,6 +733,70 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ];
+
+  /// Panel giriş kodu ekranı (2. adım). Parola alanları gizlenir; yalnız kod istenir.
+  List<Widget> _panelCodeFields() {
+    final challenge = panelChallenge!;
+    return [
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceSoft,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.verified_user_outlined, size: 18, color: AppColors.primaryDark),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '6 haneli kodu ${challenge.maskedEmail} adresine gönderdik. Kod 10 dakika geçerlidir.',
+                style: const TextStyle(color: AppColors.muted, fontSize: 12.5, height: 1.35),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 14),
+      TextFormField(
+        controller: panelCodeController,
+        keyboardType: TextInputType.number,
+        maxLength: 6,
+        autofocus: true,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: 8),
+        onChanged: (v) {
+          // 6. hane girilince kendiliğinden doğrula — ayrıca butona basmak gereksiz.
+          if (v.trim().length == 6) _verifyPanelCode(v);
+        },
+        decoration: const InputDecoration(
+          labelText: 'Doğrulama Kodu',
+          hintText: '000000',
+          prefixIcon: Icon(Icons.key_rounded),
+          counterText: '',
+        ),
+      ),
+      if (challenge.devCode != null && challenge.devCode!.isNotEmpty)
+        Text('Test kodu: ${challenge.devCode}',
+            style: const TextStyle(color: AppColors.muted, fontSize: 11.5)),
+      const SizedBox(height: 4),
+      Center(
+        child: TextButton(
+          onPressed: loading
+              ? null
+              : () => setState(() {
+                  // Baştan başla: meydan okuma sunucuda 10 dk sonra zaten düşer.
+                  panelChallenge = null;
+                  panelCodeController.clear();
+                  error = null;
+                }),
+          child: const Text('← Farklı hesapla giriş yap'),
+        ),
+      ),
+    ];
+  }
 
   List<Widget> _customerFields() => [
         TextFormField(

@@ -528,10 +528,22 @@ public sealed class StoreReviewOtpTests
     }
 
     /// <summary>
-    /// Kayıt SMS ile doğrulandığı için AuthService'e TELEFON kanıtı geçer (e-posta kanıtı değil).
+    /// KAYIT İKİ AŞAMALIDIR: önce TELEFON (SMS), sonra E-POSTA. Hesap ancak ikisi de
+    /// doğrulanınca açılır.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Telefon hesabın kimliğidir (randevu bildirimleri oraya gider); e-posta ise bir sonraki
+    /// GİRİŞİN kodunun gideceği adrestir. E-posta doğrulanmadan hesap açılsaydı, yanlış yazılmış
+    /// bir adres kullanıcıyı ilk girişte kilitlerdi.
+    /// </para>
+    /// <para>
+    /// 1. aşamanın sonucu ayırt edilebilir bir kodla (<c>CustomerEmailStage</c>) döner; istemci
+    /// bunu arıza değil "sıradaki adım" olarak gösterir.
+    /// </para>
+    /// </remarks>
     [Fact]
-    public async Task Register_PassesPhoneProof_NotEmailProof()
+    public async Task Register_RequiresPhoneThenEmail_BeforeAccountIsCreated()
     {
         var options = NewOptions();
         await SeedAsync(options);
@@ -543,26 +555,46 @@ public sealed class StoreReviewOtpTests
 
         const string newPhone = "+90 555 123 45 67";
         const string mail = "yeni@example.com";
+        var payload = new CustomerRegisterRequest(
+            "Yeni Kullanici", newPhone, null, Gender.Unspecified, mail, KvkkConsent: true);
+
+        // --- AŞAMA 1: SMS ---
         await service.RequestAsync(
             Login("Yeni Kullanici", newPhone), mail,
             CustomerOtpPurpose.Register, CustomerOtpChannel.Sms, CancellationToken.None);
 
-        var sent = messaging.ReceivedCalls()
+        var smsBody = messaging.ReceivedCalls()
             .Where(c => c.GetMethodInfo().Name == nameof(IPlatformMessagingService.SendSmsAsync))
             .Select(c => (string)c.GetArguments()[1]!)
             .Single();
-        var code = System.Text.RegularExpressions.Regex.Match(sent, @"(\d{6})").Groups[1].Value;
+        var smsCode = System.Text.RegularExpressions.Regex.Match(smsBody, @"(\d{6})").Groups[1].Value;
+
+        var stage1 = await service.VerifyAsync(
+            Login("Yeni Kullanici", newPhone), smsCode,
+            CustomerOtpPurpose.Register, payload, CancellationToken.None);
+
+        // HESAP HENÜZ AÇILMADI: ayırt edilebilir kod + e-posta gönderildi.
+        Assert.True(stage1.IsFailure);
+        Assert.Equal("CustomerEmailStage", stage1.Error.Code);
+        await auth.DidNotReceive().CustomerRegisterAsync(
+            Arg.Any<CustomerRegisterRequest>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+
+        // --- AŞAMA 2: e-posta ---
+        var mailBody = messaging.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(IPlatformMessagingService.SendEmailAsync))
+            .Select(c => (string)c.GetArguments()[2]!)
+            .Last();
+        var mailCode = System.Text.RegularExpressions.Regex.Match(mailBody, @">(\d{6})<").Groups[1].Value;
 
         await service.VerifyAsync(
-            Login("Yeni Kullanici", newPhone), code,
-            CustomerOtpPurpose.Register,
-            new CustomerRegisterRequest("Yeni Kullanici", newPhone, null, Gender.Unspecified, mail, KvkkConsent: true),
-            CancellationToken.None);
+            Login("Yeni Kullanici", newPhone), mailCode,
+            CustomerOtpPurpose.Register, payload, CancellationToken.None);
 
+        // Şimdi açılır: TELEFON kanıtlandı + doğrulanan e-posta taşındı.
         await auth.Received(1).CustomerRegisterAsync(
-            Arg.Any<CustomerRegisterRequest>(),
-            true,   // TELEFON kanıtlandı
-            null,   // e-posta kanıtı YOK (kod oraya gitmedi)
+            Arg.Is<CustomerRegisterRequest>(r => r != null && r.Email == mail),
+            true,   // telefon kanıtı (1. aşamadan devredildi)
+            mail,   // doğrulanan adres
             Arg.Any<CancellationToken>());
     }
 

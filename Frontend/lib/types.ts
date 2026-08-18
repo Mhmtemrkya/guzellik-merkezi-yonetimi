@@ -142,6 +142,18 @@ export interface SessionScope {
   tenants: Institution[]
 }
 
+/**
+ * Panel girişi 1. adımın yanıtı — HENÜZ OTURUM DEĞİL.
+ * Kod doğrulanana kadar hiçbir token istemciye verilmez.
+ */
+export interface ApiLoginChallenge {
+  challengeId: string
+  /** Kodun gittiği adres, maskeli (yazım hatası fark edilsin). */
+  maskedEmail: string
+  /** Geliştirme ortamında kod; canlıda her zaman null. */
+  devCode?: string | null
+}
+
 export interface AuthSession {
   accessToken: string
   refreshToken: string

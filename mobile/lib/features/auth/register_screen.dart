@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_controller.dart';
+import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 
 /// Kuruma bağlı olmayan müşteri kaydı (kayıt ol). Başarılı kayıt → otomatik giriş →
@@ -32,6 +33,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final otpCodeController = TextEditingController();
   /// KVKK AÇIK RIZASI — kayıt için ZORUNLU. Sunucu da ayrıca doğrular (tek kapı istemci olamaz).
   bool kvkkConsent = false;
+
+  /// KAYITTA İKİNCİ AŞAMA: telefon doğrulandı, sıra e-posta kodunda (maskeli adres).
+  /// Kayıt iki kanalı da doğrular — telefon hesabın kimliği, e-posta bir sonraki GİRİŞİN kodu.
+  String? emailStage;
 
   @override
   void dispose() {
@@ -107,6 +112,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
         kvkkConsent: kvkkConsent,
       );
       // Başarılıysa AuthController durumu signedIn olur ve router otomatik yönlendirir.
+    } on ApiException catch (e) {
+      // AŞAMA GEÇİŞİ — hata değil, bir sonraki adım. Sunucu ayırt edilebilir kod döner.
+      if (e.code == 'CustomerEmailStage') {
+        if (mounted) {
+          setState(() {
+            emailStage = e.message;
+            otpCodeController.clear();
+            otpInfo = 'Son adım: 6 haneli kodu ${e.message} adresine gönderdik.';
+            error = null;
+          });
+        }
+        return;
+      }
+      if (mounted) setState(() => error = e.message);
     } catch (e) {
       if (mounted) setState(() => error = '$e');
     } finally {
@@ -167,7 +186,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Doğrulama kodu telefonunuza SMS ile gönderilecek.',
+                  'Önce telefonunuza SMS ile kod göndereceğiz, ardından e-postanızı doğrulayacağız.',
                   style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35),
                 ),
               ),
