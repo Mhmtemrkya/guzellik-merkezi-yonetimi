@@ -292,6 +292,22 @@ public sealed class TenantService : ITenantService
 
         _db.Tenants.Add(tenant);
 
+        // TEKİLLİK REZERVASYONU — self-servis kayıtla AYNI protokol.
+        //
+        // Kısıt yalnız self-signup yolunda olsaydı, platform panelinden açılan bir kurum
+        // self-signup'ın rezerve ettiği e-posta/telefonu sessizce ikinci kez kullanabilir ve
+        // koruma yalnızca YOLLARDAN BİRİNDE işlerdi. Rezervasyon burada da yazılır; iki yol
+        // aynı UNIQUE kısıtını paylaşır.
+        //
+        // Yetkili e-postası ya da telefon verilmemişse (platform yolu ikisini de zorunlu
+        // tutmuyor) rezervasyon yazılmaz — olmayan bir değeri rezerve etmek anlamsızdır.
+        var reservationPhoneKey = _search.BuildPhoneKey(request.Phone);
+        if (!string.IsNullOrWhiteSpace(request.OwnerEmail) && !string.IsNullOrWhiteSpace(reservationPhoneKey))
+        {
+            _db.TenantSignupReservations.Add(new TenantSignupReservation(
+                tenant.Id, request.OwnerEmail!, reservationPhoneKey!));
+        }
+
         /*
          * LOGO (opsiyonel) — vitrin profiline yazılır, kurumun kendi yüklediğiyle AYNI alana.
          *

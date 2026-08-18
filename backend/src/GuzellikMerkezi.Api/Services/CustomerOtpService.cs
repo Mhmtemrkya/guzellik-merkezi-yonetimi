@@ -141,6 +141,27 @@ public sealed class CustomerOtpService
         // kalır, denetçi kod isteyip hiç alamaz ve uygulama yine 2.1'den reddedilir.
         var phone = FirstNonEmpty(configuration["CustomerOtp:StoreReviewPhone"], configuration["AppReview:CustomerPhone"]);
         var code = FirstNonEmpty(configuration["CustomerOtp:StoreReviewCode"], configuration["AppReview:CustomerOtpCode"]);
+
+        // TEK ANAHTARLA KAPANIR. Eskiden kısayol yalnızca telefon+kod alanlarına bakıyordu:
+        // inceleme bitince "AppReview:Enabled=false" yapmak SABİT KODU KAPATMIYORDU, çünkü
+        // telefon/kod satırları config'te unutulmuş hâlde kalıyordu. Artık Enabled açıkça true
+        // değilse kısayol devre dışıdır — bayrağı kapatmak tek başına yeterli.
+        //
+        // GERİYE DÖNÜK: eski kurulumlar yalnız CustomerOtp:StoreReview* kullanıyor ve Enabled
+        // anahtarını hiç tanımıyor. O yapılandırmada bayrak ARANMAZ; yeni AppReview bloğu
+        // kullanılıyorsa bayrak zorunludur.
+        var usesNewBlock = !string.IsNullOrWhiteSpace(configuration["AppReview:CustomerPhone"])
+            || !string.IsNullOrWhiteSpace(configuration["AppReview:CustomerOtpCode"]);
+        var reviewEnabled = bool.TryParse(configuration["AppReview:Enabled"], out var flag) && flag;
+        if (usesNewBlock && !reviewEnabled)
+        {
+            phone = null;
+            code = null;
+            _logger.LogInformation(
+                "AppReview:CustomerPhone/CustomerOtpCode tanımlı ama AppReview:Enabled=false — " +
+                "mağaza inceleme kısayolu KAPALI.");
+        }
+
         // İkisi de dolu olmadan devreye girmez; yarım yapılandırma sessizce "açık" sayılmasın.
         if (!string.IsNullOrWhiteSpace(phone) && !string.IsNullOrWhiteSpace(code?.Trim()))
         {
@@ -508,6 +529,17 @@ public sealed class CustomerOtpService
             // uydurmak olurdu (bkz. CustomerRegisterRequest.KvkkConsent).
             var payload = registration ?? new CustomerRegisterRequest(
                 request.FullName, request.Phone, null, Domain.Enums.Gender.Unspecified, entry.Target, KvkkConsent: false);
+
+            // DOĞRULANAN ADRES KAZANIR.
+            //
+            // Kod A adresine gönderilip doğrulama isteğinde e-posta alanı B yazılabiliyordu:
+            // sahipliği kanıtlanan adres A iken müşteri kaydına B yazılıyordu. Bu, hem başkasının
+            // adresini birinin hesabına iliştirmeye hem de "e-postası doğrulanmış" görünen sahte
+            // bir kayda yol açar. Kod e-postaya gittiyse kayda YALNIZ o adres yazılır.
+            if (entry.Channel == CustomerOtpChannel.Email && !string.IsNullOrWhiteSpace(entry.Target))
+            {
+                payload = payload with { Email = entry.Target };
+            }
 
             // HANGİ KANAL KANITLANDI? Telefona giden kod telefon sahipliğini, e-postaya giden kod
             // yalnızca e-posta sahipliğini kanıtlar. Kayıt akışı bu ayrımı bilmek zorundadır:

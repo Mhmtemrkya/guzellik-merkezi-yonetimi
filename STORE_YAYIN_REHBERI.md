@@ -222,6 +222,35 @@ NOTES
 
 ---
 
+## 5.5 E-posta teslimatı (Gmail'e ulaşmak için ZORUNLU)
+
+Kayıt ve doğrulama kodları e-postayla gittiği için bu bölüm **akışın çalışması için şart**.
+Aşağıdakiler canlı deploy sırasında tek tek doğrulandı; yeni bir sunucuya geçilirse tekrar gerekir.
+
+| Kayıt | Değer | Neden |
+|---|---|---|
+| **SPF** | `v=spf1 ip4:31.207.81.98 -all` | Yoksa Gmail `550 5.7.26` ile reddeder |
+| **DKIM** | mail sunucusunda üretilen public key | Aynı red kodu; imzasız posta "unauthenticated" sayılır |
+| **DMARC** | `v=DMARC1; p=none; rua=...` | SPF/DKIM sonuçlarının raporlanması |
+| **PTR / rDNS** | `31.207.81.98` → `mail.beautyasist.com` | **AÇIK:** hosting panelinden ayarlanmalı; eksikken teslimat çalışıyor ama spam puanı yüksek |
+| **MX** | tek kayıt yeterli | **AÇIK:** şu an priority 5 ve 10 AYNI hedefe gidiyor; biri gereksiz |
+
+> **Message-ID kod tarafında çözüldü.** `System.Net.Mail` bu başlığı üretmez ve Gmail başlıksız
+> postayı `550 5.7.1` ile reddeder. `PlatformMessagingService.SendEmailAsync` artık gönderen alan
+> adından Message-ID üretiyor — bu yüzden **gönderen adres ile alan adı uyumlu olmalı**.
+
+### Deploy sırasında beklenen (hata olmayan) durumlar
+
+- **Restart aralığında `connection refused`:** backend (5019) ve frontend (3000) yeniden
+  başlarken kısa süre bağlantı kabul etmez. Retry ile geçer.
+- **systemd'de `failed` görünen frontend restart:** kontrollü kapanışta eski proses SIGTERM (143)
+  ile iner, systemd bunu geçici olarak `failed` yazar. `restart ledger 0` + `active` + web 200
+  ise sorun yoktur.
+- **Backend health portu 5019'dur** (5106 DEĞİL). Yanlış port probe'u "servis ölü" sanılmasına
+  yol açar.
+
+---
+
 ## 6. Yayın öncesi kontrol listesi
 
 - [ ] `mobile/android/key.properties` oluşturuldu, `.jks` yedeklendi

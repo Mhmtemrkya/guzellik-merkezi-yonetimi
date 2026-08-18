@@ -528,7 +528,7 @@ public sealed class TenantSignupService : ITenantSignupService
 
             // Hoş geldin e-postası BEST-EFFORT: gönderilemezse kayıt geri alınmaz — kullanıcı
             // zaten ekranda parolasını ve PDF'ini görüyor.
-            await SendWelcomeAsync(form, code, tempPassword, ct);
+            await SendWelcomeAsync(form, code, ct);
 
             _logger.LogInformation("Yeni kurum self-servis kayıtla oluşturuldu: {Code} ({Slug}).", code, draft.Slug);
 
@@ -766,8 +766,16 @@ public sealed class TenantSignupService : ITenantSignupService
         }
     }
 
-    /// <summary>Hoş geldin e-postası — kurum kodu + giriş bilgileri (best-effort).</summary>
-    private async Task SendWelcomeAsync(TenantSignupStartRequest form, string tenantCode, string password, CancellationToken ct)
+    /// <summary>
+    /// Hoş geldin e-postası — kurum kodu + nereden giriş yapılacağı (best-effort).
+    /// </summary>
+    /// <remarks>
+    /// <b>GEÇİCİ PAROLA E-POSTAYA YAZILMAZ.</b> E-posta kutusu kalıcı, iletilebilir ve çoğu
+    /// kurulumda sunucuda düz metin saklanan bir ortamdır; oraya yazılan parola kayıt anından
+    /// aylar sonra da okunabilir hâlde durur. Parola kullanıcıya YALNIZCA kayıt ekranında ve
+    /// indirdiği PDF'te verilir — ikisi de kullanıcının kontrolündedir.
+    /// </remarks>
+    private async Task SendWelcomeAsync(TenantSignupStartRequest form, string tenantCode, CancellationToken ct)
     {
         var body =
             $"<div style='font-family:sans-serif;font-size:15px;color:#2f1724'>" +
@@ -777,9 +785,11 @@ public sealed class TenantSignupService : ITenantSignupService
             $"<table style='border-collapse:collapse;margin:16px 0'>" +
             $"<tr><td style='padding:4px 12px 4px 0;color:#7c6170'>Kurum kodu</td><td style='font-weight:700'>{tenantCode}</td></tr>" +
             $"<tr><td style='padding:4px 12px 4px 0;color:#7c6170'>E-posta</td><td>{System.Net.WebUtility.HtmlEncode(form.Email)}</td></tr>" +
-            $"<tr><td style='padding:4px 12px 4px 0;color:#7c6170'>Geçici şifre</td><td style='font-weight:700;letter-spacing:1px'>{System.Net.WebUtility.HtmlEncode(password)}</td></tr>" +
             $"</table>" +
-            $"<p>İlk girişte şifrenizi değiştirmeniz istenecek. Destek almak için <b>kurum kodunuzu</b> ({tenantCode}) belirtmeniz yeterlidir.</p></div>";
+            $"<p>Geçici şifreniz güvenlik gereği bu e-postaya yazılmaz; kayıt ekranında gösterildi ve " +
+            $"indirdiğiniz <b>giriş bilgileri belgesinde</b> yer alıyor. Belgeyi indirmediyseniz " +
+            $"giriş ekranındaki “şifremi unuttum” akışını kullanın.</p>" +
+            $"<p>Destek almak için <b>kurum kodunuzu</b> ({tenantCode}) belirtmeniz yeterlidir.</p></div>";
 
         await TrySendAsync(() => _messaging.SendEmailAsync(form.Email, $"BeautyAsist hesabınız hazır ({tenantCode})", body, ct), "hoş geldin e-postası");
     }

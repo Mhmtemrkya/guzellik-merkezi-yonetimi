@@ -262,6 +262,8 @@ public sealed class StoreReviewOtpTests
             // Örnek dosyadan kopyalanmış hâli: eski anahtarlar VAR ama BOŞ.
             ["CustomerOtp:StoreReviewPhone"] = "",
             ["CustomerOtp:StoreReviewCode"] = "",
+            // Yeni blok kullanılıyorsa bayrak ZORUNLUDUR (bkz. StoreReviewShortcut_IsOff_WhenAppReviewDisabled).
+            ["AppReview:Enabled"] = "true",
             ["AppReview:CustomerPhone"] = ReviewPhone,
             ["AppReview:CustomerOtpCode"] = ReviewCode,
         });
@@ -322,6 +324,118 @@ public sealed class StoreReviewOtpTests
         Assert.True(verify.IsFailure);
         await auth.DidNotReceive().CustomerLoginAsync(
             Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// <c>AppReview:Enabled=false</c> TEK BAŞINA kısayolu kapatır.
+    /// </summary>
+    /// <remarks>
+    /// Eskiden kısayol yalnız telefon+kod alanlarına bakıyordu: inceleme bitince bayrağı kapatmak
+    /// yetmiyor, config'te unutulan telefon/kod satırları sabit kodu CANLIDA açık bırakıyordu.
+    /// </remarks>
+    [Fact]
+    public async Task StoreReviewShortcut_IsOff_WhenAppReviewDisabled()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        var messaging = NewMessaging();
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, config: new Dictionary<string, string?>
+        {
+            // Telefon/kod config'te DURUYOR ama bayrak kapalı.
+            ["AppReview:Enabled"] = "false",
+            ["AppReview:CustomerPhone"] = ReviewPhone,
+            ["AppReview:CustomerOtpCode"] = ReviewCode,
+        });
+
+        await service.RequestAsync(
+            Login("Denetci Hesap", ReviewPhone), null,
+            CustomerOtpPurpose.Login, CustomerOtpChannel.Auto, CancellationToken.None);
+
+        // Kısayol kapalı → normal müşteri gibi RASTGELE kod üretilip gönderildi.
+        await messaging.Received(1).SendWhatsAppAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        // Sabit kod artık geçmez.
+        var verify = await service.VerifyAsync(
+            Login("Denetci Hesap", ReviewPhone), ReviewCode,
+            CustomerOtpPurpose.Login, null, CancellationToken.None);
+        Assert.True(verify.IsFailure);
+    }
+
+    /// <summary>Bayrak açıkken kısayol yine çalışır (denetçi hesabı kırılmadı).</summary>
+    [Fact]
+    public async Task StoreReviewShortcut_Works_WhenAppReviewEnabled()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        var messaging = NewMessaging();
+        var auth = Substitute.For<IAuthService>();
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, auth: auth, config: new Dictionary<string, string?>
+        {
+            ["AppReview:Enabled"] = "true",
+            ["AppReview:CustomerPhone"] = ReviewPhone,
+            ["AppReview:CustomerOtpCode"] = ReviewCode,
+        });
+
+        await service.RequestAsync(
+            Login("Denetci Hesap", ReviewPhone), null,
+            CustomerOtpPurpose.Login, CustomerOtpChannel.Auto, CancellationToken.None);
+        await messaging.DidNotReceive().SendWhatsAppAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        await service.VerifyAsync(
+            Login("Denetci Hesap", ReviewPhone), ReviewCode,
+            CustomerOtpPurpose.Login, null, CancellationToken.None);
+        await auth.Received(1).CustomerLoginAsync(
+            Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// DOĞRULANAN ADRES KAZANIR: kod A adresine gitmişse kayda B yazılamaz.
+    /// </summary>
+    /// <remarks>
+    /// Aksi hâlde sahipliği kanıtlanan adres A iken müşteri kaydına B yazılıyordu — başkasının
+    /// adresini birinin hesabına iliştirmenin ve "doğrulanmış" görünen sahte kaydın yolu.
+    /// </remarks>
+    [Fact]
+    public async Task Register_EmailChannel_PinsVerifiedAddress_IgnoringClientSuppliedOne()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        var messaging = NewMessaging(whatsApp: true, email: true);
+        var auth = Substitute.For<IAuthService>();
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, configured: false, auth: auth);
+
+        const string newPhone = "+90 555 123 45 67";
+        const string verified = "dogrulanan@example.com";
+        const string attacker = "baskasi@example.com";
+
+        await service.RequestAsync(
+            Login("Yeni Kullanici", newPhone), verified,
+            CustomerOtpPurpose.Register, CustomerOtpChannel.Email, CancellationToken.None);
+
+        var body = messaging.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(IPlatformMessagingService.SendEmailAsync))
+            .Select(c => (string)c.GetArguments()[2]!)
+            .Single();
+        var code = System.Text.RegularExpressions.Regex.Match(body, @">(\d{6})<").Groups[1].Value;
+
+        // Doğrulama isteğinde BAŞKA bir adres gönderiliyor.
+        await service.VerifyAsync(
+            Login("Yeni Kullanici", newPhone), code,
+            CustomerOtpPurpose.Register,
+            new CustomerRegisterRequest("Yeni Kullanici", newPhone, null, Gender.Unspecified, attacker, KvkkConsent: true),
+            CancellationToken.None);
+
+        await auth.Received(1).CustomerRegisterAsync(
+            Arg.Is<CustomerRegisterRequest>(r => r.Email == verified),
+            false, verified, Arg.Any<CancellationToken>());
     }
 
     // ---------------------------------------------------------- 3.2.2(v) çoklu kanal

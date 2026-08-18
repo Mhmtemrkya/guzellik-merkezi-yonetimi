@@ -220,18 +220,30 @@ public sealed class NotificationService : INotificationService
             // dolayısıyla kota sayımı da (Status==Sent) doğru olur.
             bool ok;
             string? error;
+
+            // SİMÜLASYON TESLİMAT DEĞİLDİR.
+            //
+            // Sağlayıcı kurulu değilse (ör. SMS kapalı) PlatformMessagingService "Success=true,
+            // Simulated=true" döner. Bunu "gönderildi" saymak iki yerde birden yalan üretiyordu:
+            // bildirim geçmişinde müşteriye ulaşmamış mesaj "Sent" görünüyor, aylık kota da
+            // (Status==Sent sayıldığı için) hiç gönderilmemiş mesajları düşüyordu.
+            static (bool Ok, string? Error) Judge(MessagingTestResult r) =>
+                r.Success && !r.Simulated
+                    ? (true, null)
+                    : (false, r.Error ?? (r.Simulated
+                        ? "Sağlayıcı yapılandırılmamış (simülasyon) — mesaj gönderilmedi."
+                        : "Bilinmeyen hata"));
+
             switch (template.Channel)
             {
                 case NotificationChannel.Sms:
                 {
-                    var r = await _messaging.SendSmsAsync(recipient, body, ct);
-                    ok = r.Success; error = r.Error;
+                    (ok, error) = Judge(await _messaging.SendSmsAsync(recipient, body, ct));
                     break;
                 }
                 case NotificationChannel.Email:
                 {
-                    var r = await _messaging.SendEmailAsync(recipient, template.Name, body, ct);
-                    ok = r.Success; error = r.Error;
+                    (ok, error) = Judge(await _messaging.SendEmailAsync(recipient, template.Name, body, ct));
                     break;
                 }
                 default:

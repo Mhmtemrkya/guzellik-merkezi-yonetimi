@@ -42,6 +42,16 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         if (smsUrlError is not null) return Result<PlatformIntegrationSettingsDto>.Failure(Error.Validation(smsUrlError));
         var smtpError = OutboundEndpointGuard.ValidateSmtp(r.SmtpHost, r.SmtpPort);
         if (smtpError is not null) return Result<PlatformIntegrationSettingsDto>.Failure(Error.Validation(smtpError));
+
+        // KİMLİK BİLGİSİ ŞİFRESİZ HATTA GİTMEZ. Kullanıcı adı/parola verilip TLS kapatılırsa
+        // SMTP AUTH düz metin dolaşır ve aradaki her düğüm parolayı okuyabilir. Canlı ayar
+        // bugün 587 + STARTTLS olsa bile yönetim ekranı bunu ileride kapatabiliyordu; kural
+        // yapılandırmaya değil KODA yazılır.
+        if (!r.SmtpUseSsl && !string.IsNullOrWhiteSpace(r.SmtpUsername))
+        {
+            return Result<PlatformIntegrationSettingsDto>.Failure(Error.Validation(
+                "SMTP kullanıcı adı girildiğinde TLS zorunludur; parola şifresiz bağlantıda düz metin gider."));
+        }
         var paymentUrlError = OutboundEndpointGuard.ValidatePaymentApiUrl(r.IyzicoBaseUrl);
         if (paymentUrlError is not null) return Result<PlatformIntegrationSettingsDto>.Failure(Error.Validation(paymentUrlError));
 

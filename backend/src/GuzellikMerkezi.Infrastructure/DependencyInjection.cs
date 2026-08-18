@@ -157,7 +157,19 @@ public static class DependencyInjection
         // (retry + timeout + circuit breaker + rate limiter) → tek deneme yerine geçici hatalara dayanıklı.
         services.AddHttpClient("WhatsApp").DisableRedirects().AddStandardResilienceHandler();
         services.AddScoped<IPlatformMessagingService, PlatformMessagingService>();
-        services.AddHttpClient("Sms").DisableRedirects().AddStandardResilienceHandler();
+        // SMS istemcisi: URL LOGLANMAZ.
+        //
+        // Netgsm'in `/sms/send/get` ucu sağlayıcı protokolü gereği GET'tir ve kullanıcı adı,
+        // parola, alıcı numarası ile mesaj gövdesi SORGU DİZESİNDE gider. HttpClient'ın
+        // varsayılan günlüğü her isteğin URI'sini yazdığı için bu değerler uygulama loglarına
+        // düşüyordu. Günlük burada susturulur; sağlayıcının GET zorunluluğu kod tarafından
+        // değiştirilemez, ama BİZİM tuttuğumuz kayıtlara sızmaz.
+        // RemoveAllLoggers() YALNIZ bu istemciyi susturur; diğer HTTP istemcilerinin günlüğü
+        // yerinde kalır (genel bir filtre kaldırmak tüm uygulamanın istek günlüğünü söndürürdü).
+        services.AddHttpClient("Sms")
+            .DisableRedirects()
+            .RemoveAllLoggers()
+            .AddStandardResilienceHandler();
 
         // Uygulama-içi bildirim (push + feed) + FCM göndericisi (yapılandırma yoksa simülasyon).
         services.AddScoped<IAppNotificationService, AppNotificationService>();

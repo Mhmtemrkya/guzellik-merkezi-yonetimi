@@ -282,12 +282,16 @@ public sealed class GiftCardAuditRegressionTests
                 ServiceDefinitionId: seed.ServiceX, ServicePackageId: null, ProductId: null));
 
             Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
-            Assert.Equal("Cilt bakımı", result.Value.ScopeLabel);
-            Assert.Equal(seed.ServiceX, result.Value.ServiceDefinitionId);
-            Assert.Equal(seed.CustomerA, result.Value.CustomerId);
+            // Assert.NotNull derleyiciye de bilgi verir (Result<T>.Value nullable): aşağıdaki
+            // erişimler CS8602 üretmez. CI --warnaserror ile derlendiği için uyarı = kırmızı kapı.
+            Assert.NotNull(result.Value);
+            var dto = result.Value!;
+            Assert.Equal("Cilt bakımı", dto.ScopeLabel);
+            Assert.Equal(seed.ServiceX, dto.ServiceDefinitionId);
+            Assert.Equal(seed.CustomerA, dto.CustomerId);
             // KOD VE DEĞER DEĞİŞMEZ — düzeltme ucu bunlara hiç dokunmaz.
-            Assert.Equal("BB222222", result.Value.Code);
-            Assert.Equal(400m, result.Value.Value);
+            Assert.Equal("BB222222", dto.Code);
+            Assert.Equal(400m, dto.Value);
         }
     }
 
