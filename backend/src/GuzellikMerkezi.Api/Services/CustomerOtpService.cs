@@ -268,6 +268,18 @@ public sealed class CustomerOtpService
         CustomerOtpChannel channel,
         CancellationToken ct)
     {
+        // AKIŞ KANALI SABİTTİR (kullanıcı isteği):
+        //   KAYIT  → telefon (SMS). Amaç numaranın gerçekten kişiye ait olduğunu kanıtlamak;
+        //            hesap bu numarayla açılıyor ve randevu bildirimleri oraya gidiyor.
+        //   GİRİŞ  → e-posta. Kayıtlı kullanıcı her girişte SMS harcamaz (maliyet), üstelik
+        //            e-posta kutusu telefon hattından daha kalıcı bir kimlik.
+        //
+        // Bu yüzden istemciden gelen kanal seçimi burada EZİLİR. Seçim istemciye bırakılsaydı
+        // eski bir sürüm ya da elle kurulmuş bir istek akışın kuralını atlayabilirdi.
+        channel = purpose == CustomerOtpPurpose.Register
+            ? CustomerOtpChannel.Sms
+            : CustomerOtpChannel.Email;
+
         var key = PhoneMask.LoginKey(request.Phone);
         var name = CustomerIdentityLookup.NormalizeName(request.FullName);
         if (key.Length < 10 || name.Length == 0)
@@ -459,16 +471,26 @@ public sealed class CustomerOtpService
         return (null, null);
     }
 
-    /// <summary>İstenen kanal önce, kalanlar yedek. Auto = eski istemci davranışı (önce WhatsApp).</summary>
-    private static IEnumerable<CustomerOtpChannel> OrderChannels(CustomerOtpChannel requested)
-    {
-        var order = new List<CustomerOtpChannel>();
-        if (requested is CustomerOtpChannel.WhatsApp or CustomerOtpChannel.Sms or CustomerOtpChannel.Email)
-            order.Add(requested);
-        foreach (var c in new[] { CustomerOtpChannel.WhatsApp, CustomerOtpChannel.Sms, CustomerOtpChannel.Email })
-            if (!order.Contains(c)) order.Add(c);
-        return order;
-    }
+    /// <summary>
+    /// Denenecek kanallar — <b>akış sınırının DIŞINA çıkmaz</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// GİRİŞ yalnız e-postadır: kod telefona düşseydi "girişte sadece e-posta" kuralı sessizce
+    /// delinir, kayıtlı kullanıcı her girişte SMS harcatabilirdi.
+    /// </para>
+    /// <para>
+    /// KAYIT telefon ailesinde kalır: önce SMS, olmazsa WhatsApp. İkisi de aynı şeyi kanıtlar
+    /// (numaranın sahipliği). Yedek OLMASAYDI, SMS sağlayıcısı kapalı olan bir kurulumda kayıt
+    /// tamamen ölürdü — oysa WhatsApp kuruluysa akış çalışabilir.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<CustomerOtpChannel> OrderChannels(CustomerOtpChannel requested) =>
+        requested switch
+        {
+            CustomerOtpChannel.Email => [CustomerOtpChannel.Email],
+            _ => [CustomerOtpChannel.Sms, CustomerOtpChannel.WhatsApp],
+        };
 
     /// <summary>Kodu doğrular ve akışa göre giriş ya da kayıt yapar. Kod TEK KULLANIMLIKTIR.</summary>
     public async Task<Result<LoginResponse>> VerifyAsync(

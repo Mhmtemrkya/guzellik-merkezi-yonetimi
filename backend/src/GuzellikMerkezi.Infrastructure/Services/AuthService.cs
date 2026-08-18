@@ -428,6 +428,15 @@ public sealed class AuthService : IAuthService
         if (name.Length < 3 || key.Length < 10)
             return Result<LoginResponse>.Failure(Error.Validation("Ad soyad ve geçerli bir telefon numarası zorunludur."));
 
+        // E-POSTA ZORUNLU. Giriş artık e-posta koduyla yapılıyor: adresi olmayan bir müşteri
+        // kaydolduktan sonra HİÇ giriş yapamaz. Alanı isteğe bağlı bırakmak, kullanıcıyı
+        // kurtarılamaz bir hesapla baş başa bırakırdı.
+        if (string.IsNullOrWhiteSpace(request.Email) && string.IsNullOrWhiteSpace(verifiedEmail))
+        {
+            return Result<LoginResponse>.Failure(Error.Validation(
+                "E-posta adresi zorunludur; girişte doğrulama kodu bu adrese gönderilir."));
+        }
+
         // KVKK AÇIK RIZASI ZORUNLU. Eskiden hiç sorulmuyor ama "verildi" diye yazılıyordu;
         // onay hukuki bir beyandır, alınmadan üretilemez. Sunucu son kapıdır: istemci kutuyu
         // gizlese ya da isteği elle kursa bile kayıt burada durur.

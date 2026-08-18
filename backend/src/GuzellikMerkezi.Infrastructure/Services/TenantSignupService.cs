@@ -126,6 +126,9 @@ public sealed class TenantSignupService : ITenantSignupService
         /// <summary>Telefon kodunun gittiği kanal ("whatsapp"/"sms") — 2. adım yanıtında gösterilir.</summary>
         public string PhoneChannel = "sms";
 
+        /// <summary>Kullanıcının SEÇTİĞİ kanal ("sms"/"whatsapp"); boşsa sunucu karar verir.</summary>
+        public string? PreferredPhoneChannel;
+
         /// <summary>Kurum oluşturuldu mu? Aynı taslakla İKİNCİ kurum açılmasını engeller.</summary>
         public bool Completed;
 
@@ -165,10 +168,23 @@ public sealed class TenantSignupService : ITenantSignupService
     public async Task<Result<TenantSignupReadinessDto>> GetReadinessAsync(CancellationToken ct = default)
     {
         var (email, phone) = await GetChannelsAsync(ct);
+        var (sms, whatsApp) = await GetPhoneChannelsAsync(ct);
         // Kayıt İKİ faktör ister: e-posta + telefon. Biri yoksa akış tamamlanamaz, o yüzden
         // formu hiç göstermemek "kod gelmedi" diye bekleyen kullanıcıdan iyidir.
         return Result<TenantSignupReadinessDto>.Success(
-            new TenantSignupReadinessDto(email, phone, email && phone));
+            new TenantSignupReadinessDto(email, phone, email && phone, sms, whatsApp));
+    }
+
+    /// <summary>Telefon kanalları ayrı ayrı — istemci yalnız kurulu olanı seçenek göstersin.</summary>
+    private async Task<(bool Sms, bool WhatsApp)> GetPhoneChannelsAsync(CancellationToken ct)
+    {
+        var settings = await _messaging.GetSettingsAsync(ct);
+        var s = settings.Value;
+        if (s is null) return _env.IsDevelopment ? (true, true) : (false, false);
+        var sms = s.SmsEnabled && s.SmsConfigured;
+        var whatsApp = s.WhatsAppEnabled && s.WhatsAppConfigured;
+        // Geliştirmede sağlayıcı kurulu olmaz; simülasyon yerine geçer (bkz. GetChannelsAsync).
+        return sms || whatsApp || !_env.IsDevelopment ? (sms, whatsApp) : (true, true);
     }
 
     /// <summary>Platformda e-posta ve telefon (WhatsApp ya da SMS) kanalları kurulu mu?</summary>
@@ -197,7 +213,8 @@ public sealed class TenantSignupService : ITenantSignupService
             Email: TenantTextHelper.NormalizeEmail(request.Email),
             Phone: TenantTextHelper.NormalizeText(request.Phone),
             BranchName: TenantTextHelper.NormalizeText(request.BranchName),
-            City: TenantTextHelper.NormalizeText(request.City));
+            City: TenantTextHelper.NormalizeText(request.City),
+            PhoneChannel: request.PhoneChannel);
 
         // TÜM ALANLAR ZORUNLU (kullanıcı isteği). Boş bırakılan alan sonradan platform ekibinin
         // telefonla tamamlaması gereken bir eksik kayıt üretiyordu.
@@ -239,7 +256,12 @@ public sealed class TenantSignupService : ITenantSignupService
         }
 
         var slug = await AllocateSlugAsync(form.TenantName, ct);
-        var draft = new SignupDraft { Form = form, Slug = slug };
+        var draft = new SignupDraft
+        {
+            Form = form,
+            Slug = slug,
+            PreferredPhoneChannel = NormalizeChannel(form.PhoneChannel),
+        };
         var code = NewCode();
         draft.Code = code;
 
@@ -356,7 +378,7 @@ public sealed class TenantSignupService : ITenantSignupService
 
         // E-posta doğrulandı → telefon adımına geç ve yeni kod üret.
         var code = NewCode();
-        var (channel, sent) = await SendPhoneCodeAsync(draft!.Form, code, ct);
+        var (channel, sent) = await SendPhoneCodeAsync(draft!.Form, code, draft.PreferredPhoneChannel, ct);
         if (!sent)
         {
             return Result<TenantSignupVerifyEmailResponse>.Failure(Error.Unauthorized(
@@ -655,7 +677,7 @@ public sealed class TenantSignupService : ITenantSignupService
         }
         else
         {
-            var (channel, ok) = await SendPhoneCodeAsync(draft.Form, code, ct);
+            var (channel, ok) = await SendPhoneCodeAsync(draft.Form, code, draft.PreferredPhoneChannel, ct);
             draft.PhoneChannel = channel;
             sent = ok;
         }
@@ -727,22 +749,42 @@ public sealed class TenantSignupService : ITenantSignupService
     /// <summary>
     /// Telefon kodunu gönderir: WhatsApp kuruluysa oradan, değilse SMS. Kullanılan kanalı döner.
     /// </summary>
-    private async Task<(string Channel, bool Sent)> SendPhoneCodeAsync(TenantSignupStartRequest form, string code, CancellationToken ct)
+    private async Task<(string Channel, bool Sent)> SendPhoneCodeAsync(
+        TenantSignupStartRequest form, string code, string? preferred, CancellationToken ct)
     {
         var message = $"BeautyAsist kayıt doğrulama kodunuz: {code}. Kod 30 dakika geçerlidir. Kimseyle paylaşmayın.";
-        var settings = await _messaging.GetSettingsAsync(ct);
-        var s = settings.Value;
-        var whatsAppFirst = s is not null && s.WhatsAppEnabled && s.WhatsAppConfigured;
+        var (smsReady, whatsAppReady) = await GetPhoneChannelsAsync(ct);
 
-        if (whatsAppFirst && await TrySendAsync(() => _messaging.SendWhatsAppAsync(form.Phone, message, ct), "WhatsApp"))
-            return ("whatsapp", true);
-        if (await TrySendAsync(() => _messaging.SendSmsAsync(form.Phone, message, ct), "SMS"))
-            return ("sms", true);
-        // WhatsApp önce denenmediyse (kurulu değil) ama SMS de olmadıysa son şans WhatsApp.
-        if (!whatsAppFirst && await TrySendAsync(() => _messaging.SendWhatsAppAsync(form.Phone, message, ct), "WhatsApp"))
-            return ("whatsapp", true);
-        return ("sms", false);
+        // SIRA: kullanıcının SEÇTİĞİ kanal önce, diğeri yedek. Seçim yoksa WhatsApp öncelikli
+        // (kontör maliyeti SMS'ten düşük). Seçilen kanal çalışmazsa diğerine düşülür —
+        // kullanıcı kodsuz kalmaz, ama tercihi göz ardı edilmez.
+        var order = preferred == "sms"
+            ? new[] { "sms", "whatsapp" }
+            : preferred == "whatsapp"
+                ? new[] { "whatsapp", "sms" }
+                : new[] { "whatsapp", "sms" };
+
+        foreach (var channel in order)
+        {
+            if (channel == "sms" && !smsReady) continue;
+            if (channel == "whatsapp" && !whatsAppReady) continue;
+
+            var ok = channel == "sms"
+                ? await TrySendAsync(() => _messaging.SendSmsAsync(form.Phone, message, ct), "SMS")
+                : await TrySendAsync(() => _messaging.SendWhatsAppAsync(form.Phone, message, ct), "WhatsApp");
+            if (ok) return (channel, true);
+        }
+
+        return (preferred ?? "sms", false);
     }
+
+    /// <summary>Kanal adını normalize eder; tanınmayan değer null (sunucu karar verir).</summary>
+    private static string? NormalizeChannel(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "sms" => "sms",
+        "whatsapp" => "whatsapp",
+        _ => null,
+    };
 
     /// <summary>
     /// Gönderimi dener. <b>Simülasyon teslimat sayılmaz</b> — sağlayıcı yapılandırılmadığında

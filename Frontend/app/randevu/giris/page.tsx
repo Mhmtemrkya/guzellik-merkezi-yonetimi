@@ -9,7 +9,6 @@ import {
   Check,
   Lock,
   Mail,
-  MessageCircle,
   MessageSquare,
   Phone,
   ShieldCheck,
@@ -21,10 +20,7 @@ import {
 import {
   customerOtpRequest,
   customerOtpVerify,
-  getCustomerOtpChannels,
   getCustomerSession,
-  type CustomerOtpChannel,
-  type CustomerOtpChannels,
 } from '@/lib/customerPortalApi'
 
 const sectionVariants: Variants = {
@@ -65,13 +61,6 @@ const genderOptions = [
 
 type Mode = 'login' | 'register'
 
-/** Kanal seçenekleri — WhatsApp yalnızca SEÇENEKLERDEN BİRİ (bkz. App Store 3.2.2(v) notu). */
-const channelOptions: { key: CustomerOtpChannel; label: string; icon: LucideIcon; hint: string }[] = [
-  { key: 'sms', label: 'SMS', icon: MessageSquare, hint: 'Kod telefonunuza SMS ile gelir.' },
-  { key: 'email', label: 'E-posta', icon: Mail, hint: 'Kod, kayıtlı e-posta adresinize gönderilir.' },
-  { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, hint: 'Kod WhatsApp mesajı olarak gelir.' },
-]
-
 export default function CustomerLoginPage() {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>('login')
@@ -81,8 +70,6 @@ export default function CustomerLoginPage() {
   const [birthDate, setBirthDate] = useState('')
   const [gender, setGender] = useState(0)
   const [email, setEmail] = useState('')
-  const [channel, setChannel] = useState<CustomerOtpChannel>('sms')
-  const [channels, setChannels] = useState<CustomerOtpChannels | null>(null)
   // KVKK AÇIK RIZASI: kayıt akışında zorunlu. Sunucu da ayrıca doğrular (tek kapı istemci olamaz).
   const [kvkkConsent, setKvkkConsent] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -99,32 +86,6 @@ export default function CustomerLoginPage() {
     if (getCustomerSession()) router.replace(nextTarget())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
-
-  // Çalışmayan kanalı seçenek olarak göstermeyelim: platformda hangileri kurulu?
-  useEffect(() => {
-    let cancelled = false
-    void getCustomerOtpChannels().then((available) => {
-      if (cancelled) return
-      setChannels(available)
-      if (!available) return // bilinmiyor → seçici gizli, sunucu karar verir
-      // Varsayılan: SMS → e-posta → WhatsApp sırasıyla ilk çalışan kanal.
-      const preferred: CustomerOtpChannel[] = ['sms', 'email', 'whatsapp']
-      const first = preferred.find((key) =>
-        key === 'sms' ? available.sms : key === 'email' ? available.email : available.whatsApp,
-      )
-      if (first) setChannel(first)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  // FAIL-CLOSED: kanal listesi bilinmiyorsa (uç okunamadı) seçici GÖSTERİLMEZ. Eskiden hepsi
-  // açık varsayılıyordu; kullanıcı SMS seçiyor ama sunucu kurulu olmayan kanalı atlayıp başka
-  // kanala düşüyordu — yani kod seçilen yerden gelmiyordu. Bilinmiyorsa sunucu karar verir.
-  const enabledChannels = channels
-    ? channelOptions.filter(({ key }) => (key === 'sms' ? channels.sms : key === 'email' ? channels.email : channels.whatsApp))
-    : []
 
   // OTP akışı: 'idle' → kod istendi ('code') → doğrula.
   const [otpStage, setOtpStage] = useState<'idle' | 'code'>('idle')
@@ -143,11 +104,14 @@ export default function CustomerLoginPage() {
       setError('Lütfen geçerli bir telefon numarası girin (örn. 05XX XXX XX XX).')
       return null
     }
-    // KAYITTA e-posta kanalı seçildiyse adres zorunlu: kodun gideceği yer başka türlü bilinmez.
-    // (Girişte adres sorulmaz — kod kurum kayıtlarındaki adrese gider.)
-    if (mode === 'register' && channel === 'email' && !email.trim()) {
-      setError('E-posta ile kod almak için e-posta adresinizi girin.')
-      return null
+    // KAYITTA E-POSTA ZORUNLU. Giriş e-posta koduyla yapıldığı için adresi olmayan müşteri
+    // kaydolduktan sonra hiç giriş yapamazdı. (Girişte adres sorulmaz — kod kayıtlı adrese gider.)
+    if (mode === 'register') {
+      const mail = email.trim()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
+        setError('Geçerli bir e-posta adresi girin — giriş kodunuz bu adrese gönderilecek.')
+        return null
+      }
     }
     // KVKK açık rızası kayıtta ZORUNLU. Kod göndermeden ÖNCE bakılır: onay vermeyecek kullanıcıya
     // boş yere SMS/e-posta göndermenin anlamı yok (hem maliyet hem gereksiz adım).
@@ -168,7 +132,8 @@ export default function CustomerLoginPage() {
         {
           fullName: id.name,
           phone: id.normalizedPhone,
-          channel,
+          // Sunucu kanalı akışa göre ezer; burada da aynı niyeti gönderiyoruz.
+          channel: mode === 'register' ? 'sms' : 'email',
           email: mode === 'register' ? email.trim() || null : null,
         },
         mode === 'register' ? 'register' : 'login',
@@ -424,43 +389,24 @@ export default function CustomerLoginPage() {
                 </div>
               </div>
 
-              {/* KANAL SEÇİMİ — kod tek bir uygulamaya mahkûm değildir. WhatsApp'ı olmayan da
-                  SMS ya da e-posta ile giriş yapar (App Store 3.2.2(v)). */}
-              {enabledChannels.length > 1 && (
-                <div>
-                  <label className={labelCls}>Doğrulama Kodu Nereye Gelsin?</label>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {enabledChannels.map(({ key, label, icon: Icon }) => {
-                      const active = channel === key
-                      return (
-                        <motion.button
-                          key={key}
-                          whileTap={{ scale: 0.985 }}
-                          type="button"
-                          onClick={() => {
-                            setChannel(key)
-                            setError('')
-                          }}
-                          className={`flex items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-[12.5px] font-medium transition-colors ${
-                            active
-                              ? 'border-[#c85776] bg-[#fff0f5] text-[#2f1724] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
-                              : 'border-[#ead8df] bg-white/80 text-[#352432]/[0.70] hover:border-[#e798b4]'
-                          }`}
-                        >
-                          <Icon className="h-4 w-4 shrink-0" strokeWidth={1.7} />
-                          {label}
-                        </motion.button>
-                      )
-                    })}
-                  </div>
-                  <p className="mt-2 text-[11.5px] leading-relaxed text-[#352432]/[0.55]">
-                    {channelOptions.find((c) => c.key === channel)?.hint}
-                    {channel === 'email' && mode === 'login'
-                      ? ' Salonun kayıtlarında e-posta adresiniz yoksa kod telefonunuza gönderilir.'
-                      : ''}
-                  </p>
-                </div>
-              )}
+              {/*
+                KANAL SEÇİCİ YOK — kanal AKIŞA GÖRE sabittir (sunucu da böyle zorluyor):
+                  KAYIT → telefonunuza SMS (numaranın size ait olduğu kanıtlanır)
+                  GİRİŞ → kayıtlı e-postanıza kod (her girişte SMS harcanmaz)
+                Seçim sunmak, kullanıcının seçtiği kanaldan kod gelmemesi anlamına gelirdi.
+              */}
+              <div className="flex items-start gap-3 rounded-2xl border border-[#ead8df] bg-white/70 px-4 py-3">
+                {mode === 'register' ? (
+                  <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-[#c85776]" strokeWidth={1.7} />
+                ) : (
+                  <Mail className="mt-0.5 h-4 w-4 shrink-0 text-[#c85776]" strokeWidth={1.7} />
+                )}
+                <p className="text-[12px] leading-relaxed text-[#352432]/[0.65]">
+                  {mode === 'register'
+                    ? 'Doğrulama kodu telefonunuza SMS ile gönderilecek.'
+                    : 'Doğrulama kodu kayıtlı e-posta adresinize gönderilecek.'}
+                </p>
+              </div>
 
               <AnimatePresence mode="popLayout">
                 {mode === 'register' && (
@@ -520,9 +466,8 @@ export default function CustomerLoginPage() {
                         </div>
                       </div>
                       <div>
-                        <label className={labelCls}>
-                          {channel === 'email' ? 'E-posta' : 'E-posta (isteğe bağlı)'}
-                        </label>
+                        {/* ZORUNLU: giriş kodu bu adrese gidecek (bkz. validateIdentity). */}
+                        <label className={labelCls}>E-posta</label>
                         <div className={inputWrap}>
                           <Mail className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
                           <input
@@ -534,11 +479,9 @@ export default function CustomerLoginPage() {
                             autoComplete="email"
                           />
                         </div>
-                        {channel === 'email' && (
-                          <p className="mt-2 text-[11.5px] text-[#352432]/[0.55]">
-                            Doğrulama kodu bu adrese gönderilecek.
-                          </p>
-                        )}
+                        <p className="mt-2 text-[11.5px] text-[#352432]/[0.55]">
+                          Bir sonraki girişinizde doğrulama kodu bu adrese gönderilecek.
+                        </p>
                       </div>
 
                       {/*

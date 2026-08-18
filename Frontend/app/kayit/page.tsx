@@ -36,6 +36,7 @@ import {
   verifySignupPhone,
   type SignupCompleted,
   type SignupForm,
+  type SignupPhoneChannel,
   type SignupReadiness,
 } from '@/lib/tenantSignupApi'
 
@@ -74,38 +75,52 @@ function Field({
   icon: Icon,
   value,
   onChange,
+  onBlur,
   placeholder,
   type = 'text',
   autoComplete,
+  error,
 }: {
   label: string
   icon: LucideIcon
   value: string
   onChange: (v: string) => void
+  onBlur?: () => void
   placeholder: string
   type?: string
   autoComplete?: string
+  /** Gösterilecek hata — YALNIZ alana dokunulduktan sonra dolu gelir (bkz. `touched`). */
+  error?: string | null
 }) {
+  const ok = !error && value.trim().length > 0
   return (
     <div>
       <label className={labelCls}>{label}</label>
-      <div className={inputWrap}>
-        <Icon className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+      <div
+        className={`${inputWrap} ${
+          error ? 'border-rose-300 focus-within:border-rose-400 focus-within:shadow-[0_0_0_4px_rgba(244,63,94,0.12)]' : ''
+        }`}
+      >
+        <Icon className={`h-4 w-4 shrink-0 ${error ? 'text-rose-400' : 'text-[#c85776]/70'}`} strokeWidth={1.6} />
         <input
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
           placeholder={placeholder}
           className={inputCls}
           autoComplete={autoComplete}
         />
+        {/* Doğru doldurulan alanda sessiz bir onay: kullanıcı formda nerede olduğunu görür. */}
+        {ok && <Check className="h-4 w-4 shrink-0 text-emerald-500" strokeWidth={2.4} />}
       </div>
+      {error && <p className="mt-1.5 text-[11.5px] text-rose-600">{error}</p>}
     </div>
   )
 }
 
 /** 6 haneli kod alanı — tek input, geniş harf aralığıyla kod hissi verir. */
-function CodeInput({ value, onChange, onSubmit }: { value: string; onChange: (v: string) => void; onSubmit: () => void }) {
+function CodeInput({ value, onChange, onSubmit }: { value: string; onChange: (v: string) => void; onSubmit: (code?: string) => void }) {
   return (
     <div className={inputWrap}>
       <KeyRound className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
@@ -115,7 +130,22 @@ function CodeInput({ value, onChange, onSubmit }: { value: string; onChange: (v:
         maxLength={6}
         value={value}
         autoFocus
-        onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
+        onChange={(e) => {
+          const next = e.target.value.replace(/\D/g, '').slice(0, 6)
+          onChange(next)
+          // 6. hane girilince kendiliğinden gönder: kod ekranında ayrıca butona basmak
+          // gereksiz bir adım (kullanıcı zaten kodu bitirmiş oluyor).
+          if (next.length === 6) onSubmit(next)
+        }}
+        onPaste={(e) => {
+          // SMS/e-postadan kopyalanan kod çoğu zaman boşluklu gelir; temizleyip doğrudan gönder.
+          const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+          if (pasted.length === 6) {
+            e.preventDefault()
+            onChange(pasted)
+            onSubmit(pasted)
+          }
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault()
@@ -153,17 +183,43 @@ export default function TenantSignupPage() {
   const [maskedPhone, setMaskedPhone] = useState('')
   const [phoneChannel, setPhoneChannel] = useState<string>('sms')
   const [code, setCode] = useState('')
+  // Otomatik gönderimde `code` state'i henüz güncellenmemiş olabilir (setState eşzamanlı değil);
+  // gönderilecek değer ref'ten okunur. Aksi hâlde 6. hane yazılınca 5 haneli kod gönderilirdi.
+  const codeRef = useRef('')
+  const updateCode = (v: string) => {
+    codeRef.current = v
+    setCode(v)
+  }
   const [devHint, setDevHint] = useState('')
   const [result, setResult] = useState<SignupCompleted | null>(null)
   const [copied, setCopied] = useState(false)
+  // Dokunulmuş alanlar: hata YALNIZ kullanıcı alandan çıkınca gösterilir. Her tuşta kırmızı
+  // yazmak, daha ilk harfi yazarken "geçersiz" demek olurdu.
+  const [touched, setTouched] = useState<Partial<Record<keyof SignupForm, boolean>>>({})
+  // Sunucudaki 60 sn'lik yeniden gönderme freninin ekrandaki karşılığı: kullanıcı butona basıp
+  // hata almak yerine ne kadar kaldığını görür.
+  const [cooldown, setCooldown] = useState(0)
+  // 2. adımda kodun geleceği kanal. Yalnız KURULU olan seçenek gösterilir (bkz. readiness).
+  const [phoneChannelPref, setPhoneChannelPref] = useState<SignupPhoneChannel>('whatsapp')
+
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [cooldown])
 
   // Kayıt alınabilir mi? (Kanal kurulu değilse 3 adım doldurup duvara çarpmasın.)
   useEffect(() => {
     let cancelled = false
     void getSignupReadiness()
-      .then((r) => !cancelled && setReadiness(r))
+      .then((r) => {
+        if (cancelled) return
+        setReadiness(r)
+        // Varsayılan: WhatsApp kuruluysa o (kontör maliyeti düşük), değilse SMS.
+        setPhoneChannelPref(r.whatsApp ? 'whatsapp' : 'sms')
+      })
       // Uç okunamazsa formu göster: sunucu zaten son sözü söyleyecek.
-      .catch(() => !cancelled && setReadiness({ email: true, phone: true, canSignup: true }))
+      .catch(() => !cancelled && setReadiness({ email: true, phone: true, canSignup: true, sms: true, whatsApp: true }))
     return () => {
       cancelled = true
     }
@@ -173,7 +229,7 @@ export default function TenantSignupPage() {
   const prevStep = useRef<StepKey>('form')
   useEffect(() => {
     if (prevStep.current !== step) {
-      setCode('')
+      updateCode('')
       setError('')
       prevStep.current = step
     }
@@ -181,15 +237,68 @@ export default function TenantSignupPage() {
 
   const stepIndex = steps.findIndex((s) => s.key === step)
 
+  /**
+   * Alan bazlı doğrulama — sunucudaki kurallarla AYNI.
+   *
+   * Amaç kullanıcıyı sunucuya gidip dönmeden uyarmak; sunucu yine son kapıdır (istemci
+   * doğrulaması güvenlik değil, kolaylıktır).
+   */
+  const fieldError = (key: keyof SignupForm): string | null => {
+    // phoneChannel bir metin alanı değil (seçim); doğrulaması yok.
+    const v = (form[key] ?? '').toString().trim()
+    switch (key) {
+      case 'tenantName':
+        return v.length < 2 ? 'İşletme adını yazın.' : null
+      case 'ownerName':
+        return v.split(/\s+/).filter(Boolean).length < 2 ? 'Ad ve soyadı birlikte yazın.' : null
+      case 'email':
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'Geçerli bir e-posta girin.'
+      case 'phone':
+        return v.replace(/\D/g, '').length >= 10 ? null : 'Geçerli bir telefon girin (05XX XXX XX XX).'
+      case 'branchName':
+        return v.length < 2 ? 'Şube adını yazın.' : null
+      case 'city':
+        return v.length < 2 ? 'Şehri yazın.' : null
+      default:
+        return null
+    }
+  }
+
+  const formValid = (['tenantName', 'ownerName', 'email', 'phone', 'branchName', 'city'] as const)
+    .every((k) => !fieldError(k))
+
+  const markTouched = (key: keyof SignupForm) => () => setTouched((t) => ({ ...t, [key]: true }))
+  /** Hata YALNIZ alana dokunulduktan sonra görünür — yazarken kırmızı yanmaz. */
+  const shownError = (key: keyof SignupForm): string | null => (touched[key] ? fieldError(key) : null)
+
+  /** Yalnız KURULU telefon kanalları seçenek olur. */
+  const phoneChannelOptions = (
+    [
+      { key: 'whatsapp' as const, label: 'WhatsApp', icon: MessageCircle, hint: 'Kod WhatsApp mesajı olarak gelir.', on: readiness?.whatsApp ?? true },
+      { key: 'sms' as const, label: 'SMS', icon: MessageSquare, hint: 'Kod telefonunuza SMS ile gelir.', on: readiness?.sms ?? true },
+    ]
+  ).filter((o) => o.on)
+
   const handleStart = async (e: FormEvent): Promise<void> => {
     e.preventDefault()
     setError('')
+
+    // BUTON PASİFLEŞTİRİLMEZ: ne eksik olduğunu göstermeyen ölü bir buton, kullanıcıyı
+    // sebebini aramaya bırakır. Basıldığında tüm alanlar "dokunuldu" sayılır ve eksikler
+    // kırmızıyla görünür; sunucuya gidilmez.
+    if (!formValid) {
+      setTouched({ tenantName: true, ownerName: true, email: true, phone: true, branchName: true, city: true })
+      setError('Lütfen işaretli alanları tamamlayın.')
+      return
+    }
+
     setLoading(true)
     try {
-      const res = await startSignup(form)
+      const res = await startSignup({ ...form, phoneChannel: phoneChannelPref })
       setSignupId(res.signupId)
       setMaskedEmail(res.maskedEmail)
       setDevHint(res.devCode ? `Test ortamı kodu: ${res.devCode}` : '')
+      setCooldown(60) // sunucudaki fren ile aynı
       setStep('email')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Kayıt başlatılamadı.')
@@ -198,7 +307,8 @@ export default function TenantSignupPage() {
     }
   }
 
-  const handleVerifyEmail = async (): Promise<void> => {
+  const handleVerifyEmail = async (submitted?: string): Promise<void> => {
+    const code = submitted ?? codeRef.current
     if (code.length !== 6) {
       setError('E-postanıza gelen 6 haneli kodu girin.')
       return
@@ -210,6 +320,7 @@ export default function TenantSignupPage() {
       setMaskedPhone(res.maskedPhone)
       setPhoneChannel(res.channel)
       setDevHint(res.devCode ? `Test ortamı kodu: ${res.devCode}` : '')
+      setCooldown(60)
       setStep('phone')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Kod doğrulanamadı.')
@@ -218,7 +329,8 @@ export default function TenantSignupPage() {
     }
   }
 
-  const handleVerifyPhone = async (): Promise<void> => {
+  const handleVerifyPhone = async (submitted?: string): Promise<void> => {
+    const code = submitted ?? codeRef.current
     if (code.length !== 6) {
       setError('Telefonunuza gelen 6 haneli kodu girin.')
       return
@@ -258,7 +370,8 @@ export default function TenantSignupPage() {
     try {
       const res = await resendSignupCode(signupId)
       setDevHint(res.devCode ? `Test ortamı kodu: ${res.devCode}` : '')
-      setCode('')
+      updateCode('')
+      setCooldown(60)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Kod gönderilemedi.')
     } finally {
@@ -462,16 +575,48 @@ export default function TenantSignupPage() {
                     </div>
 
                     <div className="mt-8 space-y-5">
-                      <Field label="İşletme Adı" icon={Building2} value={form.tenantName} onChange={set('tenantName')} placeholder="Güzel Salon Güzellik Merkezi" autoComplete="organization" />
-                      <Field label="Yetkili Ad Soyad" icon={UserRound} value={form.ownerName} onChange={set('ownerName')} placeholder="Ayşe Yılmaz" autoComplete="name" />
+                      <Field label="İşletme Adı" icon={Building2} value={form.tenantName} onChange={set('tenantName')} onBlur={markTouched('tenantName')} error={shownError('tenantName')} placeholder="Güzel Salon Güzellik Merkezi" autoComplete="organization" />
+                      <Field label="Yetkili Ad Soyad" icon={UserRound} value={form.ownerName} onChange={set('ownerName')} onBlur={markTouched('ownerName')} error={shownError('ownerName')} placeholder="Ayşe Yılmaz" autoComplete="name" />
                       <div className="grid gap-5 sm:grid-cols-2">
-                        <Field label="E-posta" icon={Mail} value={form.email} onChange={set('email')} placeholder="ayse@guzelsalon.com" type="email" autoComplete="email" />
-                        <Field label="Telefon" icon={Phone} value={form.phone} onChange={set('phone')} placeholder="05XX XXX XX XX" type="tel" autoComplete="tel" />
+                        <Field label="E-posta" icon={Mail} value={form.email} onChange={set('email')} onBlur={markTouched('email')} error={shownError('email')} placeholder="ayse@guzelsalon.com" type="email" autoComplete="email" />
+                        <Field label="Telefon" icon={Phone} value={form.phone} onChange={set('phone')} onBlur={markTouched('phone')} error={shownError('phone')} placeholder="05XX XXX XX XX" type="tel" autoComplete="tel" />
                       </div>
                       <div className="grid gap-5 sm:grid-cols-2">
-                        <Field label="Şube Adı" icon={Store} value={form.branchName} onChange={set('branchName')} placeholder="Merkez" />
-                        <Field label="Şehir" icon={MapPin} value={form.city} onChange={set('city')} placeholder="İstanbul" autoComplete="address-level2" />
+                        <Field label="Şube Adı" icon={Store} value={form.branchName} onChange={set('branchName')} onBlur={markTouched('branchName')} error={shownError('branchName')} placeholder="Merkez" />
+                        <Field label="Şehir" icon={MapPin} value={form.city} onChange={set('city')} onBlur={markTouched('city')} error={shownError('city')} placeholder="İstanbul" autoComplete="address-level2" />
                       </div>
+
+                      {/* KANAL SEÇİMİ — telefon kodunun nereden geleceğini kullanıcı seçer.
+                          Yalnız KURULU kanallar gösterilir; tek kanal varsa seçim sorulmaz. */}
+                      {phoneChannelOptions.length > 1 && (
+                        <div>
+                          <label className={labelCls}>Telefon Kodu Nereden Gelsin?</label>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {phoneChannelOptions.map(({ key, label, icon: Icon, hint }) => {
+                              const active = phoneChannelPref === key
+                              return (
+                                <motion.button
+                                  key={key}
+                                  whileTap={{ scale: 0.985 }}
+                                  type="button"
+                                  onClick={() => setPhoneChannelPref(key)}
+                                  className={`flex items-start gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
+                                    active
+                                      ? 'border-[#c85776] bg-[#fff0f5] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
+                                      : 'border-[#ead8df] bg-white/80 hover:border-[#e798b4]'
+                                  }`}
+                                >
+                                  <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${active ? 'text-[#c85776]' : 'text-[#352432]/[0.45]'}`} strokeWidth={1.7} />
+                                  <span>
+                                    <span className="block text-[13px] font-semibold text-[#2f1724]">{label}</span>
+                                    <span className="mt-0.5 block text-[11px] leading-relaxed text-[#352432]/[0.55]">{hint}</span>
+                                  </span>
+                                </motion.button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {error && <ErrorBox message={error} />}
@@ -505,12 +650,12 @@ export default function TenantSignupPage() {
                     />
                     <div className="mt-7">
                       <label className={labelCls}>Doğrulama Kodu</label>
-                      <CodeInput value={code} onChange={setCode} onSubmit={handleVerifyEmail} />
+                      <CodeInput value={code} onChange={updateCode} onSubmit={handleVerifyEmail} />
                     </div>
                     {devHint && <p className="mt-2 text-center text-[11px] text-[#9d7386]">{devHint}</p>}
                     {error && <ErrorBox message={error} />}
-                    <SubmitButton loading={loading} label="Doğrula ve Devam Et" loadingLabel="Doğrulanıyor" onClick={handleVerifyEmail} />
-                    <StepFooter onBack={() => setStep('form')} backLabel="Bilgileri düzenle" onResend={handleResend} loading={loading} />
+                    <SubmitButton loading={loading} label="Doğrula ve Devam Et" loadingLabel="Doğrulanıyor" onClick={() => handleVerifyEmail()} />
+                    <StepFooter onBack={() => setStep('form')} backLabel="Bilgileri düzenle" onResend={handleResend} loading={loading} cooldown={cooldown} />
                   </motion.div>
                 )}
 
@@ -529,12 +674,12 @@ export default function TenantSignupPage() {
                     />
                     <div className="mt-7">
                       <label className={labelCls}>Doğrulama Kodu</label>
-                      <CodeInput value={code} onChange={setCode} onSubmit={handleVerifyPhone} />
+                      <CodeInput value={code} onChange={updateCode} onSubmit={handleVerifyPhone} />
                     </div>
                     {devHint && <p className="mt-2 text-center text-[11px] text-[#9d7386]">{devHint}</p>}
                     {error && <ErrorBox message={error} />}
-                    <SubmitButton loading={loading} label="Hesabımı Oluştur" loadingLabel="Hesabınız açılıyor" onClick={handleVerifyPhone} />
-                    <StepFooter onBack={() => setStep('email')} backLabel="Geri" onResend={handleResend} loading={loading} />
+                    <SubmitButton loading={loading} label="Hesabımı Oluştur" loadingLabel="Hesabınız açılıyor" onClick={() => handleVerifyPhone()} />
+                    <StepFooter onBack={() => setStep('email')} backLabel="Geri" onResend={handleResend} loading={loading} cooldown={cooldown} />
                   </motion.div>
                 )}
 
@@ -692,24 +837,32 @@ function StepFooter({
   backLabel,
   onResend,
   loading,
+  cooldown,
 }: {
   onBack: () => void
   backLabel: string
   onResend: () => void
   loading: boolean
+  /** Kaç saniye sonra tekrar gönderilebilir (sunucudaki frenin ekrandaki karşılığı). */
+  cooldown: number
 }) {
+  const waiting = cooldown > 0
   return (
     <div className="mt-4 flex items-center justify-between text-[12px]">
       <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-[#9d7386] transition-colors hover:text-[#c85776]">
         <ArrowLeft className="h-3.5 w-3.5" /> {backLabel}
       </button>
+      {/*
+        Bekleme süresi GÖSTERİLİR. Sunucu 60 sn içinde ikinci kodu reddediyor; bunu ekranda
+        söylemeyip kullanıcıyı butona basıp hata almaya bırakmak gereksiz bir sürtünme olurdu.
+      */}
       <button
         type="button"
-        disabled={loading}
+        disabled={loading || waiting}
         onClick={onResend}
-        className="font-semibold text-[#c85776] transition-opacity hover:underline disabled:opacity-50"
+        className="font-semibold text-[#c85776] transition-opacity hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50"
       >
-        Kodu tekrar gönder
+        {waiting ? `Tekrar gönder (${cooldown} sn)` : 'Kodu tekrar gönder'}
       </button>
     </div>
   )

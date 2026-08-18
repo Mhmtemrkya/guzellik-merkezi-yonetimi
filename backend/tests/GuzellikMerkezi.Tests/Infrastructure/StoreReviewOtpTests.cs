@@ -159,7 +159,7 @@ public sealed class StoreReviewOtpTests
     {
         var options = NewOptions();
         await SeedAsync(options);
-        var messaging = NewMessaging();
+        var messaging = NewMessaging(email: true);
 
         await using var db = NewDb(options);
         var result = await NewService(db, messaging).RequestAsync(
@@ -167,8 +167,9 @@ public sealed class StoreReviewOtpTests
             CustomerOtpPurpose.Login, CustomerOtpChannel.Auto, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        await messaging.Received(1).SendWhatsAppAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        // GİRİŞ = e-posta (akış kuralı); kod kayıtlı adrese gider.
+        await messaging.Received(1).SendEmailAsync(
+            RealEmail, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>Gerçek müşteriye giden mesaj SABİT inceleme kodunu ASLA içermemeli.</summary>
@@ -206,12 +207,16 @@ public sealed class StoreReviewOtpTests
         var messaging = NewMessaging();
 
         await using var db = NewDb(options);
-        await NewService(db, messaging, configured: false).RequestAsync(
+        var service = NewService(db, messaging, configured: false);
+        await service.RequestAsync(
             Login("Denetci Hesap", ReviewPhone), null,
             CustomerOtpPurpose.Login, CustomerOtpChannel.Auto, CancellationToken.None);
 
-        await messaging.Received(1).SendWhatsAppAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        // Kısayol kapalı → SABİT kod geçmez (normal müşteri gibi rastgele kod üretilirdi).
+        var verify = await service.VerifyAsync(
+            Login("Denetci Hesap", ReviewPhone), ReviewCode,
+            CustomerOtpPurpose.Login, null, CancellationToken.None);
+        Assert.True(verify.IsFailure);
     }
 
     // ---------------------------------------------------------------- kimlik hâlâ zorunlu
@@ -353,11 +358,7 @@ public sealed class StoreReviewOtpTests
             Login("Denetci Hesap", ReviewPhone), null,
             CustomerOtpPurpose.Login, CustomerOtpChannel.Auto, CancellationToken.None);
 
-        // Kısayol kapalı → normal müşteri gibi RASTGELE kod üretilip gönderildi.
-        await messaging.Received(1).SendWhatsAppAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
-
-        // Sabit kod artık geçmez.
+        // Kısayol kapalı → sabit kod artık geçmez (normal müşteri gibi davranılır).
         var verify = await service.VerifyAsync(
             Login("Denetci Hesap", ReviewPhone), ReviewCode,
             CustomerOtpPurpose.Login, null, CancellationToken.None);
@@ -394,50 +395,6 @@ public sealed class StoreReviewOtpTests
             Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
     }
 
-    /// <summary>
-    /// DOĞRULANAN ADRES KAZANIR: kod A adresine gitmişse kayda B yazılamaz.
-    /// </summary>
-    /// <remarks>
-    /// Aksi hâlde sahipliği kanıtlanan adres A iken müşteri kaydına B yazılıyordu — başkasının
-    /// adresini birinin hesabına iliştirmenin ve "doğrulanmış" görünen sahte kaydın yolu.
-    /// </remarks>
-    [Fact]
-    public async Task Register_EmailChannel_PinsVerifiedAddress_IgnoringClientSuppliedOne()
-    {
-        var options = NewOptions();
-        await SeedAsync(options);
-        var messaging = NewMessaging(whatsApp: true, email: true);
-        var auth = Substitute.For<IAuthService>();
-
-        await using var db = NewDb(options);
-        var service = NewService(db, messaging, configured: false, auth: auth);
-
-        const string newPhone = "+90 555 123 45 67";
-        const string verified = "dogrulanan@example.com";
-        const string attacker = "baskasi@example.com";
-
-        await service.RequestAsync(
-            Login("Yeni Kullanici", newPhone), verified,
-            CustomerOtpPurpose.Register, CustomerOtpChannel.Email, CancellationToken.None);
-
-        var body = messaging.ReceivedCalls()
-            .Where(c => c.GetMethodInfo().Name == nameof(IPlatformMessagingService.SendEmailAsync))
-            .Select(c => (string)c.GetArguments()[2]!)
-            .Single();
-        var code = System.Text.RegularExpressions.Regex.Match(body, @">(\d{6})<").Groups[1].Value;
-
-        // Doğrulama isteğinde BAŞKA bir adres gönderiliyor.
-        await service.VerifyAsync(
-            Login("Yeni Kullanici", newPhone), code,
-            CustomerOtpPurpose.Register,
-            new CustomerRegisterRequest("Yeni Kullanici", newPhone, null, Gender.Unspecified, attacker, KvkkConsent: true),
-            CancellationToken.None);
-
-        await auth.Received(1).CustomerRegisterAsync(
-            Arg.Is<CustomerRegisterRequest>(r => r.Email == verified),
-            false, verified, Arg.Any<CancellationToken>());
-    }
-
     // ---------------------------------------------------------- 3.2.2(v) çoklu kanal
 
     /// <summary>
@@ -464,38 +421,26 @@ public sealed class StoreReviewOtpTests
     }
 
     /// <summary>
-    /// SMS kanalı: platformda SMS kuruluysa kod SMS ile gider (Netgsm/Twilio devreye girdiğinde
-    /// hiçbir kod değişikliği gerekmemeli).
+    /// GİRİŞ TELEFONA DÜŞMEZ: kayıtlarda e-posta adresi yoksa hiçbir şey gönderilmez ama yanıt
+    /// yine GENEL kalır.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Telefona düşmek "girişte sadece e-posta" kuralını sessizce delerdi; kayıtlı kullanıcı her
+    /// girişte SMS harcatabilirdi.
+    /// </para>
+    /// <para>
+    /// Hata DÖNÜLMEZ: "bu kişi kayıtlı ama e-postası yok" bilgisi anonim uçtan sızdırılamaz.
+    /// Kullanıcı yanıttaki `hint` ile kurumuna yönlendirilir; teslim edilmeyen kod da
+    /// önbelleğe yazılmaz (bkz. UndeliverableCode_IsNotCached).
+    /// </para>
+    /// </remarks>
     [Fact]
-    public async Task SmsChannel_SendsSms()
+    public async Task Login_WithoutEmailOnRecord_SendsNothing_ButStaysGeneric()
     {
         var options = NewOptions();
         await SeedAsync(options);
-        var messaging = NewMessaging(whatsApp: true, sms: true);
-
-        await using var db = NewDb(options);
-        await NewService(db, messaging).RequestAsync(
-            Login("Gercek Musteri", RealPhone), null,
-            CustomerOtpPurpose.Login, CustomerOtpChannel.Sms, CancellationToken.None);
-
-        await messaging.Received(1).SendSmsAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
-        await messaging.DidNotReceive().SendWhatsAppAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
-    }
-
-    /// <summary>
-    /// SESSİZ YEDEKLEME: kullanıcı e-posta seçti ama kurum kayıtlarında adresi yok. Hata dönmek
-    /// "bu kişi kayıtlı ama e-postası yok" bilgisini sızdırırdı; bunun yerine kod telefona gider
-    /// ve yanıt yine GENEL kalır.
-    /// </summary>
-    [Fact]
-    public async Task EmailChannel_WithoutAddressOnRecord_FallsBackToPhone_AndStaysGeneric()
-    {
-        var options = NewOptions();
-        await SeedAsync(options);
-        var messaging = NewMessaging(whatsApp: true, email: true);
+        var messaging = NewMessaging(whatsApp: true, sms: true, email: true);
 
         await using var db = NewDb(options);
         // "Denetci Hesap" kaydının e-postası yok (bkz. SeedAsync) ve inceleme kısayolu kapalı.
@@ -503,10 +448,12 @@ public sealed class StoreReviewOtpTests
             Login("Denetci Hesap", ReviewPhone), null,
             CustomerOtpPurpose.Login, CustomerOtpChannel.Email, CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
+        Assert.True(result.IsSuccess); // yanıt genel
         await messaging.DidNotReceive().SendEmailAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
-        await messaging.Received(1).SendWhatsAppAsync(
+        await messaging.DidNotReceive().SendWhatsAppAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await messaging.DidNotReceive().SendSmsAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -529,6 +476,96 @@ public sealed class StoreReviewOtpTests
         Assert.True(result.IsFailure);
     }
 
+    /// <summary>
+    /// KANAL AKIŞA GÖRE SABİTTİR — GİRİŞ her zaman E-POSTA.
+    /// </summary>
+    /// <remarks>
+    /// İstemci SMS istese bile sunucu e-postaya çevirir. Seçim istemciye bırakılsaydı eski bir
+    /// sürüm ya da elle kurulmuş bir istek kuralı atlar, kayıtlı kullanıcı her girişte SMS
+    /// harcatabilirdi.
+    /// </remarks>
+    [Fact]
+    public async Task Login_AlwaysUsesEmail_EvenWhenClientAsksForSms()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        var messaging = NewMessaging(whatsApp: true, sms: true, email: true);
+
+        await using var db = NewDb(options);
+        await NewService(db, messaging, configured: false).RequestAsync(
+            Login("Gercek Musteri", RealPhone), null,
+            CustomerOtpPurpose.Login, CustomerOtpChannel.Sms, CancellationToken.None);
+
+        await messaging.Received(1).SendEmailAsync(
+            RealEmail, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await messaging.DidNotReceive().SendSmsAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// KAYIT her zaman SMS'tir — istemci e-posta istese bile.
+    /// </summary>
+    /// <remarks>
+    /// Kayıtta kanıtlanması gereken şey TELEFON sahipliğidir: hesap o numarayla açılıyor ve
+    /// randevu bildirimleri oraya gidiyor.
+    /// </remarks>
+    [Fact]
+    public async Task Register_AlwaysUsesSms_EvenWhenClientAsksForEmail()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        var messaging = NewMessaging(whatsApp: true, sms: true, email: true);
+
+        await using var db = NewDb(options);
+        await NewService(db, messaging, configured: false).RequestAsync(
+            Login("Yeni Kullanici", "+90 555 123 45 67"), "yeni@example.com",
+            CustomerOtpPurpose.Register, CustomerOtpChannel.Email, CancellationToken.None);
+
+        await messaging.Received(1).SendSmsAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await messaging.DidNotReceive().SendEmailAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Kayıt SMS ile doğrulandığı için AuthService'e TELEFON kanıtı geçer (e-posta kanıtı değil).
+    /// </summary>
+    [Fact]
+    public async Task Register_PassesPhoneProof_NotEmailProof()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        var messaging = NewMessaging(whatsApp: true, sms: true, email: true);
+        var auth = Substitute.For<IAuthService>();
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, configured: false, auth: auth);
+
+        const string newPhone = "+90 555 123 45 67";
+        const string mail = "yeni@example.com";
+        await service.RequestAsync(
+            Login("Yeni Kullanici", newPhone), mail,
+            CustomerOtpPurpose.Register, CustomerOtpChannel.Sms, CancellationToken.None);
+
+        var sent = messaging.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(IPlatformMessagingService.SendSmsAsync))
+            .Select(c => (string)c.GetArguments()[1]!)
+            .Single();
+        var code = System.Text.RegularExpressions.Regex.Match(sent, @"(\d{6})").Groups[1].Value;
+
+        await service.VerifyAsync(
+            Login("Yeni Kullanici", newPhone), code,
+            CustomerOtpPurpose.Register,
+            new CustomerRegisterRequest("Yeni Kullanici", newPhone, null, Gender.Unspecified, mail, KvkkConsent: true),
+            CancellationToken.None);
+
+        await auth.Received(1).CustomerRegisterAsync(
+            Arg.Any<CustomerRegisterRequest>(),
+            true,   // TELEFON kanıtlandı
+            null,   // e-posta kanıtı YOK (kod oraya gitmedi)
+            Arg.Any<CancellationToken>());
+    }
+
     // ---------------------------------------------------------- 5.1.1(v) doğum tarihi yok
 
     /// <summary>
@@ -541,61 +578,18 @@ public sealed class StoreReviewOtpTests
     {
         var options = NewOptions();
         await SeedAsync(options);
-        var messaging = NewMessaging();
+        // Giriş kanalı e-postadır → e-posta sağlayıcısı kurulu olmalı.
+        var messaging = NewMessaging(email: true);
 
         await using var db = NewDb(options);
+        // Giriş kanalı E-POSTA olduğu için e-postası olan müşteriyle ölçülür; doğum tarihi
+        // ikisinde de BOŞ — testin iddiası zaten bu.
         var result = await NewService(db, messaging, configured: false).RequestAsync(
-            Login("Denetci Hesap", ReviewPhone), null,
+            Login("Gercek Musteri", RealPhone), null,
             CustomerOtpPurpose.Login, CustomerOtpChannel.Auto, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        await messaging.Received(1).SendWhatsAppAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
-    }
-
-    // ---------------------------------------------------------- kanıtlanan kanal doğru taşınır
-
-    /// <summary>
-    /// KAYIT AKIŞININ GÜVENLİK ÇEKİRDEĞİ: kod e-postaya gittiyse <c>phoneVerified=false</c> ve
-    /// kanıtlanan adres taşınmalıdır. Yanlış taşınırsa e-posta kanıtı telefon kanıtı sayılır ve
-    /// başkasının numarasına ait hesap sahiplenilebilir.
-    /// </summary>
-    [Fact]
-    public async Task Register_ViaEmailChannel_PassesEmailProof_NotPhoneProof()
-    {
-        var options = NewOptions();
-        await SeedAsync(options);
-        var messaging = NewMessaging(whatsApp: true, email: true);
-        var auth = Substitute.For<IAuthService>();
-
-        await using var db = NewDb(options);
-        var service = NewService(db, messaging, configured: false, auth: auth);
-
-        const string newPhone = "+90 555 123 45 67";
-        const string newEmail = "yeni.kullanici@example.com";
-        await service.RequestAsync(
-            Login("Yeni Kullanici", newPhone), newEmail,
-            CustomerOtpPurpose.Register, CustomerOtpChannel.Email, CancellationToken.None);
-
-        // Gönderilen kodu mesaj gövdesinden çıkar (test, üretilen rastgele kodu başka türlü bilemez).
-        // Gövdedeki diğer sayılara (font-size vb.) takılmamak için kod etiket arasında aranır.
-        var body = messaging.ReceivedCalls()
-            .Where(c => c.GetMethodInfo().Name == nameof(IPlatformMessagingService.SendEmailAsync))
-            .Select(c => (string)c.GetArguments()[2]!)
-            .Single();
-        var code = System.Text.RegularExpressions.Regex.Match(body, @">(\d{6})<").Groups[1].Value;
-        Assert.Equal(6, code.Length);
-
-        await service.VerifyAsync(
-            Login("Yeni Kullanici", newPhone), code,
-            CustomerOtpPurpose.Register,
-            new CustomerRegisterRequest("Yeni Kullanici", newPhone, null, Gender.Unspecified, newEmail),
-            CancellationToken.None);
-
-        await auth.Received(1).CustomerRegisterAsync(
-            Arg.Any<CustomerRegisterRequest>(),
-            false,                       // telefon KANITLANMADI
-            newEmail,                    // kanıtlanan adres taşındı
-            Arg.Any<CancellationToken>());
+        await messaging.Received(1).SendEmailAsync(
+            RealEmail, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 }

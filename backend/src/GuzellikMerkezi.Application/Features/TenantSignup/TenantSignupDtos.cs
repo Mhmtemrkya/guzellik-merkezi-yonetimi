@@ -27,7 +27,17 @@ public sealed record TenantSignupStartRequest(
     string Email,
     string Phone,
     string BranchName,
-    string City);
+    string City,
+    /// <summary>
+    /// 2. adımdaki telefon kodunun hangi kanaldan gideceği: <c>"sms"</c> ya da <c>"whatsapp"</c>.
+    /// Boş bırakılırsa kurulu olan kanal seçilir (WhatsApp öncelikli).
+    /// </summary>
+    /// <remarks>
+    /// Seçim KULLANICININDIR: WhatsApp kullanmayan bir işletme sahibine WhatsApp'tan kod
+    /// göndermek, App Store 3.2.2(v) reddinin kurumsal taraftaki karşılığı olurdu. Seçilen kanal
+    /// çalışmazsa sunucu diğerine düşer — kullanıcı kodsuz kalmaz.
+    /// </remarks>
+    string? PhoneChannel = null);
 
 /// <summary>Adım 1 yanıtı — hangi adrese kod gittiği MASKELİ döner (yazım hatası fark edilsin).</summary>
 public sealed record TenantSignupStartResponse(
@@ -67,8 +77,13 @@ public sealed record TenantSignupCompletedResponse(
     TenantCredentialsDto Credentials,
     Auth.LoginResponse Session);
 
-/// <summary>Kayıt akışının hangi kanalların kullanılabilir olduğunu bilmesi gerekir.</summary>
-public sealed record TenantSignupReadinessDto(bool Email, bool Phone, bool CanSignup);
+/// <summary>
+/// Kayıt akışının hangi kanalların kullanılabilir olduğunu bilmesi gerekir.
+/// <paramref name="Sms"/> ve <paramref name="WhatsApp"/> ayrı ayrı döner ki 2. adımda yalnız
+/// GERÇEKTEN kurulu kanallar seçenek olarak gösterilsin.
+/// </summary>
+public sealed record TenantSignupReadinessDto(
+    bool Email, bool Phone, bool CanSignup, bool Sms = false, bool WhatsApp = false);
 
 public interface ITenantSignupService
 {

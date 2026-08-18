@@ -306,6 +306,72 @@ public sealed class TenantSignupTests
         Assert.Equal(1, await verify.Tenants.IgnoreQueryFilters().CountAsync());
     }
 
+    // ------------------------------------------------------------------ kanal tercihi
+
+    /// <summary>
+    /// KULLANICININ SEÇTİĞİ KANAL ÖNCELİKLİDİR: SMS seçildiyse WhatsApp kurulu olsa bile
+    /// kod SMS'ten gider.
+    /// </summary>
+    /// <remarks>
+    /// WhatsApp kullanmayan bir işletme sahibine WhatsApp'tan kod göndermek, App Store 3.2.2(v)
+    /// reddinin kurumsal taraftaki karşılığı olurdu.
+    /// </remarks>
+    [Fact]
+    public async Task PhoneCode_HonorsUserSelectedChannel()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        var messaging = NewMessaging(whatsApp: true, sms: true);
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging);
+
+        var start = await service.StartAsync(Form() with { PhoneChannel = "sms" });
+        var step2 = await service.VerifyEmailAsync(
+            new TenantSignupVerifyEmailRequest(start.Value!.SignupId, CodeFromEmail(messaging)));
+
+        Assert.True(step2.IsSuccess);
+        Assert.Equal("sms", step2.Value!.Channel);
+        await messaging.Received(1).SendSmsAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await messaging.DidNotReceive().SendWhatsAppAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>Seçilen kanal kurulu değilse diğerine düşülür — kullanıcı kodsuz kalmaz.</summary>
+    [Fact]
+    public async Task PhoneCode_FallsBack_WhenSelectedChannelUnavailable()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        // SMS seçilecek ama kurulu DEĞİL; WhatsApp kurulu.
+        var messaging = NewMessaging(whatsApp: true, sms: false);
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging);
+
+        var start = await service.StartAsync(Form() with { PhoneChannel = "sms" });
+        var step2 = await service.VerifyEmailAsync(
+            new TenantSignupVerifyEmailRequest(start.Value!.SignupId, CodeFromEmail(messaging)));
+
+        Assert.True(step2.IsSuccess);
+        Assert.Equal("whatsapp", step2.Value!.Channel);
+    }
+
+    /// <summary>Hazırlık ucu SMS ve WhatsApp'ı AYRI döner (istemci yalnız kurulu olanı göstersin).</summary>
+    [Fact]
+    public async Task Readiness_ReportsPhoneChannelsSeparately()
+    {
+        var options = NewOptions();
+        await using var db = NewDb(options);
+
+        var readiness = await NewService(db, NewMessaging(whatsApp: true, sms: false)).GetReadinessAsync();
+
+        Assert.True(readiness.Value!.WhatsApp);
+        Assert.False(readiness.Value.Sms);
+        Assert.True(readiness.Value.CanSignup);
+    }
+
     // ------------------------------------------------------------------ tekillik + fren
 
     /// <summary>

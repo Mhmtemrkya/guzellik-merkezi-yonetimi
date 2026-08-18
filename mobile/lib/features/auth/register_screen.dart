@@ -30,26 +30,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool otpStage = false;
   String? otpInfo;
   final otpCodeController = TextEditingController();
-  CustomerOtpChannel otpChannel = CustomerOtpChannel.sms;
-  CustomerOtpChannels? otpChannels;
   /// KVKK AÇIK RIZASI — kayıt için ZORUNLU. Sunucu da ayrıca doğrular (tek kapı istemci olamaz).
   bool kvkkConsent = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadChannels();
-  }
-
-  Future<void> _loadChannels() async {
-    final available = await widget.auth.customerOtpChannels();
-    if (!mounted) return;
-    setState(() {
-      otpChannels = available;
-      // Bilinmiyorsa varsayılana DOKUNMA: seçici gizlenir, kararı sunucu verir.
-      if (available != null) otpChannel = available.preferred;
-    });
-  }
 
   @override
   void dispose() {
@@ -68,9 +50,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> submit() async {
     if (!formKey.currentState!.validate()) return;
-    // E-posta kanalı seçildiyse adres zorunlu: kodun gideceği yer başka türlü bilinmez.
-    if (otpChannel == CustomerOtpChannel.email && emailController.text.trim().isEmpty) {
-      setState(() => error = 'E-posta ile kod almak için e-posta adresinizi girin.');
+    // E-POSTA ZORUNLU. Giriş e-posta koduyla yapıldığı için adresi olmayan müşteri
+    // kaydolduktan sonra hiç giriş yapamazdı.
+    final mail = emailController.text.trim();
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(mail)) {
+      setState(() => error = 'Geçerli bir e-posta girin — giriş kodunuz bu adrese gönderilecek.');
       return;
     }
     // KVKK açık rızası ZORUNLU. Kod göndermeden ÖNCE bakılır: onay vermeyecek kullanıcıya
@@ -90,7 +74,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           fullName: nameController.text,
           phone: phoneController.text,
           purpose: 1,
-          channel: otpChannel.code,
+          channel: CustomerOtpChannel.sms.code, // kayıt = SMS (sunucu da ezer)
           email: emailController.text,
         );
         final devCode = res['devCode'];
@@ -144,7 +128,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         fullName: nameController.text,
         phone: phoneController.text,
         purpose: 1,
-        channel: otpChannel.code,
+        channel: CustomerOtpChannel.sms.code, // kayıt = SMS (sunucu da ezer)
         email: emailController.text,
       );
       final devCode = res['devCode'];
@@ -162,45 +146,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  /// Kodun hangi kanaldan geleceğini seçtirir (yalnız yapılandırılmış kanallar).
-  List<Widget> _channelPicker() {
-    // FAIL-CLOSED: liste bilinmiyorsa seçici gösterilmez (bkz. login_screen'deki aynı not).
-    final options = otpChannels?.enabled ?? const <CustomerOtpChannel>[];
-    if (options.length < 2) return const [];
-
-    IconData iconOf(CustomerOtpChannel c) => switch (c) {
-      CustomerOtpChannel.sms => Icons.sms_outlined,
-      CustomerOtpChannel.email => Icons.mail_outline_rounded,
-      _ => Icons.chat_outlined,
-    };
-
-    return [
-      const SizedBox(height: 14),
-      const Text(
-        'Doğrulama kodu nereye gelsin?',
-        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.ink),
-      ),
-      const SizedBox(height: 6),
-      SizedBox(
-        width: double.infinity,
-        child: SegmentedButton<CustomerOtpChannel>(
-          segments: options
-              .map((c) => ButtonSegment(
-                    value: c,
-                    icon: Icon(iconOf(c), size: 17),
-                    label: Text(c.label),
-                  ))
-              .toList(),
-          selected: {options.contains(otpChannel) ? otpChannel : options.first},
-          showSelectedIcon: false,
-          onSelectionChanged: (s) => setState(() {
-            otpChannel = s.first;
-            error = null;
-          }),
+  /// KAYITTA KANAL SABİT: kod telefona SMS ile gider.
+  ///
+  /// Amaç numaranın gerçekten kişiye ait olduğunu kanıtlamak — hesap bu numarayla açılıyor ve
+  /// randevu bildirimleri oraya gidiyor. Girişte ise kod e-postaya gider (her girişte SMS
+  /// harcanmaz). Kural sunucuda da zorlanır; burada yalnızca anlatılır.
+  List<Widget> _channelNotice() => [
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceSoft,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.sms_outlined, size: 18, color: AppColors.primaryDark),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Doğrulama kodu telefonunuza SMS ile gönderilecek.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    ];
-  }
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -288,20 +262,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               autocorrect: false,
                               validator: (v) {
                                 final t = (v ?? '').trim();
-                                if (t.isEmpty) return null; // opsiyonel
+                                // ARTIK OPSİYONEL DEĞİL: giriş kodu bu adrese gidiyor.
+                                if (t.isEmpty) return 'E-posta zorunlu (giriş kodu buraya gelir).';
                                 return t.contains('@') && t.contains('.')
                                     ? null
                                     : 'Geçerli bir e-posta girin.';
                               },
-                              decoration: InputDecoration(
-                                labelText: otpChannel == CustomerOtpChannel.email
-                                    ? 'E-posta (kod bu adrese gelecek)'
-                                    : 'E-posta (opsiyonel)',
-                                prefixIcon: const Icon(Icons.mail_outline_rounded),
+                              decoration: const InputDecoration(
+                                // ZORUNLU: bir sonraki GİRİŞTE kod bu adrese gidecek.
+                                labelText: 'E-posta (giriş kodu buraya gelecek)',
+                                prefixIcon: Icon(Icons.mail_outline_rounded),
                               ),
                             ),
-                            // KANAL SEÇİMİ (App Store 3.2.2(v)) — WhatsApp tek yol değil.
-                            if (!otpStage) ..._channelPicker(),
+                            // Kod nereye gidecek? (Kayıt = SMS; kural sunucuda zorlanır.)
+                            if (!otpStage) ..._channelNotice(),
                             // --- İSTEĞE BAĞLI PROFİL BİLGİLERİ ---
                             // Randevu almak için gerekmediklerinden ZORUNLU DEĞİL (App Store 5.1.1(v)).
                             const SizedBox(height: 16),

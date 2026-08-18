@@ -34,8 +34,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final otpCodeController = TextEditingController();
   bool otpStage = false;
   String? otpInfo;
-  CustomerOtpChannel otpChannel = CustomerOtpChannel.sms;
-  CustomerOtpChannels? otpChannels;
 
   Timer? debounce;
   bool obscure = true;
@@ -47,24 +45,6 @@ class _LoginScreenState extends State<LoginScreen> {
   List<Map<String, dynamic>> tenants = [];
   String? tenantId;
   String? branchId;
-
-  @override
-  void initState() {
-    super.initState();
-    // Çalışmayan kanalı seçenek olarak göstermeyelim (SMS kurulu değilse "SMS" sunmak,
-    // kullanıcıyı hiç gelmeyecek bir kodu beklemeye bırakır).
-    _loadChannels();
-  }
-
-  Future<void> _loadChannels() async {
-    final available = await widget.auth.customerOtpChannels();
-    if (!mounted) return;
-    setState(() {
-      otpChannels = available;
-      // Bilinmiyorsa (uç okunamadı) varsayılana DOKUNMA: seçici de gizlenir, kararı sunucu verir.
-      if (available != null) otpChannel = available.preferred;
-    });
-  }
 
   @override
   void dispose() {
@@ -284,7 +264,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final res = await widget.auth.customerOtpRequest(
         fullName: nameController.text,
         phone: phoneController.text,
-        channel: otpChannel.code,
+        channel: CustomerOtpChannel.email.code, // giriş = e-posta (sunucu da ezer)
       );
       if (!mounted) return;
       final devCode = res['devCode']?.toString();
@@ -736,7 +716,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         // KANAL SEÇİMİ: kod tek bir uygulamaya mahkûm değildir. WhatsApp'ı olmayan kullanıcı
         // SMS ya da e-posta ile giriş yapar (App Store 3.2.2(v)).
-        if (!otpStage) ..._channelPicker(),
+        if (!otpStage) ..._channelNotice(),
         // Kod adımı — kod istendiyse 6 haneli kodu gir.
         if (otpStage) ...[
           const SizedBox(height: 14),
@@ -793,57 +773,34 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ];
 
-  /// Kodun hangi kanaldan geleceğini seçtirir. Yalnızca platformda YAPILANDIRILMIŞ kanallar
-  /// gösterilir; tek kanal varsa seçim sorulmaz (gereksiz karar).
-  List<Widget> _channelPicker() {
-    // FAIL-CLOSED: kanal listesi bilinmiyorsa seçici GÖSTERİLMEZ. Eskiden hepsi açık
-    // varsayılıyordu; kullanıcı SMS seçiyor ama sunucu kurulu olmayan kanalı atlayıp başkasına
-    // düşüyordu — kod seçilen yerden gelmiyordu.
-    final options = otpChannels?.enabled ?? const <CustomerOtpChannel>[];
-    if (options.length < 2) return const [];
-
-    IconData iconOf(CustomerOtpChannel c) => switch (c) {
-      CustomerOtpChannel.sms => Icons.sms_outlined,
-      CustomerOtpChannel.email => Icons.mail_outline_rounded,
-      _ => Icons.chat_outlined,
-    };
-
-    return [
-      const SizedBox(height: 14),
-      const Text(
-        'Doğrulama kodu nereye gelsin?',
-        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.ink),
-      ),
-      const SizedBox(height: 8),
-      SizedBox(
-        width: double.infinity,
-        child: SegmentedButton<CustomerOtpChannel>(
-          segments: options
-              .map((c) => ButtonSegment(
-                    value: c,
-                    icon: Icon(iconOf(c), size: 17),
-                    label: Text(c.label),
-                  ))
-              .toList(),
-          selected: {options.contains(otpChannel) ? otpChannel : options.first},
-          showSelectedIcon: false,
-          onSelectionChanged: (s) => setState(() {
-            otpChannel = s.first;
-            error = null;
-          }),
+  /// GİRİŞTE KANAL SABİT: kod kayıtlı e-posta adresine gider.
+  ///
+  /// Seçim sunulmuyor çünkü kural akışa gömülü (sunucu da böyle zorluyor): kayıt telefonu
+  /// SMS ile doğrular, giriş e-posta ile. Kayıtlı kullanıcı her girişte SMS harcamaz.
+  List<Widget> _channelNotice() => [
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceSoft,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.mail_outline_rounded, size: 18, color: AppColors.primaryDark),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Doğrulama kodu kayıtlı e-posta adresinize gönderilecek.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-      const SizedBox(height: 6),
-      Text(
-        otpChannel == CustomerOtpChannel.email
-            ? 'Kod, salonun kayıtlarındaki e-posta adresinize gönderilir. Adresiniz kayıtlı değilse kod telefonunuza gelir.'
-            : otpChannel == CustomerOtpChannel.sms
-                ? 'Kod telefonunuza SMS ile gelir.'
-                : 'Kod WhatsApp mesajı olarak gelir.',
-        style: const TextStyle(color: AppColors.muted, fontSize: 11.5, height: 1.35),
-      ),
-    ];
-  }
+      ];
 
   Widget _infoBox(bool isCustomer) => Container(
         padding: const EdgeInsets.all(14),

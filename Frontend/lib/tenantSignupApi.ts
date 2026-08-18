@@ -48,13 +48,23 @@ export interface SignupForm {
   phone: string
   branchName: string
   city: string
+  /**
+   * 2. adımdaki telefon kodunun kanalı: 'sms' | 'whatsapp'. Boşsa sunucu kurulu olanı seçer.
+   * Seçim kullanıcınındır — WhatsApp kullanmayan bir işletme sahibi SMS seçebilmeli.
+   */
+  phoneChannel?: SignupPhoneChannel | null
 }
+
+export type SignupPhoneChannel = 'sms' | 'whatsapp'
 
 export interface SignupReadiness {
   email: boolean
   phone: boolean
   /** İkisi de kurulu değilse kayıt akışı tamamlanamaz — form gösterilmez. */
   canSignup: boolean
+  /** Telefon kanalları ayrı ayrı: yalnız kurulu olan seçenek gösterilsin. */
+  sms: boolean
+  whatsApp: boolean
 }
 
 export interface SignupStarted {
