@@ -50,6 +50,23 @@ public sealed class TenantSignupService : ITenantSignupService
     /// <summary>Deneme süresi — landing sayfasındaki "14 gün ücretsiz" vaadi.</summary>
     private const int TrialDays = 14;
 
+    /// <summary>
+    /// Mükerrer kayıtta dönen TEK mesaj.
+    /// </summary>
+    /// <remarks>
+    /// E-posta / telefon / işletme adı için AYRI mesajlar dönmek, anonim bir uçtan "bu kişi ya da
+    /// işletme sistemde kayıtlı mı?" sorusunu cevaplanabilir hâle getiriyordu. Hangi alanın
+    /// çakıştığı SÖYLENMEZ; kullanıcı zaten kendi bilgilerini biliyor, saldırgan bilmiyor.
+    /// </remarks>
+    private const string DuplicateMessage =
+        "Bu bilgilerle kayıtlı bir hesap görünüyor. Giriş yapmayı deneyin ya da farklı bilgilerle kaydolun.";
+
+    /// <summary>Aynı taslakta iki kod isteği arasındaki en kısa süre (maliyet freni).</summary>
+    private static readonly TimeSpan ResendCooldown = TimeSpan.FromSeconds(60);
+
+    /// <summary>Bir taslak ömrü boyunca en çok bu kadar kod yeniden gönderilebilir.</summary>
+    private const int MaxResendsPerDraft = 3;
+
     private readonly GuzellikDbContext _db;
     private readonly IMemoryCache _cache;
     private readonly IPlatformMessagingService _messaging;
@@ -111,6 +128,28 @@ public sealed class TenantSignupService : ITenantSignupService
 
         /// <summary>Kurum oluşturuldu mu? Aynı taslakla İKİNCİ kurum açılmasını engeller.</summary>
         public bool Completed;
+
+        /// <summary>
+        /// Kaç kez kod YENİDEN gönderildi + son gönderim anı.
+        /// </summary>
+        /// <remarks>
+        /// Her gönderim e-posta/SMS demek, yani PARA. Frensiz bir "tekrar gönder" ucu, taslak
+        /// elinde olan birinin sınırsız gönderim tetiklemesine izin verirdi; IP/e-posta kovaları
+        /// saldırganın değiştirebildiği değerlere bağlı olduğu için tek başına yetmiyor.
+        /// </remarks>
+        public int Resends;
+        public DateTime LastSentAtUtc;
+
+        /// <summary>
+        /// Tamamlanmış kaydın SONUCU — aynı istek tekrar gelirse aynı yanıt döner.
+        /// </summary>
+        /// <remarks>
+        /// Kurum oluşturulup HTTP yanıtı yolda kaybolduğunda (ağ koptu, sekme kapandı) kullanıcı
+        /// tekrar denerdi ve "zaten tamamlandı" hatası alırdı: hesabı açılmış ama geçici parolasını
+        /// ve oturumunu HİÇ ÖĞRENEMEMİŞ olurdu — kurtarılamaz bir durum. Sonuç taslak ömrü boyunca
+        /// saklanır; tekrar gelen istek onu aynen alır.
+        /// </remarks>
+        public TenantSignupCompletedResponse? Result;
     }
 
     private sealed class StartCounter
@@ -191,8 +230,13 @@ public sealed class TenantSignupService : ITenantSignupService
 
         // MÜKERRER KAYIT KAPISI — kurum oluşturmadan ÖNCE. Burada geçse bile son adımda tekrar
         // kontrol edilir: iki kişi aynı anda başlarsa ikisi de bu noktayı geçebilir.
-        var duplicate = await FindDuplicateAsync(form, ct);
-        if (duplicate is not null) return Result<TenantSignupStartResponse>.Failure(Error.Conflict(duplicate));
+        // ENUMERASYON FRENİ: "e-posta kayıtlı" / "telefon kayıtlı" / "işletme adı alınmış" diye
+        // AYRI mesajlar dönmek, anonim bir uçtan "bu kişi/işletme sistemde var mı?" sorusunu
+        // cevaplanabilir hâle getiriyordu. Üç durumda da AYNI genel mesaj döner.
+        if (await IsDuplicateAsync(form, ct))
+        {
+            return Result<TenantSignupStartResponse>.Failure(Error.Conflict(DuplicateMessage));
+        }
 
         var slug = await AllocateSlugAsync(form.TenantName, ct);
         var draft = new SignupDraft { Form = form, Slug = slug };
@@ -200,6 +244,7 @@ public sealed class TenantSignupService : ITenantSignupService
         draft.Code = code;
 
         var signupId = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        draft.LastSentAtUtc = _clock.UtcNow; // ilk gönderim de cooldown saatini başlatır
         _cache.Set(DraftKey(signupId), draft, DraftLifetime);
 
         var sent = await SendEmailCodeAsync(form, code, ct);
@@ -241,13 +286,13 @@ public sealed class TenantSignupService : ITenantSignupService
     /// üzerinden aranır, işletme adı ise çözülmüş değerler üzerinde bellekte karşılaştırılır.
     /// </para>
     /// </remarks>
-    private async Task<string?> FindDuplicateAsync(TenantSignupStartRequest form, CancellationToken ct)
+    private async Task<bool> IsDuplicateAsync(TenantSignupStartRequest form, CancellationToken ct)
     {
         // 1) Yetkili e-postası — düz kolon, SQL eşitliği güvenilir.
         if (await _db.TenantUsers.IgnoreQueryFilters().AsNoTracking()
                 .AnyAsync(u => u.IsActive && u.Email == form.Email, ct))
         {
-            return "Bu e-posta adresi zaten kayıtlı. Giriş yapmayı deneyin ya da farklı bir adres kullanın.";
+            return true;
         }
 
         // 2) Kurum telefonu — blind index ile aday, kesin eşitlik bellekte.
@@ -260,9 +305,7 @@ public sealed class TenantSignupService : ITenantSignupService
                 .ToListAsync(ct);
             var wanted = PhoneMask.LoginKey(form.Phone);
             if (candidates.Any(c => c.Status != TenantStatus.Cancelled && PhoneMask.LoginKey(c.Phone) == wanted))
-            {
-                return "Bu telefon numarasıyla kayıtlı bir işletme var. Giriş yapmayı deneyin.";
-            }
+                return true;
         }
 
         // 3) İşletme adı — ŞİFRELİ olduğu için bellekte karşılaştırılır.
@@ -275,12 +318,7 @@ public sealed class TenantSignupService : ITenantSignupService
             .Where(t => t.Status != TenantStatus.Cancelled)
             .Select(t => t.Name)
             .ToListAsync(ct);
-        if (names.Any(n => NameKey(n) == nameKey))
-        {
-            return "Bu işletme adı zaten kullanılıyor. Lütfen ayırt edici bir ad girin (örn. şehir ekleyin).";
-        }
-
-        return null;
+        return names.Any(n => NameKey(n) == nameKey);
     }
 
     /// <summary>İşletme adı karşılaştırma anahtarı: Türkçe harfler çevrilir, boşluk/simge atılır.</summary>
@@ -353,7 +391,14 @@ public sealed class TenantSignupService : ITenantSignupService
         lock (draft!)
         {
             if (draft.Completed)
-                return Result<TenantSignupCompletedResponse>.Failure(Error.Conflict("Bu kayıt zaten tamamlandı. Giriş yapabilirsiniz."));
+            {
+                // İDEMPOTENS: kurum zaten açıldı. Hata dönmek yerine AYNI yanıtı veririz —
+                // yanıtı kaybolan kullanıcı geçici parolasını ve oturumunu böyle geri alır.
+                return draft.Result is not null
+                    ? Result<TenantSignupCompletedResponse>.Success(draft.Result)
+                    : Result<TenantSignupCompletedResponse>.Failure(
+                        Error.Conflict("Bu kayıt zaten tamamlandı. Giriş yapabilirsiniz."));
+            }
             draft.Completed = true;
         }
 
@@ -367,7 +412,10 @@ public sealed class TenantSignupService : ITenantSignupService
                 _cache.Set(DraftKey(request.SignupId), draft, DraftLifetime);
                 return result;
             }
-            _cache.Remove(DraftKey(request.SignupId));
+            // Taslak SİLİNMEZ: tamamlanmış sonucu taşır (bkz. SignupDraft.Result). Aynı istek
+            // tekrar gelirse yukarıdaki idempotens kapısı bu sonucu döndürür.
+            draft.Result = result.Value;
+            _cache.Set(DraftKey(request.SignupId), draft, DraftLifetime);
             return result;
         }
         catch
@@ -398,8 +446,10 @@ public sealed class TenantSignupService : ITenantSignupService
 
         // MÜKERRER KONTROLÜ TEKRAR: 1. adımdan bu yana (30 dk'ya kadar) başkası aynı e-posta ya da
         // telefonla kurum açmış olabilir. Tek kontrol 1. adımda kalırsa yarış açık kalır.
-        var duplicate = await FindDuplicateAsync(form, ct);
-        if (duplicate is not null) return Result<TenantSignupCompletedResponse>.Failure(Error.Conflict(duplicate));
+        if (await IsDuplicateAsync(form, ct))
+        {
+            return Result<TenantSignupCompletedResponse>.Failure(Error.Conflict(DuplicateMessage));
+        }
 
         var plan = await ResolveTrialPlanAsync(ct);
         if (plan is null)
@@ -433,6 +483,12 @@ public sealed class TenantSignupService : ITenantSignupService
 
             _db.Tenants.Add(tenant);
 
+            // TEKİLLİĞİN DB GARANTİSİ: uygulama içindeki mükerrer kontrolü eşzamanlı iki isteği
+            // birlikte geçirebilir (ikisi de "kayıtlı değil" görür). Rezervasyon satırı kurumla
+            // AYNI işlemde yazılır; yarışı kaybeden taraf UNIQUE ihlali alır ve temiz reddedilir.
+            _db.TenantSignupReservations.Add(new TenantSignupReservation(
+                tenant.Id, form.Email, _search.BuildPhoneKey(form.Phone) ?? PhoneMask.LoginKey(form.Phone)));
+
             // TEK YAZMA: kurum, şube, yönetici, oturum jetonu ve denetim kaydı AYNI SaveChanges'te
             // gider. Ayrı ayrı kaydedilseydi araya giren bir hata "kurumu var ama yöneticisi yok"
             // ya da "oturumu var ama kurumu yok" gibi girilemez bir durum bırakabilirdi.
@@ -450,6 +506,14 @@ public sealed class TenantSignupService : ITenantSignupService
                 // numarayla baştan kur — aksi hâlde EF aynı Added grafiği yeniden göndermeye çalışır.
                 _db.ChangeTracker.Clear();
                 continue;
+            }
+            catch (Exception ex) when (IsReservationConflict(ex))
+            {
+                // Yarışı KAYBETTİK: aynı e-posta/telefonla başka bir kayıt milisaniyeler önce
+                // tamamlandı. Kod çakışmasından farklı olarak yeniden denemenin anlamı yok —
+                // ikinci deneme de aynı UNIQUE kısıtına takılır.
+                _db.ChangeTracker.Clear();
+                return Result<TenantSignupCompletedResponse>.Failure(Error.Conflict(DuplicateMessage));
             }
 
             var credentials = new TenantCredentialsDto(
@@ -474,6 +538,27 @@ public sealed class TenantSignupService : ITenantSignupService
 
         return Result<TenantSignupCompletedResponse>.Failure(Error.Conflict(
             "Kayıt şu anda tamamlanamadı (kurum kodu ayrılamadı). Lütfen tekrar deneyin."));
+    }
+
+    /// <summary>
+    /// Bu hata rezervasyon (e-posta/telefon) UNIQUE ihlali mi?
+    /// </summary>
+    /// <remarks>
+    /// Sağlayıcıya özel istisna tipine bağlanmak yerine mesaj taranır (bkz.
+    /// <see cref="TenantCodeAllocator.IsDuplicateCodeError"/> ile aynı gerekçe). Kurum kodu
+    /// çakışmasından AYRIŞTIRILIR: kod çakışması yeniden denenir, bu denenmez.
+    /// </remarks>
+    private static bool IsReservationConflict(Exception ex)
+    {
+        for (var e = ex; e is not null; e = e.InnerException!)
+        {
+            if (e.Message.Contains("Duplicate entry", StringComparison.OrdinalIgnoreCase)
+                && (e.Message.Contains("EmailKey", StringComparison.OrdinalIgnoreCase)
+                    || e.Message.Contains("PhoneKey", StringComparison.OrdinalIgnoreCase)))
+                return true;
+            if (e.InnerException is null) break;
+        }
+        return false;
     }
 
     /// <summary>
@@ -534,6 +619,34 @@ public sealed class TenantSignupService : ITenantSignupService
         if (draft.Completed)
             return Result<object>.Failure(Error.Conflict("Bu kayıt zaten tamamlandı."));
 
+        // MALİYET FRENİ. Her gönderim e-posta/SMS, yani para. İki kapı birden:
+        //   1) iki istek arasında en az ResendCooldown,
+        //   2) taslak başına en çok MaxResendsPerDraft.
+        // IP ve e-posta kovaları saldırganın DEĞİŞTİREBİLDİĞİ değerlere bağlı; taslak kimliği
+        // sunucu tarafından üretildiği için bu fren atlatılamaz.
+        var now = _clock.UtcNow;
+        lock (draft)
+        {
+            if (draft.Resends >= MaxResendsPerDraft)
+            {
+                return Result<object>.Failure(Error.Unauthorized(
+                    "Kod tekrar gönderme sınırına ulaşıldı. Lütfen baştan başlayın."));
+            }
+
+            var elapsed = now - draft.LastSentAtUtc;
+            if (draft.LastSentAtUtc != default && elapsed < ResendCooldown)
+            {
+                var wait = (int)Math.Ceiling((ResendCooldown - elapsed).TotalSeconds);
+                return Result<object>.Failure(Error.Unauthorized(
+                    $"Yeni kod istemek için {wait} saniye bekleyin."));
+            }
+
+            // Sayaç ve zaman GÖNDERİMDEN ÖNCE işlenir: gönderim yavaşsa aradaki pencerede
+            // gelen ikinci istek de aynı frene takılsın.
+            draft.Resends++;
+            draft.LastSentAtUtc = now;
+        }
+
         var code = NewCode();
         bool sent;
         if (draft.Stage == SignupStage.AwaitingEmail)
@@ -556,6 +669,7 @@ public sealed class TenantSignupService : ITenantSignupService
         return Result<object>.Success(new
         {
             message = "Yeni doğrulama kodu gönderildi.",
+            remaining = MaxResendsPerDraft - draft.Resends,
             devCode = _env.IsDevelopment ? code : null,
         });
     }
@@ -568,7 +682,9 @@ public sealed class TenantSignupService : ITenantSignupService
     {
         if (string.IsNullOrWhiteSpace(signupId) || !_cache.TryGetValue<SignupDraft>(DraftKey(signupId), out var draft) || draft is null)
             return (null, Error.Unauthorized("Kayıt oturumunuz sona ermiş. Lütfen baştan başlayın."));
-        if (draft.Completed)
+        // Completed taslak BURADA elenmez: VerifyPhoneAsync onu idempotens için kullanıyor.
+        // (Diğer adımlar aşağıdaki aşama kontrolüne takılır.)
+        if (draft.Completed && expected != SignupStage.AwaitingPhone)
             return (null, Error.Conflict("Bu kayıt zaten tamamlandı. Giriş yapabilirsiniz."));
         if (draft.Stage != expected)
             return (null, Error.Validation("Kayıt adımları sırayla tamamlanmalı. Sayfayı yenileyip tekrar deneyin."));

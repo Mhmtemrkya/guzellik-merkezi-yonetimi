@@ -61,7 +61,8 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     setState(() {
       otpChannels = available;
-      otpChannel = available.preferred;
+      // Bilinmiyorsa (uç okunamadı) varsayılana DOKUNMA: seçici de gizlenir, kararı sunucu verir.
+      if (available != null) otpChannel = available.preferred;
     });
   }
 
@@ -795,7 +796,10 @@ class _LoginScreenState extends State<LoginScreen> {
   /// Kodun hangi kanaldan geleceğini seçtirir. Yalnızca platformda YAPILANDIRILMIŞ kanallar
   /// gösterilir; tek kanal varsa seçim sorulmaz (gereksiz karar).
   List<Widget> _channelPicker() {
-    final options = otpChannels?.enabled ?? CustomerOtpChannel.values.where((c) => c != CustomerOtpChannel.auto).toList();
+    // FAIL-CLOSED: kanal listesi bilinmiyorsa seçici GÖSTERİLMEZ. Eskiden hepsi açık
+    // varsayılıyordu; kullanıcı SMS seçiyor ama sunucu kurulu olmayan kanalı atlayıp başkasına
+    // düşüyordu — kod seçilen yerden gelmiyordu.
+    final options = otpChannels?.enabled ?? const <CustomerOtpChannel>[];
     if (options.length < 2) return const [];
 
     IconData iconOf(CustomerOtpChannel c) => switch (c) {

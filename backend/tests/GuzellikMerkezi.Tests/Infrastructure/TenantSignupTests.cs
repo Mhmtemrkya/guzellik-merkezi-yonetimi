@@ -275,7 +275,7 @@ public sealed class TenantSignupTests
 
     /// <summary>Aynı taslakla İKİ kurum açılamaz (kod tek kullanımlık).</summary>
     [Fact]
-    public async Task SameDraft_CannotCreateTwoTenants()
+    public async Task SameDraft_IsIdempotent_AndCreatesOnlyOneTenant()
     {
         var options = NewOptions();
         await SeedPlanAsync(options);
@@ -293,11 +293,110 @@ public sealed class TenantSignupTests
         var first = await service.VerifyPhoneAsync(new TenantSignupVerifyPhoneRequest(start.Value.SignupId, phoneCode));
         Assert.True(first.IsSuccess);
 
+        // İDEMPOTENS: ikinci istek hata değil, AYNI yanıtı döndürür. Yanıtı kaybolan kullanıcı
+        // geçici parolasını ve oturumunu böyle geri alır — aksi hâlde hesabı açılmış ama
+        // giriş bilgisini hiç öğrenememiş olurdu.
         var second = await service.VerifyPhoneAsync(new TenantSignupVerifyPhoneRequest(start.Value.SignupId, phoneCode));
-        Assert.True(second.IsFailure);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(first.Value!.TenantCode, second.Value!.TenantCode);
+        Assert.Equal(first.Value.Credentials.InitialPassword, second.Value.Credentials.InitialPassword);
 
+        // AMA İKİNCİ KURUM AÇILMAZ.
         await using var verify = NewDb(options);
         Assert.Equal(1, await verify.Tenants.IgnoreQueryFilters().CountAsync());
+    }
+
+    // ------------------------------------------------------------------ tekillik + fren
+
+    /// <summary>
+    /// TEKİLLİĞİN DB GARANTİSİ: kayıt tamamlanınca rezervasyon satırı yazılır.
+    /// </summary>
+    /// <remarks>
+    /// Uygulama içindeki "önce sor, sonra yaz" kontrolü eşzamanlı iki isteği birlikte
+    /// geçirebiliyordu. Son söz veritabanındaki UNIQUE kısıttadır; bu test satırın gerçekten
+    /// yazıldığını (yani kısıtın devrede olduğunu) sabitler.
+    ///
+    /// NOT: <c>tenant_users.Email</c>'e global UNIQUE KONULMADI — aynı e-postanın birden çok
+    /// kurumda bulunması desteklenen bir özelliktir (bkz. MultiTenantLoginTests). Kısıt yalnız
+    /// self-servis kayıt yoluna özeldir.
+    /// </remarks>
+    [Fact]
+    public async Task Signup_WritesUniquenessReservation()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        var messaging = NewMessaging();
+
+        await using var db = NewDb(options);
+        await CompleteAsync(NewService(db, messaging), messaging, Form());
+
+        await using var verify = NewDb(options);
+        var reservation = await verify.TenantSignupReservations.SingleAsync();
+        Assert.Equal("sahip@ornek.com", reservation.EmailKey);
+        Assert.False(string.IsNullOrWhiteSpace(reservation.PhoneKey));
+    }
+
+    /// <summary>
+    /// MÜKERRER MESAJI TEK VE GENELDİR — hangi alanın çakıştığı söylenmez.
+    /// </summary>
+    /// <remarks>
+    /// "E-posta kayıtlı" / "telefon kayıtlı" / "işletme adı alınmış" diye ayrı mesajlar dönmek,
+    /// anonim bir uçtan "bu kişi ya da işletme sistemde var mı?" sorusunu cevaplanabilir hâle
+    /// getiriyordu. Üç durumda da AYNI metin dönmeli.
+    /// </remarks>
+    [Fact]
+    public async Task DuplicateMessages_AreIdentical_AcrossFields()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        await using (var seed = NewDb(options))
+        {
+            var t = new Tenant("Güzel Salon", "guzel-salon", "Başlangıç", TenantStatus.Active);
+            t.SetContact("+90 555 111 22 33", null);
+            t.SetPhoneIndex(TestSearchIndex.Create().BuildPhoneKey("+90 555 111 22 33"));
+            t.GrantAccess("sahip@ornek.com", UserRole.InstitutionOwner, null, "Sahip");
+            seed.Tenants.Add(t);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = NewDb(options);
+        var service = NewService(db, NewMessaging());
+
+        var byEmail = await service.StartAsync(Form(tenantName: "Bambaska Ad", email: "sahip@ornek.com", phone: "0532 000 00 00"));
+        var byPhone = await service.StartAsync(Form(tenantName: "Baska Ad Daha", email: "yeni@ornek.com", phone: "0555 111 22 33"));
+        var byName = await service.StartAsync(Form(tenantName: "Güzel Salon", email: "bir@ornek.com", phone: "0533 000 00 00"));
+
+        Assert.True(byEmail.IsFailure && byPhone.IsFailure && byName.IsFailure);
+        Assert.Equal(byEmail.Error.Message, byPhone.Error.Message);
+        Assert.Equal(byEmail.Error.Message, byName.Error.Message);
+    }
+
+    /// <summary>
+    /// RESEND MALİYET FRENİ: arka arkaya istenen kod bekleme süresine takılır.
+    /// </summary>
+    /// <remarks>
+    /// Her gönderim e-posta/SMS, yani para. Frensiz bir "tekrar gönder" ucu, taslak elinde olan
+    /// birinin sınırsız gönderim tetiklemesine izin verirdi; IP/e-posta kovaları saldırganın
+    /// değiştirebildiği değerlere bağlı olduğu için tek başına yetmiyor.
+    /// </remarks>
+    [Fact]
+    public async Task Resend_IsRateLimited()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        var messaging = NewMessaging();
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging);
+
+        var start = await service.StartAsync(Form());
+        // İlk gönderim cooldown saatini başlattı → hemen ardından gelen istek reddedilir.
+        var immediate = await service.ResendAsync(start.Value!.SignupId);
+
+        Assert.True(immediate.IsFailure);
+        // Yalnız İLK gönderim yapıldı; ikinci bir e-posta çıkmadı.
+        await messaging.Received(1).SendEmailAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     // ------------------------------------------------------------------ deneme paketi

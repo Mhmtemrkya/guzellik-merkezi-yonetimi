@@ -187,8 +187,8 @@ class AuthController extends ChangeNotifier {
   /// almak için gerekmez). Kayıtta yalnızca İSTEĞE BAĞLI olarak alınır.
 
   /// Platformda hangi kanallardan kod gönderilebilir? Çalışmayan kanalı seçenek olarak
-  /// göstermemek için. Uç okunamazsa hepsi açık varsayılır (sunucu yine doğru kanala düşer).
-  Future<CustomerOtpChannels> customerOtpChannels() async {
+  /// göstermemek için. Uç okunamazsa NULL döner → seçici gizlenir, kararı sunucu verir.
+  Future<CustomerOtpChannels?> customerOtpChannels() async {
     try {
       final data = await api.getPublic('/api/auth/customer/otp/channels');
       final map = (data as Map).cast<String, dynamic>();
@@ -198,7 +198,10 @@ class AuthController extends ChangeNotifier {
         email: map['email'] == true,
       );
     } catch (_) {
-      return const CustomerOtpChannels(whatsApp: true, sms: true, email: true);
+      // FAIL-OPEN DEĞİL. Eskiden hata durumunda "hepsi açık" dönülüyordu: kullanıcı SMS
+      // seçiyor ama sunucu kurulu olmayan kanalı atlayıp başkasına düşüyordu — kod seçilen
+      // yerden GELMİYORDU. Bilinmiyorsa seçici gizlenir, kararı sunucu verir.
+      return null;
     }
   }
 
@@ -237,6 +240,7 @@ class AuthController extends ChangeNotifier {
     int gender = 0,
     String? email,
     String? birthDate,
+    bool kvkkConsent = false,
   }) async {
     final trimmedEmail = email?.trim();
     final data = await api.postPublic('/api/auth/customer/otp/verify', {
@@ -247,6 +251,8 @@ class AuthController extends ChangeNotifier {
       'gender': gender,
       'email': (trimmedEmail == null || trimmedEmail.isEmpty) ? null : trimmedEmail,
       'birthDate': (birthDate == null || birthDate.isEmpty) ? null : birthDate,
+      // KVKK açık rızası — kayıt akışında ZORUNLU; sunucu onaysız kaydı reddeder.
+      'kvkkConsent': kvkkConsent,
     });
     session = AuthSession.fromJson((data as Map).cast<String, dynamic>());
     _remember = true;

@@ -503,8 +503,11 @@ public sealed class CustomerOtpService
 
         if (purpose == CustomerOtpPurpose.Register)
         {
+            // KVKK onayı VARSAYILAN OLARAK ÜRETİLMEZ: payload gelmediyse onay da yoktur ve
+            // AuthService kaydı reddeder. Buraya "true" koymak, hiç sorulmamış bir onayı
+            // uydurmak olurdu (bkz. CustomerRegisterRequest.KvkkConsent).
             var payload = registration ?? new CustomerRegisterRequest(
-                request.FullName, request.Phone, null, Domain.Enums.Gender.Unspecified, entry.Target);
+                request.FullName, request.Phone, null, Domain.Enums.Gender.Unspecified, entry.Target, KvkkConsent: false);
 
             // HANGİ KANAL KANITLANDI? Telefona giden kod telefon sahipliğini, e-postaya giden kod
             // yalnızca e-posta sahipliğini kanıtlar. Kayıt akışı bu ayrımı bilmek zorundadır:

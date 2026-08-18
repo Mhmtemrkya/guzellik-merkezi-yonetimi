@@ -160,7 +160,7 @@ public sealed class SecurityHardeningTests
         var service = new AuthService(db, null!, null!, null!, null!, null!, null!, null!, null!);
 
         var result = await service.CustomerRegisterAsync(
-            new CustomerRegisterRequest("Ayşe Yılmaz", "05551112233", new DateOnly(1990, 1, 1), Gender.Female, null),
+            new CustomerRegisterRequest("Ayşe Yılmaz", "05551112233", new DateOnly(1990, 1, 1), Gender.Female, null, KvkkConsent: true),
             phoneVerified: false,
             verifiedEmail: null);
 
@@ -196,11 +196,36 @@ public sealed class SecurityHardeningTests
         var service = new AuthService(db, null!, null!, null!, null!, null!, null!, null!, null!);
 
         var result = await service.CustomerRegisterAsync(
-            new CustomerRegisterRequest("Saldırgan Kişi", "05551112233", null, Gender.Unspecified, "saldirgan@example.com"),
+            new CustomerRegisterRequest("Saldırgan Kişi", "05551112233", null, Gender.Unspecified, "saldirgan@example.com", KvkkConsent: true),
             phoneVerified: false,
             verifiedEmail: "saldirgan@example.com");
 
         Assert.True(result.IsFailure);
         Assert.Equal("Unauthorized", result.Error.Code);
+    }
+
+    /// <summary>
+    /// KVKK ONAYI OLMADAN KAYIT AÇILMAZ.
+    ///
+    /// <para>
+    /// Eskiden kayıt <c>kvkkConsent: true</c> yazıyordu ama hiçbir ekran onay sormuyordu: hiç
+    /// alınmamış bir hukuki beyan veritabanında "verildi" görünüyordu. Sunucu son kapıdır —
+    /// istemci kutuyu gizlese ya da isteği elle kursa bile kayıt burada durur.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task CustomerRegister_IsRejected_WithoutKvkkConsent()
+    {
+        var options = NewOptions();
+        await using var db = NewDb(options);
+        var service = new AuthService(db, null!, null!, null!, null!, null!, null!, null!, null!);
+
+        var result = await service.CustomerRegisterAsync(
+            new CustomerRegisterRequest("Ayşe Yılmaz", "05551112233", null, Gender.Female, null, KvkkConsent: false),
+            phoneVerified: true,
+            verifiedEmail: null);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Validation", result.Error.Code);
     }
 }

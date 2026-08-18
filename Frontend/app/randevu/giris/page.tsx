@@ -83,6 +83,8 @@ export default function CustomerLoginPage() {
   const [email, setEmail] = useState('')
   const [channel, setChannel] = useState<CustomerOtpChannel>('sms')
   const [channels, setChannels] = useState<CustomerOtpChannels | null>(null)
+  // KVKK AÇIK RIZASI: kayıt akışında zorunlu. Sunucu da ayrıca doğrular (tek kapı istemci olamaz).
+  const [kvkkConsent, setKvkkConsent] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -104,6 +106,7 @@ export default function CustomerLoginPage() {
     void getCustomerOtpChannels().then((available) => {
       if (cancelled) return
       setChannels(available)
+      if (!available) return // bilinmiyor → seçici gizli, sunucu karar verir
       // Varsayılan: SMS → e-posta → WhatsApp sırasıyla ilk çalışan kanal.
       const preferred: CustomerOtpChannel[] = ['sms', 'email', 'whatsapp']
       const first = preferred.find((key) =>
@@ -116,9 +119,12 @@ export default function CustomerLoginPage() {
     }
   }, [])
 
-  const enabledChannels = channelOptions.filter(({ key }) =>
-    !channels ? true : key === 'sms' ? channels.sms : key === 'email' ? channels.email : channels.whatsApp,
-  )
+  // FAIL-CLOSED: kanal listesi bilinmiyorsa (uç okunamadı) seçici GÖSTERİLMEZ. Eskiden hepsi
+  // açık varsayılıyordu; kullanıcı SMS seçiyor ama sunucu kurulu olmayan kanalı atlayıp başka
+  // kanala düşüyordu — yani kod seçilen yerden gelmiyordu. Bilinmiyorsa sunucu karar verir.
+  const enabledChannels = channels
+    ? channelOptions.filter(({ key }) => (key === 'sms' ? channels.sms : key === 'email' ? channels.email : channels.whatsApp))
+    : []
 
   // OTP akışı: 'idle' → kod istendi ('code') → doğrula.
   const [otpStage, setOtpStage] = useState<'idle' | 'code'>('idle')
@@ -141,6 +147,12 @@ export default function CustomerLoginPage() {
     // (Girişte adres sorulmaz — kod kurum kayıtlarındaki adrese gider.)
     if (mode === 'register' && channel === 'email' && !email.trim()) {
       setError('E-posta ile kod almak için e-posta adresinizi girin.')
+      return null
+    }
+    // KVKK açık rızası kayıtta ZORUNLU. Kod göndermeden ÖNCE bakılır: onay vermeyecek kullanıcıya
+    // boş yere SMS/e-posta göndermenin anlamı yok (hem maliyet hem gereksiz adım).
+    if (mode === 'register' && !kvkkConsent) {
+      setError('Devam etmek için KVKK aydınlatma metnini onaylamanız gerekir.')
       return null
     }
     return { name, normalizedPhone: phoneDigits.length === 10 ? `0${phoneDigits}` : phoneDigits }
@@ -202,6 +214,7 @@ export default function CustomerLoginPage() {
         email: email.trim() || null,
         // Yalnız kayıtta ve yalnız kullanıcı girdiyse profile yazılır.
         birthDate: mode === 'register' ? birthDate || null : null,
+        kvkkConsent: mode === 'register' ? kvkkConsent : false,
       })
       router.push(nextTarget())
     } catch (err: unknown) {
@@ -350,8 +363,15 @@ export default function CustomerLoginPage() {
                     key={key}
                     type="button"
                     onClick={() => {
+                      if (key === mode) return
                       setMode(key)
                       setError('')
+                      // BAYAT OTP TEMİZLENİR. Giriş için kod isteyip Kayıt sekmesine geçildiğinde
+                      // eski kod yeni amaçla doğrulanmaya çalışılıyordu; sunucu kodu amaca (login /
+                      // register) bağladığı için kullanıcı kaçınılmaz bir hataya düşüyordu.
+                      setOtpStage('idle')
+                      setOtpCode('')
+                      setOtpInfo('')
                     }}
                     className={`relative flex min-h-10 items-center justify-center gap-2 rounded-xl text-[12.5px] font-semibold transition-colors ${
                       active ? 'text-white' : 'text-[#352432]/[0.55] hover:text-[#c85776]'
@@ -520,6 +540,36 @@ export default function CustomerLoginPage() {
                           </p>
                         )}
                       </div>
+
+                      {/*
+                        KVKK AÇIK RIZASI — ZORUNLU.
+                        Eskiden hiçbir ekran onay sormuyordu ama kayıt veritabanına
+                        "onay verildi" yazıyordu. Onay hukuki bir beyandır: alınmadan üretilemez.
+                        Sunucu da ayrıca doğrular; bu kutu tek kapı değildir.
+                      */}
+                      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[#ead8df] bg-white/80 p-4 transition-colors hover:border-[#e798b4]">
+                        <input
+                          type="checkbox"
+                          checked={kvkkConsent}
+                          onChange={(e) => {
+                            setKvkkConsent(e.target.checked)
+                            setError('')
+                          }}
+                          className="mt-0.5 h-4 w-4 shrink-0 accent-[#c85776]"
+                        />
+                        <span className="text-[12px] leading-relaxed text-[#352432]/[0.70]">
+                          <a
+                            href="/gizlilik"
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-semibold text-[#c85776] underline underline-offset-2"
+                          >
+                            KVKK aydınlatma metnini
+                          </a>{' '}
+                          okudum; kişisel verilerimin randevu işlemlerim için işlenmesine onay veriyorum.
+                        </span>
+                      </label>
                     </div>
                   </motion.div>
                 )}

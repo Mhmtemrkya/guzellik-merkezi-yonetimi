@@ -40,7 +40,21 @@ public sealed record CustomerLoginRequest(string FullName, string Phone);
 /// Kendi kayıt olan (kuruma bağlı olmayan) müşteri. TC yok; e-posta ve doğum tarihi OPSİYONEL —
 /// doğum tarihi yalnızca müşteri kendi isterse profiline yazılır (doğum günü kampanyaları için).
 /// </summary>
-public sealed record CustomerRegisterRequest(string FullName, string Phone, DateOnly? BirthDate, GuzellikMerkezi.Domain.Enums.Gender Gender, string? Email);
+public sealed record CustomerRegisterRequest(
+    string FullName,
+    string Phone,
+    DateOnly? BirthDate,
+    GuzellikMerkezi.Domain.Enums.Gender Gender,
+    string? Email,
+    /// <summary>
+    /// KVKK aydınlatma metnine AÇIK RIZA. Kullanıcı kutuyu işaretlemeden kayıt tamamlanamaz.
+    /// </summary>
+    /// <remarks>
+    /// Bu alan eskiden hiç yoktu ve kayıt <c>kvkkConsent: true</c> yazıyordu: hiçbir ekran onay
+    /// sormadığı hâlde veritabanında "onay verdi" görünüyordu. Onay kaydı hukuki bir beyandır;
+    /// alınmadan üretilmesi hem KVKK hem mağaza inceleme riski taşır.
+    /// </remarks>
+    bool KvkkConsent = false);
 
 public sealed record RefreshTokenRequest(string RefreshToken);
 public sealed record LoginResponse(string AccessToken, string RefreshToken, DateTime ExpiresAtUtc, UserProfileDto User);

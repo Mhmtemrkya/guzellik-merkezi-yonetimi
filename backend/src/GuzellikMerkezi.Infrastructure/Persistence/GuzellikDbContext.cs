@@ -56,6 +56,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         v => TimeOnly.FromTimeSpan(v));
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<TenantSignupReservation> TenantSignupReservations => Set<TenantSignupReservation>();
     public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<TenantUser> TenantUsers => Set<TenantUser>();
     public DbSet<Customer> Customers => Set<Customer>();
@@ -128,6 +129,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     {
         base.OnModelCreating(modelBuilder);
         ConfigureTenant(modelBuilder);
+        ConfigureTenantSignupReservation(modelBuilder);
         ConfigureBranch(modelBuilder);
         ConfigureTenantUser(modelBuilder);
         ConfigureCustomer(modelBuilder);
@@ -486,6 +488,26 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.HasMany(x => x.Branches).WithOne(x => x.Tenant).HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         builder.HasMany(x => x.Users).WithOne(x => x.Tenant).HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.SubscriptionPlan).WithMany().HasForeignKey(x => x.SubscriptionPlanId).OnDelete(DeleteBehavior.SetNull);
+    }
+
+    /// <summary>
+    /// Self-servis kayıtta e-posta/telefon tekilliğinin DB garantisi (bkz. TenantSignupReservation).
+    /// </summary>
+    /// <remarks>
+    /// Kolonlar ŞİFRELENMEZ: UNIQUE indeks ancak düz metin üzerinde çalışır. E-posta zaten
+    /// <c>tenant_users</c>'ta da düz tutuluyor; telefon ise ham numara değil HMAC blind index'idir.
+    /// Kurum kapsamı filtresi YOKTUR — kısıt platform genelinde anlamlıdır.
+    /// </remarks>
+    private void ConfigureTenantSignupReservation(ModelBuilder modelBuilder)
+    {
+        var builder = modelBuilder.Entity<TenantSignupReservation>();
+        builder.ToTable("tenant_signup_reservations");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.EmailKey).HasMaxLength(180).IsRequired();
+        builder.Property(x => x.PhoneKey).HasMaxLength(64).IsRequired();
+        builder.HasIndex(x => x.EmailKey).IsUnique();
+        builder.HasIndex(x => x.PhoneKey).IsUnique();
+        builder.HasQueryFilter(x => !x.IsDeleted);
     }
 
     private void ConfigureBranch(ModelBuilder modelBuilder)

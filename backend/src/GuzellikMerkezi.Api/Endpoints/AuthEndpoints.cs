@@ -33,7 +33,9 @@ public sealed record CustomerOtpVerifyRequest(
     DateOnly? BirthDate = null,
     Services.CustomerOtpPurpose Purpose = Services.CustomerOtpPurpose.Login,
     GuzellikMerkezi.Domain.Enums.Gender Gender = GuzellikMerkezi.Domain.Enums.Gender.Unspecified,
-    string? Email = null);
+    string? Email = null,
+    /// <summary>KVKK aydınlatma metnine açık rıza — kayıt akışında ZORUNLU (bkz. CustomerRegisterRequest).</summary>
+    bool KvkkConsent = false);
 
 public static class AuthEndpoints
 {
@@ -90,7 +92,7 @@ public static class AuthEndpoints
         {
             var identity = new CustomerLoginRequest(request.FullName, request.Phone);
             var registration = request.Purpose == Services.CustomerOtpPurpose.Register
-                ? new CustomerRegisterRequest(request.FullName, request.Phone, request.BirthDate, request.Gender, request.Email)
+                ? new CustomerRegisterRequest(request.FullName, request.Phone, request.BirthDate, request.Gender, request.Email, request.KvkkConsent)
                 : null;
             return (await otp.VerifyAsync(identity, request.Code, request.Purpose, registration, ct)).ToHttpResult(http);
         }).RequireRateLimiting("customer-auth");

@@ -141,12 +141,14 @@ export interface CustomerOtpChannels {
  * Platformda hangi kanallardan kod gönderilebilir? Dönen bilgi platform yapılandırmasıdır;
  * kullanıcı kimliğiyle ilgisi yoktur. Amaç: çalışmayan bir kanalı seçenek olarak göstermemek.
  */
-export async function getCustomerOtpChannels(): Promise<CustomerOtpChannels> {
+export async function getCustomerOtpChannels(): Promise<CustomerOtpChannels | null> {
   try {
     return await portalRequest<CustomerOtpChannels>('/api/auth/customer/otp/channels', { auth: false })
   } catch {
-    // Uç okunamazsa seçenekleri kapatmak yerine hepsini göster: sunucu yine doğru kanala düşer.
-    return { whatsApp: true, sms: true, email: true }
+    // FAIL-OPEN DEĞİL. Eskiden hata durumunda "hepsi açık" dönülüyordu: kullanıcı SMS seçiyor,
+    // sunucu ise kurulu olmayan kanalı atlayıp başkasına düşüyordu — yani ekranda seçtiği yerden
+    // kod GELMİYORDU. Bilinmiyorsa kanal seçici hiç gösterilmez ve sunucunun kararı kullanılır.
+    return null
   }
 }
 
@@ -255,6 +257,8 @@ export async function customerOtpVerify(
     gender?: number
     email?: string | null
     birthDate?: string | null
+    /** KVKK açık rızası — kayıt akışında ZORUNLU; sunucu onaysız kaydı reddeder. */
+    kvkkConsent?: boolean
   },
 ): Promise<CustomerSession> {
   const purpose = input.purpose ?? 'login'
@@ -270,6 +274,7 @@ export async function customerOtpVerify(
       email: input.email || null,
       // İsteğe bağlı: yalnız kayıtta ve yalnız kullanıcı girdiyse profile yazılır.
       birthDate: input.birthDate || null,
+      kvkkConsent: input.kvkkConsent === true,
     },
   })
   storeCustomerSession(session)

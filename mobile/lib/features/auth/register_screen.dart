@@ -32,6 +32,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final otpCodeController = TextEditingController();
   CustomerOtpChannel otpChannel = CustomerOtpChannel.sms;
   CustomerOtpChannels? otpChannels;
+  /// KVKK AÇIK RIZASI — kayıt için ZORUNLU. Sunucu da ayrıca doğrular (tek kapı istemci olamaz).
+  bool kvkkConsent = false;
 
   @override
   void initState() {
@@ -44,7 +46,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
     setState(() {
       otpChannels = available;
-      otpChannel = available.preferred;
+      // Bilinmiyorsa varsayılana DOKUNMA: seçici gizlenir, kararı sunucu verir.
+      if (available != null) otpChannel = available.preferred;
     });
   }
 
@@ -68,6 +71,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     // E-posta kanalı seçildiyse adres zorunlu: kodun gideceği yer başka türlü bilinmez.
     if (otpChannel == CustomerOtpChannel.email && emailController.text.trim().isEmpty) {
       setState(() => error = 'E-posta ile kod almak için e-posta adresinizi girin.');
+      return;
+    }
+    // KVKK açık rızası ZORUNLU. Kod göndermeden ÖNCE bakılır: onay vermeyecek kullanıcıya
+    // boş yere SMS/e-posta göndermenin anlamı yok (hem maliyet hem gereksiz adım).
+    if (!kvkkConsent) {
+      setState(() => error = 'Devam etmek için KVKK aydınlatma metnini onaylamanız gerekir.');
       return;
     }
     setState(() {
@@ -111,6 +120,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         gender: gender,
         email: emailController.text,
         birthDate: _birthStr(),
+        kvkkConsent: kvkkConsent,
       );
       // Başarılıysa AuthController durumu signedIn olur ve router otomatik yönlendirir.
     } catch (e) {
@@ -120,10 +130,42 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  /// Kodu YENİDEN gönderir (kod adımında kalan kullanıcının çıkış yolu).
+  ///
+  /// Sunucuda taslak başına bekleme süresi ve gönderim sayısı sınırı vardır; sınıra takılırsa
+  /// dönen mesaj kullanıcıya olduğu gibi gösterilir.
+  Future<void> _resendCode() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final res = await widget.auth.customerOtpRequest(
+        fullName: nameController.text,
+        phone: phoneController.text,
+        purpose: 1,
+        channel: otpChannel.code,
+        email: emailController.text,
+      );
+      final devCode = res['devCode'];
+      if (!mounted) return;
+      setState(() {
+        otpCodeController.clear();
+        otpInfo = devCode == null
+            ? 'Yeni doğrulama kodunuz gönderildi. Kod 5 dakika geçerlidir.'
+            : 'Yeni doğrulama kodu gönderildi. (Test ortamı kodu: $devCode)';
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
   /// Kodun hangi kanaldan geleceğini seçtirir (yalnız yapılandırılmış kanallar).
   List<Widget> _channelPicker() {
-    final options = otpChannels?.enabled ??
-        CustomerOtpChannel.values.where((c) => c != CustomerOtpChannel.auto).toList();
+    // FAIL-CLOSED: liste bilinmiyorsa seçici gösterilmez (bkz. login_screen'deki aynı not).
+    final options = otpChannels?.enabled ?? const <CustomerOtpChannel>[];
     if (options.length < 2) return const [];
 
     IconData iconOf(CustomerOtpChannel c) => switch (c) {
@@ -319,6 +361,60 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               showSelectedIcon: false,
                               onSelectionChanged: (s) => setState(() => gender = s.first),
                             ),
+                            // KVKK AÇIK RIZASI — ZORUNLU. Eskiden hiçbir ekran onay sormuyordu
+                            // ama kayıt veritabanına "onay verildi" yazıyordu. Onay hukuki bir
+                            // beyandır: alınmadan üretilemez. Sunucu da ayrıca doğrular.
+                            if (!otpStage) ...[
+                              const SizedBox(height: 16),
+                              InkWell(
+                                onTap: () => setState(() {
+                                  kvkkConsent = !kvkkConsent;
+                                  error = null;
+                                }),
+                                borderRadius: BorderRadius.circular(14),
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surfaceSoft,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: kvkkConsent ? AppColors.primary : AppColors.border,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: Checkbox(
+                                          value: kvkkConsent,
+                                          onChanged: (v) => setState(() {
+                                            kvkkConsent = v ?? false;
+                                            error = null;
+                                          }),
+                                          activeColor: AppColors.primary,
+                                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          visualDensity: VisualDensity.compact,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      const Expanded(
+                                        child: Text(
+                                          'KVKK aydınlatma metnini okudum; kişisel verilerimin '
+                                          'randevu işlemlerim için işlenmesine onay veriyorum.',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            height: 1.35,
+                                            color: AppColors.ink,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                             // Adım 2: gelen kod. Hesap yalnız kod doğrulanınca açılır.
                             if (otpStage) ...[
                               const SizedBox(height: 12),
@@ -337,6 +433,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   otpInfo!,
                                   style: const TextStyle(fontSize: 11.5, color: AppColors.muted),
                                 ),
+                              // KOD GELMEZSE ÇIKIŞ YOLU. Kod adımında ne "tekrar gönder" ne de
+                              // "geri dön" vardı: yanlış yazılmış bir numarayla kalan kullanıcı
+                              // ekranı kapatıp baştan başlamak zorunda kalıyordu.
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  TextButton(
+                                    onPressed: loading
+                                        ? null
+                                        : () => setState(() {
+                                            otpStage = false;
+                                            otpInfo = null;
+                                            otpCodeController.clear();
+                                            error = null;
+                                          }),
+                                    child: const Text('← Bilgileri düzenle'),
+                                  ),
+                                  TextButton(
+                                    onPressed: loading ? null : _resendCode,
+                                    child: const Text('Kodu tekrar gönder'),
+                                  ),
+                                ],
+                              ),
                             ],
                             if (error != null) ...[
                               const SizedBox(height: 12),

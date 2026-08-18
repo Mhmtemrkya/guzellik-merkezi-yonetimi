@@ -428,6 +428,15 @@ public sealed class AuthService : IAuthService
         if (name.Length < 3 || key.Length < 10)
             return Result<LoginResponse>.Failure(Error.Validation("Ad soyad ve geçerli bir telefon numarası zorunludur."));
 
+        // KVKK AÇIK RIZASI ZORUNLU. Eskiden hiç sorulmuyor ama "verildi" diye yazılıyordu;
+        // onay hukuki bir beyandır, alınmadan üretilemez. Sunucu son kapıdır: istemci kutuyu
+        // gizlese ya da isteği elle kursa bile kayıt burada durur.
+        if (!request.KvkkConsent)
+        {
+            return Result<LoginResponse>.Failure(Error.Validation(
+                "Kayıt için KVKK aydınlatma metnini onaylamanız gerekir."));
+        }
+
         var (tenantId, branchId) = await GetOrCreateIndividualTenantAsync(cancellationToken);
 
         // Aynı kişi zaten kayıtlıysa yeni kayıt açma — onunla giriş yap. Eşleşme KANITLANAN kanala
@@ -459,7 +468,8 @@ public sealed class AuthService : IAuthService
         if (customer is null)
         {
             customer = new Customer(tenantId, branchId, name, request.Phone.Trim(), request.Email ?? verifiedEmail);
-            customer.UpdateProfile(request.BirthDate, request.Gender, kvkkConsent: true, notes: null);
+            // Onay KULLANICININ beyanıdır (yukarıda zorunlu tutuldu) — sabit true yazılmaz.
+            customer.UpdateProfile(request.BirthDate, request.Gender, request.KvkkConsent, notes: null);
             _db.Customers.Add(customer);
         }
 
