@@ -30,6 +30,10 @@ class _LoginScreenState extends State<LoginScreen> {
   // randevu almak için gerekmediği hâlde zorunlu tutulduğu için uygulama reddedildi.
   final phoneController = TextEditingController();
   final nameController = TextEditingController();
+  // GİRİŞTE E-POSTA = KİMLİK DOĞRULAYICI (üçüncü faktör). Ad ve telefon gizli bilgi değildir;
+  // kod yalnız kurum kayıtlarındaki adresle eşleşirse ve YALNIZ O ADRESE gönderilir.
+  // Panel girişindeki `emailController` ile KARIŞTIRILMAMALI: o personel/yönetici alanıdır.
+  final customerEmailController = TextEditingController();
   // Müşteri doğrulama kodu: kod istendi mi + kod alanı + bilgi + kanal.
   final otpCodeController = TextEditingController();
   bool otpStage = false;
@@ -58,6 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
     passwordController.dispose();
     phoneController.dispose();
     nameController.dispose();
+    customerEmailController.dispose();
     otpCodeController.dispose();
     panelCodeController.dispose();
     super.dispose();
@@ -185,6 +190,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await widget.auth.customerOtpVerify(
           fullName: nameController.text,
           phone: phoneController.text,
+          email: customerEmailController.text,
           code: code,
         );
       } catch (e) {
@@ -293,6 +299,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final res = await widget.auth.customerOtpRequest(
         fullName: nameController.text,
         phone: phoneController.text,
+        email: customerEmailController.text,
         channel: CustomerOtpChannel.email.code, // giriş = e-posta (sunucu da ezer)
       );
       if (!mounted) return;
@@ -821,6 +828,26 @@ class _LoginScreenState extends State<LoginScreen> {
             labelText: 'Telefon',
             hintText: '0555 123 45 67',
             prefixIcon: Icon(Icons.phone_outlined),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: customerEmailController,
+          keyboardType: TextInputType.emailAddress,
+          autocorrect: false,
+          textCapitalization: TextCapitalization.none,
+          validator: (value) {
+            final mail = (value ?? '').trim();
+            if (mail.isEmpty) return 'Kayıtlı e-posta adresiniz zorunlu.';
+            return RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(mail)
+                ? null
+                : 'Geçerli bir e-posta adresi girin.';
+          },
+          decoration: const InputDecoration(
+            labelText: 'E-posta',
+            hintText: 'ornek@eposta.com',
+            helperText: 'Kurumunuzda kayıtlı adresiniz. Kod bu adrese gönderilir.',
+            prefixIcon: Icon(Icons.alternate_email),
           ),
         ),
         // KANAL SEÇİMİ: kod tek bir uygulamaya mahkûm değildir. WhatsApp'ı olmayan kullanıcı

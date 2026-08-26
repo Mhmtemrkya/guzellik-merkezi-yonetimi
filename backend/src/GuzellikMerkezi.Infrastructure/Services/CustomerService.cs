@@ -127,6 +127,64 @@ LIMIT 2000")
     }
 
     /// <summary>
+    /// Bu e-posta kurumda başka bir müşteride var mı?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// E-posta de telefon gibi ŞİFRELİ saklanır (AES-GCM, rastgele nonce) — aynı adres her satırda
+    /// farklı şifreli metin üretir, dolayısıyla DB'de UNIQUE index ya da <c>WHERE Email = ...</c>
+    /// KURULAMAZ. Bu yüzden blind index'le aday çekilir, eşitlik çözülmüş değerde doğrulanır.
+    /// </para>
+    /// <para>
+    /// <b>YENİ BİR İNDEKS ANAHTARI EKLENMEDİ — bilerek.</b> Telefondaki gibi bir <c>BuildEmailKey</c>
+    /// üretmek daha dar aday kümesi verirdi, ama o anahtar yalnız BUGÜNDEN SONRA yazılan satırlarda
+    /// bulunur; mevcut kayıtlar eski şemayla indekslendiği için mükerrer e-posta SESSİZCE
+    /// kaçardı — kontrolün olmamasından beter, çünkü olduğu sanılır. <see cref="ISearchIndexService.BuildLookupKeys"/>
+    /// ise <see cref="ISearchIndexService.BuildCustomerIndex"/>'in e-posta için ZATEN yazdığı
+    /// ön-ek anahtarlarını sorar (ikisi de aynı <c>Tokenize</c>'ı kullanır), yani tüm eski
+    /// kayıtlarda çalışır ve backfill gerektirmez.
+    /// </para>
+    /// <para>
+    /// Anahtarlar ön-ek olduğu için aday kümesi geniş olabilir (ör. "…@gmail.com" ile biten
+    /// herkes); kesin kararı aşağıdaki normalize edilmiş tam eşitlik verir. İndekslenmemiş satır
+    /// varsa tam taramaya düşülür — telefondaki gerekçenin aynısı: mükerrer kaydın sızmasındansa
+    /// yavaş olmak yeğdir.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> EmailExistsAsync(Guid tenantId, string? email, Guid? excludeId, CancellationToken ct)
+    {
+        var normalized = NormalizeEmail(email);
+        if (normalized.Length == 0) return false;
+
+        var baseQuery = _db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId);
+        if (excludeId is not null) baseQuery = baseQuery.Where(x => x.Id != excludeId.Value);
+
+        var query = baseQuery;
+        if (!await HasUnindexedAsync(baseQuery, ct))
+        {
+            // Anahtarların HEPSİ bulunmalı (AND) — BuildLookupKeys'in sözleşmesi.
+            foreach (var key in _search.BuildLookupKeys(email))
+            {
+                var k = key;
+                query = query.Where(x => x.SearchIndex != null && x.SearchIndex.Contains(k));
+            }
+        }
+
+        var emails = await query.Select(x => x.Email).ToListAsync(ct);
+        return emails.Any(e => NormalizeEmail(e) == normalized);
+    }
+
+    /// <summary>
+    /// Mükerrer karşılaştırmasının tek kuralı: kırp + küçült.
+    /// <para>
+    /// Nokta/artı gibi sağlayıcıya özgü kurallar (Gmail'de <c>a.li@</c> = <c>ali@</c>) BİLEREK
+    /// uygulanmaz: her sağlayıcıda geçerli değildir ve iki farklı kişinin adresini aynı sayıp
+    /// meşru bir müşteri kaydını reddetmek, mükerrer kayıttan daha kötü bir hatadır.
+    /// </para>
+    /// </summary>
+    private static string NormalizeEmail(string? email) => (email ?? string.Empty).Trim().ToLowerInvariant();
+
+    /// <summary>
     /// Aramanın kesin (bellekte) filtresi — blind index yalnızca aday üretir.
     /// </summary>
     /// <remarks>
@@ -762,6 +820,13 @@ FROM (
             return Result<CustomerDto>.Failure(Error.Conflict("Bu telefon numarasıyla kayıtlı bir müşteri zaten var."));
         }
 
+        // Mükerrer e-posta engeli: giriş kodu e-posta ile eşleştiği için aynı adresin iki müşteride
+        // olması, hangi hesabın kodu alacağını belirsiz bırakır (bkz. CustomerOtpService).
+        if (await EmailExistsAsync(tenantId, request.Email, null, cancellationToken))
+        {
+            return Result<CustomerDto>.Failure(Error.Conflict("Bu e-posta adresiyle kayıtlı bir müşteri zaten var."));
+        }
+
         // Ad yazımı tek standarda çekilir: Ad SOYAD (bkz. PersonNameFormatter).
         var customer = new Customer(tenantId, request.BranchId, PersonNameFormatter.Format(request.FullName), request.Phone, request.Email);
         customer.UpdateProfile(request.BirthDate, request.Gender, request.KvkkConsent, request.Notes);
@@ -852,6 +917,15 @@ FROM (
             && await PhoneExistsAsync(tenantId, phone, updatedDigits, id, cancellationToken))
         {
             return Result<CustomerDto>.Failure(Error.Conflict("Bu telefon numarasıyla kayıtlı başka bir müşteri var."));
+        }
+
+        // E-posta DEĞİŞİYORSA mükerrerlik denetlenir (kendisi hariç). Maskeli değer geldiyse
+        // `email` zaten mevcut adrese çözülmüştür ve karşılaştırma değişiklik görmez — yani
+        // personelin maskeli görüntüsü yanlışlıkla çakışma hatası üretmez.
+        if (NormalizeEmail(email) != NormalizeEmail(customer.Email)
+            && await EmailExistsAsync(tenantId, email, id, cancellationToken))
+        {
+            return Result<CustomerDto>.Failure(Error.Conflict("Bu e-posta adresiyle kayıtlı başka bir müşteri var."));
         }
 
         customer.UpdateContact(PersonNameFormatter.Format(request.FullName), phone, email);
