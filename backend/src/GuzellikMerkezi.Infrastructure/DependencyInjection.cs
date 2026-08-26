@@ -55,6 +55,49 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddMemoryCache(); // feature-set gating önbelleği (hot read path) için
+
+        // ════════════════════════════════════════════════════════════════════════════════════
+        // OTP / CHALLENGE DURUM DEPOSU.
+        //
+        // Doğrulama kodları, panel giriş challenge'ı, kurum kayıt taslağı ve hız sınırı sayaçları
+        // process belleğinde tutuluyordu: her yeniden başlatma (deploy dahil) o an geçerli TÜM
+        // kodları düşürüyor, kullanıcı doğru kodu girip "süresi doldu" cevabı alıyordu.
+        //
+        // Redis:ConnectionString VERİLİRSE durum process dışına taşınır — yeniden başlatma
+        // kodları düşürmez ve çok instance'a geçildiğinde kodu üreten ile doğrulayan instance
+        // aynı olmak zorunda kalmaz. Verilmezse davranış eskisiyle AYNIdır (tek instance).
+        //
+        // Bağlantı kurulamazsa AÇILIŞTA PATLAMAK YERİNE belleğe düşülür: Redis'in geçici
+        // erişilemezliği tüm girişleri durduran bir arızaya dönüşmemeli.
+        // ════════════════════════════════════════════════════════════════════════════════════
+        var otpRedis = configuration["Redis:ConnectionString"];
+        if (!string.IsNullOrWhiteSpace(otpRedis))
+        {
+            services.AddSingleton<Application.Abstractions.IOtpStateStore>(sp =>
+            {
+                var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>();
+                try
+                {
+                    var mux = StackExchange.Redis.ConnectionMultiplexer.Connect(otpRedis!);
+                    return new Services.RedisOtpStateStore(
+                        mux,
+                        sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Services.RedisOtpStateStore>>(),
+                        configuration["Redis:OtpKeyPrefix"]);
+                }
+                catch (Exception ex)
+                {
+                    Microsoft.Extensions.Logging.LoggerExtensions.LogError(logger.CreateLogger("OtpStateStore"), ex,
+                        "Redis'e bağlanılamadı; OTP durumu process belleğinde tutulacak. " +
+                        "Yeniden başlatma bekleyen kodları düşürür.");
+                    return new Services.MemoryOtpStateStore(
+                        sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>());
+                }
+            });
+        }
+        else
+        {
+            services.AddSingleton<Application.Abstractions.IOtpStateStore, Services.MemoryOtpStateStore>();
+        }
         services.AddScoped<ITenantContext, TenantContext>();
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
         services.AddScoped<IPasswordHasher, PasswordHasher>();

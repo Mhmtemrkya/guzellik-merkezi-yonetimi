@@ -46,32 +46,37 @@ public sealed class PanelLoginOtpService
     private const int MaxAttempts = 5;
 
     private readonly IAuthService _auth;
-    private readonly IMemoryCache _cache;
+    private readonly IOtpStateStore _store;
     private readonly IPlatformMessagingService _messaging;
     private readonly IHostEnvironment _env;
     private readonly ILogger<PanelLoginOtpService> _logger;
 
     public PanelLoginOtpService(
         IAuthService auth,
-        IMemoryCache cache,
+        IOtpStateStore store,
         IPlatformMessagingService messaging,
         IHostEnvironment env,
         ILogger<PanelLoginOtpService> logger)
     {
         _auth = auth;
-        _cache = cache;
+        _store = store;
         _messaging = messaging;
         _env = env;
         _logger = logger;
     }
 
-    private sealed class PendingLogin
+    /// <summary>
+    /// Bekleyen giriş. <b>Alanlar değil PROPERTY, ve <c>init</c> değil <c>set</c>:</b>
+    /// <see cref="System.Text.Json"/> alanları serileştirmez ve parametresiz kurucu ister —
+    /// aksi hâlde Redis'e yazılan challenge geri okunamaz ve hiçbir panel girişi tamamlanamazdı.
+    /// <c>internal</c>: serileştirici erişebilmeli.
+    /// </summary>
+    internal sealed class PendingLogin
     {
-        public required string Code { get; init; }
-        public required string Email { get; init; }
-        public required LoginResponse Session { get; init; }
-        public int Attempts;
-        public bool Consumed;
+        public string Code { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public LoginResponse? Session { get; set; }
+        public int Attempts { get; set; }
     }
 
     private static string Key(string id) => $"panel-login:{id}";
@@ -101,42 +106,47 @@ public sealed class PanelLoginOtpService
         }
 
         var challengeId = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-        _cache.Set(Key(challengeId), new PendingLogin { Code = code, Email = email, Session = session }, ChallengeLifetime);
+        await _store.SetAsync(Key(challengeId), new PendingLogin { Code = code, Email = email, Session = session }, ChallengeLifetime, ct);
 
         return Result<PanelLoginChallenge>.Success(new PanelLoginChallenge(
             challengeId, EmailMask.Mask(email), _env.IsDevelopment() ? code : null));
     }
 
     /// <summary>Adım 2 — kod doğruysa oturum teslim edilir. Kod TEK KULLANIMLIKTIR.</summary>
-    public Task<Result<LoginResponse>> VerifyAsync(string challengeId, string code, CancellationToken ct)
+    public async Task<Result<LoginResponse>> VerifyAsync(string challengeId, string code, CancellationToken ct)
     {
-        var key = Key(challengeId ?? string.Empty);
-        if (string.IsNullOrWhiteSpace(challengeId) || !_cache.TryGetValue<PendingLogin>(key, out var pending) || pending is null)
-            return Task.FromResult(Result<LoginResponse>.Failure(Error.Unauthorized("Kodun süresi doldu. Lütfen tekrar giriş yapın.")));
+        if (string.IsNullOrWhiteSpace(challengeId))
+            return Result<LoginResponse>.Failure(Error.Unauthorized("Kodun süresi doldu. Lütfen tekrar giriş yapın."));
 
-        // Tek kullanım ve deneme sayacı kilit altında: eşzamanlı iki istek aynı kodu iki oturuma
-        // çeviremesin, 5 deneme freni yarışta delinmesin.
-        string? failure = null;
-        lock (pending)
-        {
-            if (pending.Consumed) failure = "Bu kod zaten kullanıldı. Lütfen tekrar giriş yapın.";
-            else if (pending.Attempts >= MaxAttempts) failure = "Çok fazla yanlış deneme. Lütfen tekrar giriş yapın.";
-            else if (!string.Equals(pending.Code, code?.Trim(), StringComparison.Ordinal))
+        // Tek kullanım ve deneme sayacı DEPO KİLİDİ altında: eşzamanlı iki istek aynı kodu iki
+        // oturuma çeviremesin, 5 deneme freni yarışta delinmesin. Başarıda kayıt SİLİNİR —
+        // Consumed bayrağı process içi paylaşılan nesneye dayanıyordu, depoya taşınan durumda
+        // silme hem daha basit hem yeniden okumaya karşı dayanıklıdır.
+        var trimmed = code?.Trim();
+        var decision = await _store.MutateAsync<PendingLogin, (LoginResponse? Session, string? Failure)>(
+            Key(challengeId), ChallengeLifetime, pending =>
             {
-                pending.Attempts++;
-                failure = "Kod hatalı. Tekrar deneyin.";
-            }
-            else pending.Consumed = true;
-        }
+                if (pending is null)
+                    return (null, (null, "Kodun süresi doldu. Lütfen tekrar giriş yapın."));
 
-        if (failure is not null)
-        {
-            if (pending.Attempts >= MaxAttempts) _cache.Remove(key);
-            return Task.FromResult(Result<LoginResponse>.Failure(Error.Unauthorized(failure)));
-        }
+                if (pending.Attempts >= MaxAttempts)
+                    return (null, (null, "Çok fazla yanlış deneme. Lütfen tekrar giriş yapın."));
 
-        _cache.Remove(key);
-        return Task.FromResult(Result<LoginResponse>.Success(pending.Session));
+                if (!string.Equals(pending.Code, trimmed, StringComparison.Ordinal))
+                {
+                    pending.Attempts++;
+                    return (pending.Attempts >= MaxAttempts ? null : pending,
+                        (null, "Kod hatalı. Tekrar deneyin."));
+                }
+
+                return (null, (pending.Session, null));
+            }, ct);
+
+        if (decision.Session is null)
+            return Result<LoginResponse>.Failure(Error.Unauthorized(
+                decision.Failure ?? "Kodun süresi doldu. Lütfen tekrar giriş yapın."));
+
+        return Result<LoginResponse>.Success(decision.Session);
     }
 
     private async Task<bool> SendAsync(string email, string? fullName, string code, CancellationToken ct)

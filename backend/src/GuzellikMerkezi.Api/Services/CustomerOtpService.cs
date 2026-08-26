@@ -87,7 +87,7 @@ public sealed class CustomerOtpService
         "Bilgileriniz kayıtlarımızla eşleşiyorsa doğrulama kodunuz gönderildi. Kod 5 dakika geçerlidir.";
 
     private readonly GuzellikDbContext _db;
-    private readonly IMemoryCache _cache;
+    private readonly IOtpStateStore _store;
     private readonly IPlatformMessagingService _messaging;
     private readonly IAuthService _auth;
     private readonly ISearchIndexService _search;
@@ -116,7 +116,7 @@ public sealed class CustomerOtpService
 
     public CustomerOtpService(
         GuzellikDbContext db,
-        IMemoryCache cache,
+        IOtpStateStore store,
         IPlatformMessagingService messaging,
         IAuthService auth,
         ISearchIndexService search,
@@ -125,7 +125,7 @@ public sealed class CustomerOtpService
         ILogger<CustomerOtpService> logger)
     {
         _db = db;
-        _cache = cache;
+        _store = store;
         _messaging = messaging;
         _auth = auth;
         _search = search;
@@ -182,25 +182,40 @@ public sealed class CustomerOtpService
     private bool IsStoreReviewPhone(string phoneKey) =>
         _demoPhoneKey is not null && string.Equals(phoneKey, _demoPhoneKey, StringComparison.Ordinal);
 
-    private sealed class OtpEntry
+    /// <summary>
+    /// Kod kaydı. <b>Alanlar değil PROPERTY:</b> <see cref="System.Text.Json"/> alanları
+    /// serileştirmez; alan olarak bırakılsalardı Redis'e yazılan kayıt geri okunduğunda her şey
+    /// varsayılana döner ve hiçbir kod doğrulanamazdı. <c>internal</c>: serileştirici erişebilmeli.
+    /// </summary>
+    /// <summary>
+    /// Doğrulama kararı — kilit ALTINDA verilir, kilit DIŞINDA uygulanır.
+    /// <see cref="Entry"/> doluysa kod kabul edilmiştir ve kayıt zaten silinmiştir.
+    /// </summary>
+    private sealed record VerifyDecision(OtpEntry? Entry, string? Failure)
     {
-        public string Code = string.Empty;
+        public static VerifyDecision Ok(OtpEntry entry) => new(entry, null);
+        public static VerifyDecision Fail(string message) => new(null, message);
+    }
+
+    internal sealed class OtpEntry
+    {
+        public string Code { get; set; } = string.Empty;
 
         /// <summary>
         /// Kodun ÜRETİLDİĞİ kimlik (ad soyad + telefon anahtarı). Önbellek anahtarı yalnız telefondan
         /// türediği için, aynı telefonun birden çok müşteri kaydında kullanıldığı durumda A kimliği
         /// için istenen kod B kimliğiyle doğrulanabiliyordu. Kod artık kimliğine bağlıdır.
         /// </summary>
-        public string Identity = string.Empty;
+        public string Identity { get; set; } = string.Empty;
 
         /// <summary>
         /// Kod HANGİ kanaldan gitti? Kayıt akışında hayati: e-postaya giden kod telefon sahipliğini
         /// KANITLAMAZ, dolayısıyla o numaraya ait mevcut hesabı sahiplenmek için kullanılamaz.
         /// </summary>
-        public CustomerOtpChannel Channel = CustomerOtpChannel.WhatsApp;
+        public CustomerOtpChannel Channel { get; set; } = CustomerOtpChannel.WhatsApp;
 
         /// <summary>E-posta kanalında kodun gittiği adres (kayıt akışında kanıt olarak taşınır).</summary>
-        public string? Target;
+        public string? Target { get; set; }
 
         /// <summary>
         /// KAYITTA İKİNCİ AŞAMA: SMS doğrulandıktan sonra e-posta kodu beklenir.
@@ -210,26 +225,21 @@ public sealed class CustomerOtpService
         /// (bir sonraki girişin kodu oraya gidecek). E-posta doğrulanmadan hesap açılsaydı,
         /// yanlış yazılmış bir adres kullanıcıyı ilk girişte kilitlerdi.
         /// </remarks>
-        public bool AwaitingEmailStage;
+        public bool AwaitingEmailStage { get; set; }
 
         /// <summary>Kayıt akışında 2. aşamada doğrulanacak e-posta adresi.</summary>
-        public string? PendingEmail;
+        public string? PendingEmail { get; set; }
 
         /// <summary>1. aşamada doğrulanan telefon — 2. aşamada kayıt bununla açılır.</summary>
-        public bool PhoneProven;
+        public bool PhoneProven { get; set; }
 
-        public int Attempts;
+        public int Attempts { get; set; }
 
         /// <summary>
         /// Kod tüketildi mi. Eşzamanlı iki DOĞRU doğrulama, silme gerçekleşmeden ikisi de kaydı
         /// okuyup iki ayrı oturum açabiliyordu; bayrak kilit altında işaretlenir.
         /// </summary>
-        public bool Consumed;
-    }
-
-    private sealed class RequestCounter
-    {
-        public int Count;
+        public bool Consumed { get; set; }
     }
 
     private static string CacheKey(string loginKey, CustomerOtpPurpose purpose) => $"customer-otp:{purpose}:{loginKey}";
@@ -304,18 +314,15 @@ public sealed class CustomerOtpService
         if (key.Length < 10 || name.Length == 0)
             return Result<object>.Failure(Error.Validation("Ad soyad ve telefon numarası zorunludur."));
 
-        // Telefon bazlı fren — IP'den bağımsız çalışır.
-        var counter = _cache.GetOrCreate(ThrottleKey(key), entry =>
-        {
-            entry.AbsoluteExpirationRelativeToNow = RequestWindow;
-            return new RequestCounter();
-        })!;
-        if (counter.Count >= MaxRequestsPerWindow)
+        // Telefon bazlı fren — IP'den bağımsız çalışır. Artırım ATOMİKTİR: oku-artır-yaz üç ayrı
+        // adım olsaydı eşzamanlı istekler aynı değeri okuyup sınırı delerdi. Depo Redis ise sayaç
+        // instance'lar arasında ORTAKTIR (aksi hâlde sınır instance sayısıyla çarpılırdı).
+        var requestCount = await _store.IncrementAsync(ThrottleKey(key), RequestWindow, ct);
+        if (requestCount > MaxRequestsPerWindow)
         {
             return Result<object>.Failure(Error.Unauthorized(
                 "Bu numara için çok fazla kod istendi. Lütfen birkaç dakika sonra tekrar deneyin."));
         }
-        counter.Count++;
 
         // KİMLİKTEN ÖNCE kanal kontrolü: platformda hiçbir kanal yoksa bu, kullanıcının kim olduğuyla
         // ilgisi olmayan bir yapılandırma hatasıdır. Burada hata dönmek sızıntı yaratmaz — ama
@@ -421,7 +428,7 @@ public sealed class CustomerOtpService
 
             if (delivered)
             {
-                _cache.Set(CacheKey(key, purpose), entry, CodeLifetime);
+                await _store.SetAsync(CacheKey(key, purpose), entry, CodeLifetime, ct);
                 // Geliştirme ortamında kodu yanıtla da döndür (simülasyonda gerçek gönderim yapılmaz).
                 if (_env.IsDevelopment()) devCode = code;
             }
@@ -551,47 +558,47 @@ public sealed class CustomerOtpService
     {
         var key = PhoneMask.LoginKey(request.Phone);
         var cacheKey = CacheKey(key, purpose);
-        if (!_cache.TryGetValue<OtpEntry>(cacheKey, out var entry) || entry is null)
-            return Result<LoginResponse>.Failure(Error.Unauthorized("Kodun süresi doldu ya da kod istenmedi. Yeni kod isteyin."));
 
-        // TEK KULLANIM ATOMİK OLMALI. Oku → karşılaştır → sil üç ayrı adımdı: aynı kodu taşıyan iki
-        // eşzamanlı istek, silme gerçekleşmeden ikisi de kaydı okuyup İKİ ayrı oturum açabiliyordu.
-        // Deneme sayacı da yarışta kaybolabiliyor, 5 deneme freni delinebiliyordu. Karar kilit
-        // altında verilir; ağ/DB çağrıları kilidin DIŞINDA kalır.
+        // TEK KULLANIM ATOMİK OLMALI. Oku → karşılaştır → sil üç ayrı adım olsaydı, aynı kodu
+        // taşıyan iki eşzamanlı istek silme gerçekleşmeden ikisi de kaydı okuyup İKİ ayrı oturum
+        // açabilirdi; deneme sayacı da yarışta kaybolur ve 5 deneme freni delinirdi.
+        //
+        // KARARIN TAMAMI depo kilidinin altındadır ve mutator SAF tutulur: ağ/DB çağrıları
+        // (mesaj gönderimi, hesap açma) bilerek dışarıda bırakılır — kilit altında ağ beklemek
+        // hem aynı kullanıcının diğer isteklerini kilitler hem de dağıtık kilidin ömrünü aşabilir.
+        //
+        // BAŞARIDA KAYIT SİLİNİR (Consumed bayrağı yerine): ikinci istek kaydı hiç bulamaz.
+        // Bayrak process içi paylaşılan nesneye dayanıyordu; depoya taşınan durumda silme hem
+        // daha basit hem de yeniden okumaya karşı dayanıklıdır.
         var identity = IdentityOf(request.FullName, request.Phone);
-        string? failure = null;
-        lock (entry)
+        var trimmedCode = code?.Trim();
+        var decision = await _store.MutateAsync<OtpEntry, VerifyDecision>(cacheKey, CodeLifetime, current =>
         {
-            if (entry.Consumed)
-                failure = "Bu kod zaten kullanıldı. Yeni kod isteyin.";
-            else if (entry.Attempts >= MaxAttempts)
-                failure = "Çok fazla yanlış deneme. Yeni kod isteyin.";
-            else if (!string.Equals(entry.Identity, identity, StringComparison.Ordinal))
-            {
-                // Kod BU kimlik için üretilmedi (anahtar yalnız telefondan türüyor). Mesaj yanlış
-                // koddan ayırt edilmez — hangi kimliğin kayıtlı olduğu sızmasın.
-                entry.Attempts++;
-                failure = "Kod hatalı. Tekrar deneyin.";
-            }
-            else if (!string.Equals(entry.Code, code?.Trim(), StringComparison.Ordinal))
-            {
-                entry.Attempts++;
-                failure = "Kod hatalı. Tekrar deneyin.";
-            }
-            else
-            {
-                entry.Consumed = true;
-            }
-        }
+            if (current is null)
+                return (null, VerifyDecision.Fail("Kodun süresi doldu ya da kod istenmedi. Yeni kod isteyin."));
 
-        if (failure is not null)
-        {
-            if (entry.Attempts >= MaxAttempts) _cache.Remove(cacheKey);
-            return Result<LoginResponse>.Failure(Error.Unauthorized(failure));
-        }
+            if (current.Attempts >= MaxAttempts)
+                return (null, VerifyDecision.Fail("Çok fazla yanlış deneme. Yeni kod isteyin."));
 
-        // Kod tüketildi: aynı kod ikinci kez kullanılamaz.
-        _cache.Remove(cacheKey);
+            // Kod BU kimlik için üretilmedi (anahtar yalnız telefondan türüyor). Mesaj yanlış
+            // koddan ayırt edilmez — hangi kimliğin kayıtlı olduğu sızmasın.
+            var identityOk = string.Equals(current.Identity, identity, StringComparison.Ordinal);
+            var codeOk = string.Equals(current.Code, trimmedCode, StringComparison.Ordinal);
+            if (!identityOk || !codeOk)
+            {
+                current.Attempts++;
+                // Fren dolduysa kaydı burada düşür: tükenmiş bir kodu saklamanın değeri yok.
+                return (current.Attempts >= MaxAttempts ? null : current,
+                    VerifyDecision.Fail("Kod hatalı. Tekrar deneyin."));
+            }
+
+            return (null, VerifyDecision.Ok(current));
+        }, ct);
+
+        if (decision.Entry is null)
+            return Result<LoginResponse>.Failure(Error.Unauthorized(decision.Failure!));
+
+        var entry = decision.Entry;
 
         if (purpose == CustomerOtpPurpose.Register)
         {
@@ -635,7 +642,7 @@ public sealed class CustomerOtpService
                     PendingEmail = mail,
                     PhoneProven = true,
                 };
-                _cache.Set(cacheKey, next, CodeLifetime);
+                await _store.SetAsync(cacheKey, next, CodeLifetime, ct);
 
                 // Akış TAMAMLANMADI: istemci ayırt edilebilir kodla "e-posta adımına geç" der.
                 // Mesaj alanı maskeli adresi taşır (ekranda gösterilecek tek bilgi budur).

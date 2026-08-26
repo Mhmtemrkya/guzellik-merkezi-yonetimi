@@ -64,7 +64,7 @@ public sealed class StoreReviewOtpTests
 
         return new CustomerOtpService(
             db,
-            new MemoryCache(new MemoryCacheOptions()),
+            new GuzellikMerkezi.Infrastructure.Services.MemoryOtpStateStore(new MemoryCache(new MemoryCacheOptions())),
             messaging,
             auth ?? Substitute.For<IAuthService>(),
             TestSearchIndex.Create(),

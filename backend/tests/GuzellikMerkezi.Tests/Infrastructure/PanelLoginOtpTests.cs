@@ -39,7 +39,7 @@ public sealed class PanelLoginOtpTests
     {
         var env = Substitute.For<IHostEnvironment>();
         env.EnvironmentName.Returns("Production"); // devCode sızmasın
-        return new PanelLoginOtpService(auth, new MemoryCache(new MemoryCacheOptions()), messaging, env,
+        return new PanelLoginOtpService(auth, new GuzellikMerkezi.Infrastructure.Services.MemoryOtpStateStore(new MemoryCache(new MemoryCacheOptions())), messaging, env,
             NullLogger<PanelLoginOtpService>.Instance);
     }
 
