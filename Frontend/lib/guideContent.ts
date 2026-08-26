@@ -877,7 +877,7 @@ const guides: Record<string, PageGuide> = {
         icon: Settings2,
         title: 'Entegrasyon ve bakım',
         desc:
-          'SMS/e-posta sağlayıcıları (Netgsm/Twilio/SMTP), webhook, yedekleme ve veri saklama politikaları JSON bölümleri halinde düzenlenir; arka plan iş kuyruğu buradan izlenir.',
+          'SMS/e-posta sağlayıcıları (Verimor/Netgsm/Twilio/SMTP), webhook, yedekleme ve veri saklama politikaları JSON bölümleri halinde düzenlenir; arka plan iş kuyruğu buradan izlenir.',
       },
     ],
   },

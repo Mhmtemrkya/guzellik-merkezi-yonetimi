@@ -25,6 +25,7 @@ public static class OutboundEndpointGuard
     {
         "api.netgsm.com.tr",
         "api.twilio.com",
+        "sms.verimor.com.tr",
     };
 
     /// <summary>SMTP için izinli port'lar (submission + implicit TLS).</summary>

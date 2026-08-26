@@ -12,9 +12,9 @@ public sealed class PlatformIntegrationSettings : Entity
 
     // --- SMS ---
     public bool SmsEnabled { get; private set; }
-    public string SmsProvider { get; private set; } = "Simulation"; // Netgsm | Twilio | Simulation
-    public string? SmsApiKeyEncrypted { get; private set; }     // Netgsm: usercode · Twilio: AccountSid
-    public string? SmsApiSecretEncrypted { get; private set; }  // Netgsm: password · Twilio: AuthToken
+    public string SmsProvider { get; private set; } = "Simulation"; // Verimor | Netgsm | Twilio | Simulation
+    public string? SmsApiKeyEncrypted { get; private set; }     // Verimor: 12 haneli abone no · Netgsm: usercode · Twilio: AccountSid
+    public string? SmsApiSecretEncrypted { get; private set; }  // Verimor: API parolası · Netgsm: password · Twilio: AuthToken
     public string? SmsSender { get; private set; }              // başlık / gönderen no
     public string? SmsApiUrl { get; private set; }              // opsiyonel override
 

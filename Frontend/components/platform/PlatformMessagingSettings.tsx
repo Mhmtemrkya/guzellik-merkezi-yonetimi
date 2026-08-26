@@ -41,7 +41,7 @@ export default function PlatformMessagingSettings() {
     { initialData: {} },
   )
 
-  const [sms, setSms] = useState({ enabled: false, provider: 'Netgsm', apiKey: '', apiSecret: '', sender: '', apiUrl: '' })
+  const [sms, setSms] = useState({ enabled: false, provider: 'Verimor', apiKey: '', apiSecret: '', sender: '', apiUrl: '' })
   const [email, setEmail] = useState({ enabled: false, fromAddress: '', fromName: '', host: '', port: 587, username: '', password: '', useSsl: true })
   const [whatsApp, setWhatsApp] = useState({ enabled: false, phoneNumberId: '', accessToken: '', businessAccountId: '', appSecret: '', verifyToken: '' })
   const [payments, setPayments] = useState({ enabled: false, provider: 'Simulation', apiKey: '', secretKey: '', baseUrl: '', returnUrl: '' })
@@ -59,7 +59,7 @@ export default function PlatformMessagingSettings() {
 
   useEffect(() => {
     if (!data) return
-    setSms((s) => ({ ...s, enabled: !!data.smsEnabled, provider: data.smsProvider || 'Netgsm', sender: data.smsSender || '', apiUrl: data.smsApiUrl || '' }))
+    setSms((s) => ({ ...s, enabled: !!data.smsEnabled, provider: data.smsProvider || 'Verimor', sender: data.smsSender || '', apiUrl: data.smsApiUrl || '' }))
     setEmail((e) => ({ ...e, enabled: !!data.emailEnabled, fromAddress: data.emailFromAddress || '', fromName: data.emailFromName || '', host: data.smtpHost || '', port: data.smtpPort || 587, username: data.smtpUsername || '', useSsl: data.smtpUseSsl ?? true }))
     setWhatsApp((w) => ({ ...w, enabled: !!data.whatsAppEnabled, phoneNumberId: data.whatsAppPhoneNumberId || '', businessAccountId: data.whatsAppBusinessAccountId || '', verifyToken: data.whatsAppVerifyToken || '' }))
     setPayments((p) => ({ ...p, enabled: !!data.paymentsEnabled, provider: data.paymentProvider || 'Simulation', baseUrl: data.iyzicoBaseUrl || '', returnUrl: data.paymentsReturnUrl || '' }))
@@ -123,6 +123,7 @@ export default function PlatformMessagingSettings() {
             <div>
               <label className={labelCls}>Sağlayıcı</label>
               <select value={sms.provider} onChange={(e) => setSms((s) => ({ ...s, provider: e.target.value }))} className={inputCls}>
+                <option className="bg-[#1a1118]" value="Verimor">Verimor (Türkiye)</option>
                 <option className="bg-[#1a1118]" value="Netgsm">Netgsm (Türkiye)</option>
                 <option className="bg-[#1a1118]" value="Twilio">Twilio (global)</option>
                 <option className="bg-[#1a1118]" value="Simulation">Simülasyon (test)</option>
@@ -131,17 +132,23 @@ export default function PlatformMessagingSettings() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>API Anahtarı {data?.hasSmsApiKey && <span className="text-emerald-300/80">· kayıtlı</span>}</label>
-                <input type="password" value={sms.apiKey} onChange={(e) => setSms((s) => ({ ...s, apiKey: e.target.value }))} placeholder={data?.hasSmsApiKey ? 'değiştirmek için yaz' : sms.provider === 'Twilio' ? 'Account SID' : 'usercode'} className={inputCls} />
+                <input type="password" value={sms.apiKey} onChange={(e) => setSms((s) => ({ ...s, apiKey: e.target.value }))} placeholder={data?.hasSmsApiKey ? 'değiştirmek için yaz' : sms.provider === 'Twilio' ? 'Account SID' : sms.provider === 'Verimor' ? '908501234567 (abone no)' : 'usercode'} className={inputCls} />
               </div>
               <div>
                 <label className={labelCls}>API Gizli {data?.hasSmsApiSecret && <span className="text-emerald-300/80">· kayıtlı</span>}</label>
-                <input type="password" value={sms.apiSecret} onChange={(e) => setSms((s) => ({ ...s, apiSecret: e.target.value }))} placeholder={sms.provider === 'Twilio' ? 'Auth Token' : 'password'} className={inputCls} />
+                <input type="password" value={sms.apiSecret} onChange={(e) => setSms((s) => ({ ...s, apiSecret: e.target.value }))} placeholder={sms.provider === 'Twilio' ? 'Auth Token' : sms.provider === 'Verimor' ? 'OİM API parolası' : 'password'} className={inputCls} />
               </div>
             </div>
             <div>
               <label className={labelCls}>Gönderen başlık / numara</label>
-              <input value={sms.sender} onChange={(e) => setSms((s) => ({ ...s, sender: e.target.value }))} placeholder={sms.provider === 'Twilio' ? '+1xxx' : 'BeautyAsist'} className={inputCls} />
+              <input value={sms.sender} onChange={(e) => setSms((s) => ({ ...s, sender: e.target.value }))} placeholder={sms.provider === 'Twilio' ? '+1xxx' : sms.provider === 'Verimor' ? '908501234567 ya da kayıtlı başlık' : 'BeautyAsist'} className={inputCls} />
             </div>
+            {sms.provider === 'Verimor' && (
+              <div className="border border-amber-300/25 bg-amber-300/[0.06] px-3 py-2 text-[11px] leading-relaxed text-amber-100/80">
+                Verimor, BTK kuralı gereği <b>sunucu IP adresinin</b> OİM &rsaquo; SMS Ayarları ekranında tanımlı
+                olmasını ister. Tanımlı değilse gönderim <b>401</b> ile döner — bilgiler doğru olsa bile.
+              </div>
+            )}
             <div className="border-t border-[#fff4f8]/10 pt-3">
               <label className={labelCls}>Test SMS</label>
               <div className="flex gap-2">

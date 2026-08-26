@@ -113,6 +113,7 @@ public sealed class SecurityHardeningTests
     public void OutboundGuard_AllowsKnownProviderAndEmptyValue()
     {
         Assert.Null(OutboundEndpointGuard.ValidateSmsApiUrl("https://api.netgsm.com.tr/sms/send/get"));
+        Assert.Null(OutboundEndpointGuard.ValidateSmsApiUrl("https://sms.verimor.com.tr/v2/send.json"));
         Assert.Null(OutboundEndpointGuard.ValidateSmsApiUrl(null));
     }
 

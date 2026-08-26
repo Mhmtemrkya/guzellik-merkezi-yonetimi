@@ -106,6 +106,7 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
             {
                 "twilio" => await SendViaTwilioAsync(apiKey, apiSecret, s.SmsSender ?? string.Empty, phone, message, ct),
                 "netgsm" => await SendViaNetgsmAsync(apiKey, apiSecret, s.SmsSender ?? string.Empty, phone, message, s.SmsApiUrl, ct),
+                "verimor" => await SendViaVerimorAsync(apiKey, apiSecret, s.SmsSender ?? string.Empty, phone, message, s.SmsApiUrl, ct),
                 _ => Simulate("SMS", phone, message),
             };
         }
@@ -234,6 +235,109 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         var code = raw.Split(' ', '\n', '\r')[0];
         if (code is "00" or "01" or "02") return new MessagingTestResult(true, false, raw, null);
         return new MessagingTestResult(false, false, null, $"Netgsm hata kodu: {raw}");
+    }
+
+    /// <summary>
+    /// VERİMOR SMS (https://sms.verimor.com.tr/v2/send.json).
+    ///
+    /// <para>
+    /// Kimlik eşlemesi: <c>SmsApiKey</c> = 12 haneli abone numarası (kullanıcı adı, ör. 908501234567),
+    /// <c>SmsApiSecret</c> = OİM'den üretilen API parolası, <c>SmsSender</c> = <c>source_addr</c>
+    /// (kayıtlı başlık ya da numaradan gönderimde abone numarasının kendisi).
+    /// </para>
+    /// <para>
+    /// YANIT DÜZ METİNDİR, JSON DEĞİL — POST gövdesi JSON olsa bile. 200 = gövde kampanya
+    /// numarası; 400 = <c>INSUFFICIENT_CREDITS</c> gibi hata metni; 401 = parola yanlış YA DA
+    /// sunucu IP'si OİM'de tanımlı değil (BTK kuralı); 429 = dakikada 240 istek sınırı.
+    /// </para>
+    /// </summary>
+    private async Task<MessagingTestResult> SendViaVerimorAsync(string username, string password, string sourceAddr, string to, string body, string? apiUrl, CancellationToken ct)
+    {
+        var client = _httpFactory.CreateClient("Sms");
+
+        // SmsConfigured yalnız anahtar+gönderen bakar, parolaya BAKMAZ. Parola boşken ağa çıkmak
+        // 401 alıp "IP tanımlı değil mi, parola mı yanlış" belirsizliği üretirdi; burada kesiyoruz.
+        if (string.IsNullOrWhiteSpace(password))
+            return new MessagingTestResult(false, false, null, "Verimor API parolası tanımlı değil.");
+        if (string.IsNullOrWhiteSpace(sourceAddr))
+            return new MessagingTestResult(false, false, null, "Verimor gönderen başlığı (source_addr) tanımlı değil.");
+
+        // İkinci kapı (Netgsm yolundaki gerekçeyle aynı): ayar başka bir yoldan değişmiş olabilir.
+        var urlError = OutboundEndpointGuard.ValidateSmsApiUrl(apiUrl);
+        if (urlError is not null) return new MessagingTestResult(false, false, null, urlError);
+
+        // SmsApiUrl ALANI SAĞLAYICIDAN BAĞIMSIZ. Netgsm'den kalma bir override ile sağlayıcı
+        // Verimor'a çevrilirse, Verimor'un JSON gövdesi Netgsm'e POST edilirdi (allowlist iki
+        // host'a da izin verdiği için doğrulamayı geçer). Override yalnız KENDİ host'una aitse
+        // dikkate alınır; değilse sessizce varsayılana düşülür.
+        var baseUrl = "https://sms.verimor.com.tr/v2/send.json";
+        if (!string.IsNullOrWhiteSpace(apiUrl)
+            && Uri.TryCreate(apiUrl, UriKind.Absolute, out var overrideUri)
+            && overrideUri.Host.Equals("sms.verimor.com.tr", StringComparison.OrdinalIgnoreCase))
+        {
+            baseUrl = apiUrl!;
+        }
+
+        // Verimor 90XXXXXXXXXX ister; başında 0 ya da + olan biçimi 400 ile reddeder.
+        var dest = ToMsisdn(to);
+        if (dest is null) return new MessagingTestResult(false, false, null, $"Geçersiz telefon numarası: {to}");
+
+        // KULLANICI ADI 12 HANE OLMALI (908502428425). 11 haneli "0850..." biçimi doğrudan
+        // "Geçersiz kullanıcı adı/şifre" ile döner — parola doğru olsa bile. Panele hangi biçim
+        // girilirse girilsin burada tek biçime çekilir; rakam dışı bir değer olduğu gibi geçer.
+        var user = ToMsisdn(NormalizePhone(username)) ?? username.Trim();
+
+        // source_addr alfasayısal başlık ("BEAUTYASIST") ya da numara olabilir. Numaraysa aynı
+        // 12 haneli biçim geçerlidir; harf içeriyorsa başlıktır, dokunulmaz.
+        var source = sourceAddr.Trim();
+        if (source.All(char.IsDigit)) source = ToMsisdn(source) ?? source;
+
+        var payload = new
+        {
+            username = user,
+            password,
+            source_addr = source,
+            // TÜRKÇE KARAKTER: varsayılan kodlama (0) GSM 03.38'dir; "ı ş ğ" ve tire (—) orada
+            // yoktur — doğrulama kodları ve hatırlatmalar bozuk giderdi. 2 = Unicode: karakter
+            // seti tam, parça başına 70 karakter.
+            datacoding = "2", // dokümandaki JSON örneği de dizgi ("0") kullanır, sayı değil.
+            // is_commercial / iys_recipient_type BİLEREK YOK: buradan giden mesajlar doğrulama
+            // kodu ve randevu hatırlatması, yani hizmeti yerine getiren mesajlar — İYS izni
+            // gerektiren ticari gönderim değil. Pazarlama SMS'i eklenirse bu iki alan ZORUNLU.
+            messages = new[] { new { msg = body, dest } },
+        };
+        using var req = new HttpRequestMessage(HttpMethod.Post, baseUrl)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"),
+        };
+        using var resp = await client.SendAsync(req, ct);
+        var raw = (await resp.Content.ReadAsStringAsync(ct)).Trim();
+        if (!resp.IsSuccessStatusCode)
+        {
+            var hint = resp.StatusCode == HttpStatusCode.Unauthorized
+                ? " (parola yanlış, hesap API kullanımına kapalı ya da sunucu IP'si Verimor OİM'de tanımlı değil)"
+                : string.Empty;
+            return new MessagingTestResult(false, false, null, $"Verimor {(int)resp.StatusCode}{hint}: {Clip(raw)}");
+        }
+        // Başarıda gövde = kampanya numarası (düz metin). Teslim raporu bu numarayla sorgulanır.
+        return new MessagingTestResult(true, false, string.IsNullOrWhiteSpace(raw) ? null : raw, null);
+    }
+
+    /// <summary>
+    /// Türkiye MSISDN'i (90XXXXXXXXXX) üretir; biçim tutmuyorsa <c>null</c>.
+    ///
+    /// <para>
+    /// BİLEREK YEREL: <see cref="NormalizePhone"/> yalnız rakam süzer ve öyle kalmalı — Netgsm
+    /// <c>gsmno</c> baştaki 0'ı kabul eder, Twilio başına "+" ekler, WhatsApp da mevcut çıktıya
+    /// dayanır. Dönüşümü ortak yardımcıya taşımak o üç yolu da değiştirirdi.
+    /// </para>
+    /// </summary>
+    private static string? ToMsisdn(string digits)
+    {
+        if (digits.Length == 12 && digits.StartsWith("90", StringComparison.Ordinal)) return digits;
+        if (digits.Length == 11 && digits[0] == '0') return "90" + digits[1..];
+        if (digits.Length == 10 && digits[0] == '5') return "90" + digits;
+        return null;
     }
 
     private MessagingTestResult Simulate(string channel, string target, string content)
