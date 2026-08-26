@@ -214,6 +214,13 @@ const REFRESH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30 // 30 gün (müşteri portalı 
 /** Bu uçların yanıtındaki refreshToken çereze taşınır. */
 const TOKEN_ISSUING_PATHS = new Set([
   '/api/auth/login',
+  // PANEL GİRİŞİ 2FA'DAN SONRA OTURUMU BURADAN DÖNDÜRÜR. `/api/auth/login` artık yalnız
+  // challenge veriyor (bkz. AuthEndpoints.cs: "Oturum yalnız /login/verify'dan çıkar").
+  // Bu uç listede olmadığı için refresh token JSON gövdesinde JavaScript'e açık kalıyordu ve
+  // HttpOnly çerez hiç yazılmadığından access token dolunca /api/auth/refresh çerezi bulamıyordu
+  // → kullanıcı başarıyla giriş yapsa bile bir süre sonra oturumdan düşüyordu.
+  // Eşleşme TAM: '/api/auth/login' bu yolu KAPSAMAZ (Set.has, prefix değil).
+  '/api/auth/login/verify',
   '/api/auth/refresh',
   '/api/auth/customer/otp/verify',
   // Self-servis kurum kaydının son adımı da oturum döndürür; refresh token'ı aynı HttpOnly
