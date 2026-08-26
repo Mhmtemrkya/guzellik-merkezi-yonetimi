@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isTokenIssuingPath } from '@/lib/authCookiePolicy'
 
 export const runtime = 'nodejs'
 
@@ -211,16 +212,6 @@ const CLIENT_PARTITION_MAX_AGE = 60 * 60 * 24 * 365
 const REFRESH_COOKIE = '__Host-ba-refresh'
 const REFRESH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30 // 30 gün (müşteri portalı refresh ömrü)
 
-/** Bu uçların yanıtındaki refreshToken çereze taşınır. */
-const TOKEN_ISSUING_PATHS = new Set([
-  '/api/auth/login',
-  '/api/auth/refresh',
-  '/api/auth/customer/otp/verify',
-  // Self-servis kurum kaydının son adımı da oturum döndürür; refresh token'ı aynı HttpOnly
-  // çereze taşınmalı. Listede olmasaydı token tarayıcı depolamasında kalır ve XSS'e açılırdı.
-  '/api/public/signup/verify-phone',
-])
-
 /** Bu uçlara giden istekte gövdedeki refreshToken çerezden doldurulur. */
 const TOKEN_CONSUMING_PATHS = new Set(['/api/auth/refresh', '/api/auth/logout'])
 
@@ -312,7 +303,7 @@ async function proxyToBackend(request: NextRequest, route: string): Promise<Next
 
       let responseBody = await upstreamResponse.arrayBuffer()
       let issuedRefreshToken: string | null = null
-      if (TOKEN_ISSUING_PATHS.has(upstreamPath)) {
+      if (isTokenIssuingPath(upstreamPath)) {
         const moved = await moveRefreshTokenToCookie(upstreamResponse, responseBody)
         responseBody = moved.body
         issuedRefreshToken = moved.refreshToken
