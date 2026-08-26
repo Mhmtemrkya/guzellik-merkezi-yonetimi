@@ -224,7 +224,14 @@ WebSocket, Next.js route handler'ından (`/api/proxy`) **GEÇEMEZ**; hub bağlan
       }
       ```
       Bu blok yoksa istemci WebSocket'e geçemez; SignalR long-polling'e düşer (çalışır ama gereksiz yük).
-- [ ] Çok instance çalıştırıyorsan `Redis__ConnectionString` ver (backplane). Tek instance'ta **gerekmez** —
+- [ ] **`Redis__ConnectionString`** — iki işi birden yapar:
+      1) SignalR backplane (yalnız çok instance'ta gerekir),
+      2) **OTP/challenge durum deposu** — doğrulama kodları, panel giriş challenge'ı, kurum kayıt
+      taslağı ve hız sınırı sayaçları. Verilmezse bunlar process belleğinde tutulur ve **her
+      yeniden başlatma (deploy dahil) o an bekleyen TÜM kodları düşürür**: kullanıcı elindeki
+      doğru kodu girer, "süresi doldu" cevabı alır. Tek instance'ta bile bu yüzden ÖNERİLİR.
+      Bağlantı kurulamazsa uygulama açılışta patlamaz, belleğe düşer ve hata loglar.
+- [ ] (Eski not) Çok instance çalıştırıyorsan `Redis__ConnectionString` ver (backplane). Tek instance'ta backplane **gerekmez** —
       verilmezse in-memory kullanılır.
 
 ### Taksit planı sapma bakımı — TEK SEFERLİK, HEDEFLİ (opsiyonel)

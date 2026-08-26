@@ -68,7 +68,7 @@ public sealed class TenantSignupService : ITenantSignupService
     private const int MaxResendsPerDraft = 3;
 
     private readonly GuzellikDbContext _db;
-    private readonly IMemoryCache _cache;
+    private readonly IOtpStateStore _store;
     private readonly IPlatformMessagingService _messaging;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ITokenService _tokenService;
@@ -83,7 +83,7 @@ public sealed class TenantSignupService : ITenantSignupService
 
     public TenantSignupService(
         GuzellikDbContext db,
-        IMemoryCache cache,
+        IOtpStateStore store,
         IPlatformMessagingService messaging,
         IPasswordHasher passwordHasher,
         ITokenService tokenService,
@@ -96,7 +96,7 @@ public sealed class TenantSignupService : ITenantSignupService
     {
         _trialPlanKey = configuration["TenantSignup:TrialPlanKey"];
         _db = db;
-        _cache = cache;
+        _store = store;
         _messaging = messaging;
         _passwordHasher = passwordHasher;
         _tokenService = tokenService;
@@ -109,28 +109,34 @@ public sealed class TenantSignupService : ITenantSignupService
 
     // ----------------------------------------------------------------- taslak
 
-    private enum SignupStage
+    internal enum SignupStage
     {
         AwaitingEmail = 0,
         AwaitingPhone = 1,
     }
 
-    private sealed class SignupDraft
+    /// <summary>
+    /// Kayıt taslağı. <b>Alanlar değil PROPERTY, <c>required</c>/<c>init</c> değil <c>set</c>:</b>
+    /// <see cref="System.Text.Json"/> alanları serileştirmez ve parametresiz kurucu ister —
+    /// aksi hâlde Redis'e yazılan taslak geri okunamaz ve hiçbir kayıt tamamlanamazdı.
+    /// <c>internal</c>: serileştirici erişebilmeli.
+    /// </summary>
+    internal sealed class SignupDraft
     {
-        public required TenantSignupStartRequest Form { get; init; }
-        public required string Slug { get; init; }
+        public TenantSignupStartRequest Form { get; set; } = null!;
+        public string Slug { get; set; } = string.Empty;
         public SignupStage Stage { get; set; } = SignupStage.AwaitingEmail;
-        public string Code = string.Empty;
-        public int Attempts;
+        public string Code { get; set; } = string.Empty;
+        public int Attempts { get; set; }
 
         /// <summary>Telefon kodunun gittiği kanal ("whatsapp"/"sms") — 2. adım yanıtında gösterilir.</summary>
-        public string PhoneChannel = "sms";
+        public string PhoneChannel { get; set; } = "sms";
 
         /// <summary>Kullanıcının SEÇTİĞİ kanal ("sms"/"whatsapp"); boşsa sunucu karar verir.</summary>
-        public string? PreferredPhoneChannel;
+        public string? PreferredPhoneChannel { get; set; }
 
         /// <summary>Kurum oluşturuldu mu? Aynı taslakla İKİNCİ kurum açılmasını engeller.</summary>
-        public bool Completed;
+        public bool Completed { get; set; }
 
         /// <summary>
         /// Yetkili e-postası BAŞKA bir hesapta kayıtlı mı? 1. adımda ölçülür ama SÖYLENMEZ.
@@ -142,7 +148,7 @@ public sealed class TenantSignupService : ITenantSignupService
         /// sonra açıklanır — o noktada adresin sahibi olduğu kanıtlanmıştır ve kendi bilgisini
         /// öğrenmesinde sakınca yoktur.
         /// </remarks>
-        public bool EmailAlreadyRegistered;
+        public bool EmailAlreadyRegistered { get; set; }
 
         /// <summary>
         /// Kaç kez kod YENİDEN gönderildi + son gönderim anı.
@@ -152,8 +158,8 @@ public sealed class TenantSignupService : ITenantSignupService
         /// elinde olan birinin sınırsız gönderim tetiklemesine izin verirdi; IP/e-posta kovaları
         /// saldırganın değiştirebildiği değerlere bağlı olduğu için tek başına yetmiyor.
         /// </remarks>
-        public int Resends;
-        public DateTime LastSentAtUtc;
+        public int Resends { get; set; }
+        public DateTime LastSentAtUtc { get; set; }
 
         /// <summary>
         /// Tamamlanmış kaydın SONUCU — aynı istek tekrar gelirse aynı yanıt döner.
@@ -164,12 +170,7 @@ public sealed class TenantSignupService : ITenantSignupService
         /// ve oturumunu HİÇ ÖĞRENEMEMİŞ olurdu — kurtarılamaz bir durum. Sonuç taslak ömrü boyunca
         /// saklanır; tekrar gelen istek onu aynen alır.
         /// </remarks>
-        public TenantSignupCompletedResponse? Result;
-    }
-
-    private sealed class StartCounter
-    {
-        public int Count;
+        public TenantSignupCompletedResponse? Result { get; set; }
     }
 
     private static string DraftKey(string id) => $"tenant-signup:{id}";
@@ -244,18 +245,15 @@ public sealed class TenantSignupService : ITenantSignupService
                 "Kayıt şu anda alınamıyor. Lütfen daha sonra tekrar deneyin ya da bizimle iletişime geçin."));
         }
 
-        // E-posta bazlı fren: aynı adrese sınırsız kod isteme kapısını kapatır.
-        var counter = _cache.GetOrCreate(ThrottleKey(form.Email), e =>
-        {
-            e.AbsoluteExpirationRelativeToNow = ThrottleWindow;
-            return new StartCounter();
-        })!;
-        if (counter.Count >= MaxStartsPerWindow)
+        // E-posta bazlı fren: aynı adrese sınırsız kod isteme kapısını kapatır. Artırım
+        // ATOMİKTİR — oku-artır-yaz üç ayrı adım olsaydı eşzamanlı istekler aynı değeri okuyup
+        // sınırı delerdi.
+        var startCount = await _store.IncrementAsync(ThrottleKey(form.Email), ThrottleWindow, ct);
+        if (startCount > MaxStartsPerWindow)
         {
             return Result<TenantSignupStartResponse>.Failure(Error.Unauthorized(
                 "Bu e-posta için çok fazla kayıt denemesi yapıldı. Lütfen birkaç dakika sonra tekrar deneyin."));
         }
-        counter.Count++;
 
         // MÜKERRER KAYIT KAPISI — kurum oluşturmadan ÖNCE. Burada geçse bile son adımda tekrar
         // kontrol edilir: iki kişi aynı anda başlarsa ikisi de bu noktayı geçebilir.
@@ -288,13 +286,13 @@ public sealed class TenantSignupService : ITenantSignupService
 
         var signupId = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         draft.LastSentAtUtc = _clock.UtcNow; // ilk gönderim de cooldown saatini başlatır
-        _cache.Set(DraftKey(signupId), draft, DraftLifetime);
+        await _store.SetAsync(DraftKey(signupId), draft, DraftLifetime, ct);
 
         var sent = await SendEmailCodeAsync(form, code, ct);
         if (!sent)
         {
             // Gönderilemediyse taslağı bırakmanın anlamı yok: kullanıcı asla kod alamayacak.
-            _cache.Remove(DraftKey(signupId));
+            await _store.RemoveAsync(DraftKey(signupId), ct);
             return Result<TenantSignupStartResponse>.Failure(Error.Unauthorized(
                 "Doğrulama e-postası gönderilemedi. E-posta adresinizi kontrol edip tekrar deneyin."));
         }
@@ -403,10 +401,10 @@ public sealed class TenantSignupService : ITenantSignupService
 
     public async Task<Result<TenantSignupVerifyEmailResponse>> VerifyEmailAsync(TenantSignupVerifyEmailRequest request, CancellationToken ct = default)
     {
-        var (draft, failure) = TakeDraft(request.SignupId, SignupStage.AwaitingEmail);
+        var (draft, failure) = await TakeDraftAsync(request.SignupId, SignupStage.AwaitingEmail, ct);
         if (failure is not null) return Result<TenantSignupVerifyEmailResponse>.Failure(failure);
 
-        var check = CheckCode(draft!, request.Code, request.SignupId);
+        var check = await CheckCodeAsync(request.Code, request.SignupId, ct);
         if (check is not null) return Result<TenantSignupVerifyEmailResponse>.Failure(check);
 
         // ADRESİN SAHİBİ OLDUĞU KANITLANDI — artık gerçek durumu söyleyebiliriz.
@@ -419,7 +417,7 @@ public sealed class TenantSignupService : ITenantSignupService
         // gönderilmez ve boşuna SMS/WhatsApp maliyeti doğmaz.
         if (draft!.EmailAlreadyRegistered)
         {
-            _cache.Remove(DraftKey(request.SignupId));
+            await _store.RemoveAsync(DraftKey(request.SignupId), ct);
             return Result<TenantSignupVerifyEmailResponse>.Failure(Error.Conflict(
                 "Bu e-posta adresiyle zaten bir hesabınız var. Giriş yapın ya da parolanızı sıfırlayın."));
         }
@@ -438,7 +436,7 @@ public sealed class TenantSignupService : ITenantSignupService
         draft.Attempts = 0;
         draft.PhoneChannel = channel;
         // Süreyi tazele: 2. adım için baştan 30 dakika.
-        _cache.Set(DraftKey(request.SignupId), draft, DraftLifetime);
+        await _store.SetAsync(DraftKey(request.SignupId), draft, DraftLifetime, ct);
 
         return Result<TenantSignupVerifyEmailResponse>.Success(new TenantSignupVerifyEmailResponse(
             PhoneMask.Mask(draft.Form.Phone),
@@ -450,10 +448,10 @@ public sealed class TenantSignupService : ITenantSignupService
 
     public async Task<Result<TenantSignupCompletedResponse>> VerifyPhoneAsync(TenantSignupVerifyPhoneRequest request, CancellationToken ct = default)
     {
-        var (draft, failure) = TakeDraft(request.SignupId, SignupStage.AwaitingPhone);
+        var (draft, failure) = await TakeDraftAsync(request.SignupId, SignupStage.AwaitingPhone, ct);
         if (failure is not null) return Result<TenantSignupCompletedResponse>.Failure(failure);
 
-        var check = CheckCode(draft!, request.Code, request.SignupId);
+        var check = await CheckCodeAsync(request.Code, request.SignupId, ct);
         if (check is not null) return Result<TenantSignupCompletedResponse>.Failure(check);
 
         // TEK KULLANIM: aynı taslakla ikinci kurum açılamaz. Kod doğrulandıktan sonra kilitle;
@@ -479,19 +477,19 @@ public sealed class TenantSignupService : ITenantSignupService
             {
                 // Oluşturma başarısızsa kilidi aç: kullanıcı düzeltip tekrar deneyebilsin.
                 draft.Completed = false;
-                _cache.Set(DraftKey(request.SignupId), draft, DraftLifetime);
+                await _store.SetAsync(DraftKey(request.SignupId), draft, DraftLifetime, ct);
                 return result;
             }
             // Taslak SİLİNMEZ: tamamlanmış sonucu taşır (bkz. SignupDraft.Result). Aynı istek
             // tekrar gelirse yukarıdaki idempotens kapısı bu sonucu döndürür.
             draft.Result = result.Value;
-            _cache.Set(DraftKey(request.SignupId), draft, DraftLifetime);
+            await _store.SetAsync(DraftKey(request.SignupId), draft, DraftLifetime, ct);
             return result;
         }
         catch
         {
             draft.Completed = false;
-            _cache.Set(DraftKey(request.SignupId), draft, DraftLifetime);
+            await _store.SetAsync(DraftKey(request.SignupId), draft, DraftLifetime, ct);
             throw;
         }
     }
@@ -684,38 +682,43 @@ public sealed class TenantSignupService : ITenantSignupService
 
     public async Task<Result<object>> ResendAsync(string signupId, CancellationToken ct = default)
     {
-        if (!_cache.TryGetValue<SignupDraft>(DraftKey(signupId), out var draft) || draft is null)
-            return Result<object>.Failure(Error.Unauthorized("Kayıt oturumunuz sona ermiş. Lütfen baştan başlayın."));
-        if (draft.Completed)
-            return Result<object>.Failure(Error.Conflict("Bu kayıt zaten tamamlandı."));
-
         // MALİYET FRENİ. Her gönderim e-posta/SMS, yani para. İki kapı birden:
         //   1) iki istek arasında en az ResendCooldown,
         //   2) taslak başına en çok MaxResendsPerDraft.
         // IP ve e-posta kovaları saldırganın DEĞİŞTİREBİLDİĞİ değerlere bağlı; taslak kimliği
         // sunucu tarafından üretildiği için bu fren atlatılamaz.
+        //
+        // FRENİN TAMAMI DEPO KİLİDİ ALTINDA. Eskiden `lock (draft)` kullanılıyordu; durum depoya
+        // taşındığında her istek KENDİ nesnesini okuyacağı için o kilit hiçbir şey korumazdı ve
+        // eşzamanlı istekler sayacı aynı değerden artırıp freni delebilirdi.
+        //
+        // Sayaç ve zaman GÖNDERİMDEN ÖNCE işlenir: gönderim yavaşsa aradaki pencerede gelen
+        // ikinci istek de aynı frene takılsın.
         var now = _clock.UtcNow;
-        lock (draft)
-        {
-            if (draft.Resends >= MaxResendsPerDraft)
+        var reservation = await _store.MutateAsync<SignupDraft, (SignupDraft? Draft, Error? Failure)>(
+            DraftKey(signupId), DraftLifetime, draft =>
             {
-                return Result<object>.Failure(Error.Unauthorized(
-                    "Kod tekrar gönderme sınırına ulaşıldı. Lütfen baştan başlayın."));
-            }
+                if (draft is null)
+                    return (null, (null, Error.Unauthorized("Kayıt oturumunuz sona ermiş. Lütfen baştan başlayın.")));
+                if (draft.Completed)
+                    return (draft, (null, Error.Conflict("Bu kayıt zaten tamamlandı.")));
+                if (draft.Resends >= MaxResendsPerDraft)
+                    return (draft, (null, Error.Unauthorized("Kod tekrar gönderme sınırına ulaşıldı. Lütfen baştan başlayın.")));
 
-            var elapsed = now - draft.LastSentAtUtc;
-            if (draft.LastSentAtUtc != default && elapsed < ResendCooldown)
-            {
-                var wait = (int)Math.Ceiling((ResendCooldown - elapsed).TotalSeconds);
-                return Result<object>.Failure(Error.Unauthorized(
-                    $"Yeni kod istemek için {wait} saniye bekleyin."));
-            }
+                var elapsed = now - draft.LastSentAtUtc;
+                if (draft.LastSentAtUtc != default && elapsed < ResendCooldown)
+                {
+                    var wait = (int)Math.Ceiling((ResendCooldown - elapsed).TotalSeconds);
+                    return (draft, (null, Error.Unauthorized($"Yeni kod istemek için {wait} saniye bekleyin.")));
+                }
 
-            // Sayaç ve zaman GÖNDERİMDEN ÖNCE işlenir: gönderim yavaşsa aradaki pencerede
-            // gelen ikinci istek de aynı frene takılsın.
-            draft.Resends++;
-            draft.LastSentAtUtc = now;
-        }
+                draft.Resends++;
+                draft.LastSentAtUtc = now;
+                return (draft, (draft, null));
+            }, ct);
+
+        if (reservation.Failure is not null) return Result<object>.Failure(reservation.Failure);
+        var draft = reservation.Draft!;
 
         var code = NewCode();
         bool sent;
@@ -734,7 +737,7 @@ public sealed class TenantSignupService : ITenantSignupService
 
         draft.Code = code;
         draft.Attempts = 0;
-        _cache.Set(DraftKey(signupId), draft, DraftLifetime);
+        await _store.SetAsync(DraftKey(signupId), draft, DraftLifetime, ct);
 
         return Result<object>.Success(new
         {
@@ -748,9 +751,12 @@ public sealed class TenantSignupService : ITenantSignupService
 
     private static string NewCode() => RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
 
-    private (SignupDraft? Draft, Error? Failure) TakeDraft(string signupId, SignupStage expected)
+    private async Task<(SignupDraft? Draft, Error? Failure)> TakeDraftAsync(string signupId, SignupStage expected, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(signupId) || !_cache.TryGetValue<SignupDraft>(DraftKey(signupId), out var draft) || draft is null)
+        var draft = string.IsNullOrWhiteSpace(signupId)
+            ? null
+            : await _store.GetAsync<SignupDraft>(DraftKey(signupId), ct);
+        if (draft is null)
             return (null, Error.Unauthorized("Kayıt oturumunuz sona ermiş. Lütfen baştan başlayın."));
         // Completed taslak BURADA elenmez: VerifyPhoneAsync onu idempotens için kullanıyor.
         // (Diğer adımlar aşağıdaki aşama kontrolüne takılır.)
@@ -761,24 +767,36 @@ public sealed class TenantSignupService : ITenantSignupService
         return (draft, null);
     }
 
-    /// <summary>Kodu doğrular. Yanlışsa deneme sayacını artırır; 5 yanlışta taslak silinir.</summary>
-    private Error? CheckCode(SignupDraft draft, string? code, string signupId)
+    /// <summary>
+    /// Kodu doğrular. Yanlışsa deneme sayacını artırır; 5 yanlışta taslak silinir.
+    /// </summary>
+    /// <remarks>
+    /// KARAR DEPO KİLİDİ ALTINDA verilir. Eskiden <c>lock (draft)</c> kullanılıyordu; durum
+    /// process belleğindeyken bu işe yarıyordu çünkü <c>draft</c> paylaşılan TEK nesneydi. Durum
+    /// depoya taşındığında ise her istek KENDİ nesnesini okur — nesne kilidi koruma GÖRÜNTÜSÜ
+    /// verip hiçbir şey korumaz, deneme sayacı eşzamanlı isteklerde kaybolur ve 5 deneme freni
+    /// delinirdi. Sayaç bu yüzden anahtarın kendisi üzerinde kilitlenir.
+    /// </remarks>
+    private async Task<Error?> CheckCodeAsync(string? code, string signupId, CancellationToken ct)
     {
-        lock (draft)
+        var trimmed = code?.Trim();
+        return await _store.MutateAsync<SignupDraft, Error?>(DraftKey(signupId), DraftLifetime, draft =>
         {
+            if (draft is null)
+                return (null, Error.Unauthorized("Kayıt oturumunuz sona ermiş. Lütfen baştan başlayın."));
+
             if (draft.Attempts >= MaxAttempts)
-            {
-                _cache.Remove(DraftKey(signupId));
-                return Error.Unauthorized("Çok fazla yanlış deneme. Lütfen baştan başlayın.");
-            }
-            if (!string.Equals(draft.Code, code?.Trim(), StringComparison.Ordinal))
+                return (null, Error.Unauthorized("Çok fazla yanlış deneme. Lütfen baştan başlayın."));
+
+            if (!string.Equals(draft.Code, trimmed, StringComparison.Ordinal))
             {
                 draft.Attempts++;
-                if (draft.Attempts >= MaxAttempts) _cache.Remove(DraftKey(signupId));
-                return Error.Unauthorized("Kod hatalı. Tekrar deneyin.");
+                return (draft.Attempts >= MaxAttempts ? null : draft,
+                    Error.Unauthorized("Kod hatalı. Tekrar deneyin."));
             }
-            return null;
-        }
+
+            return (draft, null);
+        }, ct);
     }
 
     private async Task<bool> SendEmailCodeAsync(TenantSignupStartRequest form, string code, CancellationToken ct)

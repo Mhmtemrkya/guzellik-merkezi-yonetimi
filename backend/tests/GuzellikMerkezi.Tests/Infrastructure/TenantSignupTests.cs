@@ -59,10 +59,10 @@ public sealed class TenantSignupTests
     }
 
     private static TenantSignupService NewService(
-        GuzellikDbContext db, IPlatformMessagingService messaging, IMemoryCache? cache = null,
+        GuzellikDbContext db, IPlatformMessagingService messaging, IOtpStateStore? store = null,
         string? trialPlanKey = null) =>
         new(db,
-            cache ?? new MemoryCache(new MemoryCacheOptions()),
+            store ?? new GuzellikMerkezi.Infrastructure.Services.MemoryOtpStateStore(new MemoryCache(new MemoryCacheOptions())),
             messaging,
             new PlainPasswordHasher(),
             new StubTokenService(),
@@ -327,7 +327,7 @@ public sealed class TenantSignupTests
         var options = NewOptions();
         await SeedPlanAsync(options);
         var messaging = NewMessaging();
-        var cache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new GuzellikMerkezi.Infrastructure.Services.MemoryOtpStateStore(new MemoryCache(new MemoryCacheOptions()));
 
         await using var db = NewDb(options);
         var service = NewService(db, messaging, cache);
