@@ -111,12 +111,19 @@ export default function CustomerLoginPage() {
       setError('Lütfen geçerli bir telefon numarası girin (örn. 05XX XXX XX XX).')
       return null
     }
-    // KAYITTA E-POSTA ZORUNLU. Giriş e-posta koduyla yapıldığı için adresi olmayan müşteri
-    // kaydolduktan sonra hiç giriş yapamazdı. (Girişte adres sorulmaz — kod kayıtlı adrese gider.)
-    if (mode === 'register') {
+    // E-POSTA HER İKİ AKIŞTA DA ZORUNLU.
+    //   KAYIT → giriş kodu bu adrese gideceği için adres olmadan hesap kullanılamaz hâle gelir.
+    //   GİRİŞ → adres bir KİMLİK DOĞRULAYICIDIR (üçüncü faktör): ad ve telefon gizli bilgi
+    //           olmadığından, kodun kayıttaki adresle eşleşme şartına bağlanması gerekir.
+    //           Kod yine KAYITTAKİ adrese gider, buraya yazılana değil (bkz. CustomerOtpService).
+    {
       const mail = email.trim()
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
-        setError('Geçerli bir e-posta adresi girin — giriş kodunuz bu adrese gönderilecek.')
+        setError(
+          mode === 'register'
+            ? 'Geçerli bir e-posta adresi girin — giriş kodunuz bu adrese gönderilecek.'
+            : 'Kayıtlı e-posta adresinizi girin — kod bu adresle eşleşirse gönderilir.',
+        )
         return null
       }
     }
@@ -141,7 +148,9 @@ export default function CustomerLoginPage() {
           phone: id.normalizedPhone,
           // Sunucu kanalı akışa göre ezer; burada da aynı niyeti gönderiyoruz.
           channel: mode === 'register' ? 'sms' : 'email',
-          email: mode === 'register' ? email.trim() || null : null,
+          // GİRİŞTE DE GÖNDERİLİR: sunucu bunu kayıttaki adresle karşılaştırır (kimlik kontrolü).
+          // Boş bırakılırsa hiçbir giriş eşleşmez.
+          email: email.trim() || null,
         },
         mode === 'register' ? 'register' : 'login',
       )
@@ -411,6 +420,26 @@ export default function CustomerLoginPage() {
                   GİRİŞ → kayıtlı e-postanıza kod (her girişte SMS harcanmaz)
                 Seçim sunmak, kullanıcının seçtiği kanaldan kod gelmemesi anlamına gelirdi.
               */}
+              {mode === 'login' && (
+                <div>
+                  <label className={labelCls}>E-posta</label>
+                  <div className={inputWrap}>
+                    <Mail className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="ornek@eposta.com"
+                      className={inputCls}
+                      autoComplete="email"
+                    />
+                  </div>
+                  <p className="mt-2 text-[11.5px] text-[#352432]/[0.55]">
+                    Kurumunuzda kayıtlı e-posta adresiniz. Kod bu adrese gönderilir.
+                  </p>
+                </div>
+              )}
+
               <div className="flex items-start gap-3 rounded-2xl border border-[#ead8df] bg-white/70 px-4 py-3">
                 {mode === 'register' && !emailStage ? (
                   <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-[#c85776]" strokeWidth={1.7} />

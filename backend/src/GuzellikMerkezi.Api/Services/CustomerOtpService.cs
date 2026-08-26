@@ -273,9 +273,12 @@ public sealed class CustomerOtpService
     /// </para>
     /// </summary>
     /// <param name="email">
-    /// KAYIT akışında kodun gönderileceği e-posta. GİRİŞTE kullanılmaz: giriş, kodu müşterinin
-    /// kurum kayıtlarındaki adrese gönderir (kullanıcıdan adres istemek hem gereksiz sürtünme
-    /// yaratır hem de yanlış adres yazıldığında sessiz başarısızlığa döner).
+    /// KAYIT akışında kodun gönderileceği e-posta.
+    /// <para>
+    /// GİRİŞTE ise KİMLİK DOĞRULAYICIDIR: kullanıcının yazdığı adres, müşterinin kurum
+    /// kayıtlarındaki adresle eşleşmek zorundadır ve kod her hâlükârda KAYITTAKİ adrese gider.
+    /// Ad + telefon gizli bilgi olmadığı için üçüncü faktör olarak bu şart aranır.
+    /// </para>
     /// </param>
     public async Task<Result<object>> RequestAsync(
         CustomerLoginRequest request,
@@ -325,27 +328,52 @@ public sealed class CustomerOtpService
                 "Doğrulama kodu şu anda gönderilemiyor. Lütfen daha sonra tekrar deneyin ya da kurumunuzla iletişime geçin."));
         }
 
+        // MAĞAZA İNCELEME HESABI kimlik bloğundan ÖNCE belirlenir: e-posta eşleşmesi şartı bu
+        // hesaba uygulanamaz (denetçinin kurum kayıtlarındaki adresi bilmesi beklenemez ve zaten
+        // hiçbir kanaldan kod almaz). Kayıt VARLIĞI şartı yine de korunur — aşağıya bakın.
+        var isReview = IsStoreReviewPhone(key);
+
         // Kimlik eşleşmesi: girişte zorunlu, kayıtta aranmaz (kanal sahipliği kanıtlanacak).
         string? emailTarget = CustomerIdentityLookup.NormalizeEmail(email);
         if (emailTarget.Length == 0) emailTarget = null;
         var shouldSend = purpose == CustomerOtpPurpose.Register;
         if (!shouldSend)
         {
+            var submitted = emailTarget;
             var candidates = await CustomerIdentityLookup.FindByPhoneAsync(
                 _db.Customers.IgnoreQueryFilters().AsNoTracking(), _search, request.Phone, ct);
             var matches = CustomerIdentityLookup.WithName(candidates, request.FullName);
-            shouldSend = matches.Count > 0;
-            // Girişte e-posta hedefi KAYITTAN gelir (kullanıcı adres yazmaz).
-            emailTarget = matches
-                .Select(c => c.Email)
-                .FirstOrDefault(e => !string.IsNullOrWhiteSpace(e));
+
+            // ════════════════════════════════════════════════════════════════════════════════
+            // E-POSTA BİR KİMLİK DOĞRULAYICIDIR — TESLİMAT HEDEFİ DEĞİL.
+            //
+            // Kod, kullanıcının YAZDIĞI adrese değil, müşterinin KURUM KAYITLARINDAKİ adresine
+            // gider. Bu ayrım güvenliğin tamamıdır ve "sadeleştirme" adına asla kaldırılmamalıdır:
+            // yazılan adrese gönderilseydi, bir müşterinin adını ve telefonunu bilen herkes
+            // (randevu kartı, sosyal medya, sızmış liste) kendi e-postasını yazıp o hesabın
+            // kodunu alır ve hesabı devralırdı. Ad + telefon GİZLİ BİLGİ DEĞİLDİR; bu yüzden
+            // üçüncü faktör olarak kayıttaki adresin BİLİNMESİ şartı aranır.
+            //
+            // Eşleşmezse yanıt, kaydı hiç bulunmayan kullanıcınınkiyle AYNI kalır (aşağıdaki
+            // GenericSentMessage + önbelleğe yazmama deseni). Farklı yanıt vermek "bu ad+telefon
+            // kayıtlı ama e-posta yanlış" bilgisini sızdırır ve bu dosyanın baştan sona kaçınmak
+            // için kurulduğu enumerasyon kapısını açardı.
+            // ════════════════════════════════════════════════════════════════════════════════
+            var matched = matches.FirstOrDefault(c =>
+                !string.IsNullOrWhiteSpace(c.Email) &&
+                submitted is not null &&
+                string.Equals(c.Email, submitted, StringComparison.OrdinalIgnoreCase));
+
+            // İnceleme hesabında e-posta faktörü aranmaz; ama kaydın GERÇEKTEN var olma şartı
+            // (matches.Count > 0) düşmez — yoksa sabit OTP kısayolu var olmayan bir kimliğe de
+            // uygulanabilirdi.
+            shouldSend = matched is not null || (isReview && matches.Count > 0);
+            emailTarget = matched?.Email;
         }
 
         // MAĞAZA İNCELEME HESABI: denetçi hiçbir kanaldan kod alamayacağı için bu numarada kod
         // rastgele üretilmez ve gönderilmez. Kimlik eşleşmesi zorunluluğu (yukarıdaki shouldSend)
         // DEĞİŞMEZ — yani kayıt gerçekten var olmalıdır.
-        var isReview = IsStoreReviewPhone(key);
-
         string? devCode = null;
         if (shouldSend)
         {
@@ -428,9 +456,14 @@ public sealed class CustomerOtpService
     /// Gerçekten giden kanalı (ve e-posta hedefini) döner; hiçbiri gitmediyse null.
     /// </summary>
     /// <remarks>
-    /// SESSİZ YEDEKLEME BİLEREK: kullanıcı "e-posta" seçtiği hâlde kurum kayıtlarında adresi yoksa,
-    /// hata dönmek "bu kişi kayıtlı ama e-postası yok" bilgisini sızdırırdı. Bunun yerine kod
-    /// telefona gider; kullanıcı kodu yine alır.
+    /// SESSİZ BAŞARISIZLIK BİLEREK: kullanıcının kurum kayıtlarında e-posta adresi yoksa hata
+    /// dönmek "bu kişi kayıtlı ama e-postası yok" bilgisini sızdırırdı; bunun yerine yanıt genel
+    /// kalır ve kod hiç üretilmez.
+    /// <para>
+    /// DİKKAT: burada telefona DÜŞÜLMEZ. Bu satırlar bir zamanlar "kod telefona gider" diyordu
+    /// ama <see cref="OrderChannels"/> giriş akışında yalnız e-postayı dener — yorum kodu
+    /// yalanlıyordu. Yedeklemeyi eklemek "giriş SMS harcamaz" kuralını sessizce delerdi.
+    /// </para>
     /// </remarks>
     private async Task<(CustomerOtpChannel? Channel, string? Target)> SendCodeAsync(
         string phone,

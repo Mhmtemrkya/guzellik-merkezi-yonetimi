@@ -206,8 +206,15 @@ public sealed class TenantSignupTests
     // ------------------------------------------------------------------ mükerrer
 
     /// <summary>Aynı e-postayla ikinci kurum açılamaz.</summary>
+    /// <summary>
+    /// KAYITLI E-POSTA 1. ADIMDA SIZDIRILMAZ.
+    ///
+    /// Anonim biri bir adres listesi deneyerek "bu kişi sistemde var mı?" sorusunu
+    /// cevaplayabilmemeli. Bu yüzden e-posta kayıtlı olsa da akış aynen sürer, aynı yanıt
+    /// döner ve kod yine adresin KENDİSİNE gider — gözlenebilir hiçbir fark yoktur.
+    /// </summary>
     [Fact]
-    public async Task DuplicateEmail_IsRejected()
+    public async Task DuplicateEmail_StartSucceeds_WithoutLeaking()
     {
         var options = NewOptions();
         await SeedPlanAsync(options);
@@ -222,8 +229,48 @@ public sealed class TenantSignupTests
         await using var db = NewDb(options);
         var result = await NewService(db, NewMessaging()).StartAsync(Form(email: "sahip@ornek.com"));
 
-        Assert.True(result.IsFailure);
-        Assert.Equal("Conflict", result.Error.Code);
+        Assert.True(result.IsSuccess);
+    }
+
+    /// <summary>
+    /// GERÇEK DURUM KOD DOĞRULANINCA SÖYLENİR.
+    ///
+    /// Kodu doğru giren kişi o posta kutusuna erişebiliyordur; ona "zaten hesabınız var" demek
+    /// kendi bilgisini vermektir. Telefon kodu bu noktada HİÇ gönderilmez — kayıt zaten
+    /// bitmiştir, boşuna SMS maliyeti doğmamalıdır.
+    /// </summary>
+    [Fact]
+    public async Task DuplicateEmail_IsRevealed_AfterEmailVerification()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        await using (var seed = NewDb(options))
+        {
+            var t = new Tenant("Mevcut", "mevcut", "Başlangıç", TenantStatus.Active);
+            t.GrantAccess("sahip@ornek.com", UserRole.InstitutionOwner, null, "Sahip");
+            seed.Tenants.Add(t);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = NewDb(options);
+        var messaging = NewMessaging();
+        var service = NewService(db, messaging);
+
+        var start = await service.StartAsync(Form(email: "sahip@ornek.com"));
+        Assert.True(start.IsSuccess);
+
+        var code = CodeFromEmail(messaging);
+        var verify = await service.VerifyEmailAsync(
+            new TenantSignupVerifyEmailRequest(start.Value!.SignupId, code));
+
+        Assert.True(verify.IsFailure);
+        Assert.Equal("Conflict", verify.Error.Code);
+        Assert.Contains("zaten bir hesabınız var", verify.Error.Message);
+
+        // Telefon kodu gönderilmemiş olmalı: akış e-posta adımında bitti.
+        Assert.DoesNotContain(
+            messaging.ReceivedCalls(),
+            c => c.GetMethodInfo().Name is "SendSmsAsync" or "SendWhatsAppAsync");
     }
 
     /// <summary>
@@ -406,9 +453,14 @@ public sealed class TenantSignupTests
     /// MÜKERRER MESAJI TEK VE GENELDİR — hangi alanın çakıştığı söylenmez.
     /// </summary>
     /// <remarks>
-    /// "E-posta kayıtlı" / "telefon kayıtlı" / "işletme adı alınmış" diye ayrı mesajlar dönmek,
-    /// anonim bir uçtan "bu kişi ya da işletme sistemde var mı?" sorusunu cevaplanabilir hâle
-    /// getiriyordu. Üç durumda da AYNI metin dönmeli.
+    /// "Telefon kayıtlı" / "işletme adı alınmış" diye ayrı mesajlar dönmek, anonim bir uçtan
+    /// "bu kişi ya da işletme sistemde var mı?" sorusunu cevaplanabilir hâle getiriyordu.
+    /// İki durumda da AYNI metin dönmeli.
+    ///
+    /// E-POSTA ARTIK BU KARŞILAŞTIRMAYA GİRMEZ, çünkü daha güçlü korunuyor: kayıtlı bir
+    /// e-postayla başlatılan akış hiç REDDEDİLMEZ, aynen sürer — saldırgan için gözlenebilir
+    /// fark kalmaz. Gerçek durum yalnız kod doğrulandıktan sonra söylenir
+    /// (bkz. <see cref="DuplicateEmail_IsRevealed_AfterEmailVerification"/>).
     /// </remarks>
     [Fact]
     public async Task DuplicateMessages_AreIdentical_AcrossFields()
@@ -428,13 +480,41 @@ public sealed class TenantSignupTests
         await using var db = NewDb(options);
         var service = NewService(db, NewMessaging());
 
-        var byEmail = await service.StartAsync(Form(tenantName: "Bambaska Ad", email: "sahip@ornek.com", phone: "0532 000 00 00"));
         var byPhone = await service.StartAsync(Form(tenantName: "Baska Ad Daha", email: "yeni@ornek.com", phone: "0555 111 22 33"));
         var byName = await service.StartAsync(Form(tenantName: "Güzel Salon", email: "bir@ornek.com", phone: "0533 000 00 00"));
 
-        Assert.True(byEmail.IsFailure && byPhone.IsFailure && byName.IsFailure);
-        Assert.Equal(byEmail.Error.Message, byPhone.Error.Message);
-        Assert.Equal(byEmail.Error.Message, byName.Error.Message);
+        Assert.True(byPhone.IsFailure && byName.IsFailure);
+        Assert.Equal(byPhone.Error.Message, byName.Error.Message);
+    }
+
+    /// <summary>
+    /// KAYITLI E-POSTA, MÜSAİT E-POSTADAN AYIRT EDİLEMEZ.
+    ///
+    /// Enumerasyon korumasının özü budur: saldırgan iki durumu yan yana koyduğunda yanıtın
+    /// aynı olduğunu görmelidir. Aksi hâlde adres listesi deneyerek hangi işletmelerin sistemde
+    /// olduğu öğrenilebilirdi.
+    /// </summary>
+    [Fact]
+    public async Task RegisteredEmail_IsIndistinguishable_FromFreeEmail()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        await using (var seed = NewDb(options))
+        {
+            var t = new Tenant("Mevcut", "mevcut", "Başlangıç", TenantStatus.Active);
+            t.GrantAccess("sahip@ornek.com", UserRole.InstitutionOwner, null, "Sahip");
+            seed.Tenants.Add(t);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = NewDb(options);
+        var service = NewService(db, NewMessaging());
+
+        var kayitli = await service.StartAsync(Form(tenantName: "Bir Ad", email: "sahip@ornek.com", phone: "0532 000 00 00"));
+        var musait = await service.StartAsync(Form(tenantName: "Baska Ad", email: "bos@ornek.com", phone: "0533 000 00 00"));
+
+        Assert.Equal(musait.IsSuccess, kayitli.IsSuccess);
+        Assert.True(kayitli.IsSuccess);
     }
 
     /// <summary>

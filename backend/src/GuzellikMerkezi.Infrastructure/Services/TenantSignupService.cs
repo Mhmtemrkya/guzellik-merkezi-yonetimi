@@ -133,6 +133,18 @@ public sealed class TenantSignupService : ITenantSignupService
         public bool Completed;
 
         /// <summary>
+        /// Yetkili e-postası BAŞKA bir hesapta kayıtlı mı? 1. adımda ölçülür ama SÖYLENMEZ.
+        /// </summary>
+        /// <remarks>
+        /// Enumerasyon freni burada da geçerlidir: e-posta kayıtlıysa akış aynen sürer ve koda
+        /// aynı yanıt döner, çünkü aksi hâlde "kayıt reddedildi" gözlemi tek başına o adresin
+        /// sistemde olduğunu ele verirdi. Gerçek durum yalnız kullanıcı KODU DOĞRULADIKTAN
+        /// sonra açıklanır — o noktada adresin sahibi olduğu kanıtlanmıştır ve kendi bilgisini
+        /// öğrenmesinde sakınca yoktur.
+        /// </remarks>
+        public bool EmailAlreadyRegistered;
+
+        /// <summary>
         /// Kaç kez kod YENİDEN gönderildi + son gönderim anı.
         /// </summary>
         /// <remarks>
@@ -247,10 +259,18 @@ public sealed class TenantSignupService : ITenantSignupService
 
         // MÜKERRER KAYIT KAPISI — kurum oluşturmadan ÖNCE. Burada geçse bile son adımda tekrar
         // kontrol edilir: iki kişi aynı anda başlarsa ikisi de bu noktayı geçebilir.
+        //
         // ENUMERASYON FRENİ: "e-posta kayıtlı" / "telefon kayıtlı" / "işletme adı alınmış" diye
         // AYRI mesajlar dönmek, anonim bir uçtan "bu kişi/işletme sistemde var mı?" sorusunu
-        // cevaplanabilir hâle getiriyordu. Üç durumda da AYNI genel mesaj döner.
-        if (await IsDuplicateAsync(form, ct))
+        // cevaplanabilir hâle getiriyordu. Hangi alanın çakıştığı burada SÖYLENMEZ.
+        //
+        // E-POSTA ÇAKIŞMASI AYRI ELE ALINIR ama yine sızdırılmaz: akış hiç durmadan devam eder,
+        // koda aynı yanıt döner ve kod yine ADRESİN KENDİSİNE gider. Saldırgan için gözlenebilir
+        // hiçbir fark yoktur — kodu yalnız kutunun sahibi görür. Durum, kullanıcı kodu
+        // doğruladıktan sonra (VerifyEmailAsync) net biçimde söylenir; oraya kadar bekletmek,
+        // "hesabınız zaten var" bilgisini yalnız adresin gerçek sahibine vermenin tek yoludur.
+        var emailTaken = await IsEmailRegisteredAsync(form.Email, ct);
+        if (!emailTaken && await IsDuplicateAsync(form, ct))
         {
             return Result<TenantSignupStartResponse>.Failure(Error.Conflict(DuplicateMessage));
         }
@@ -261,6 +281,7 @@ public sealed class TenantSignupService : ITenantSignupService
             Form = form,
             Slug = slug,
             PreferredPhoneChannel = NormalizeChannel(form.PhoneChannel),
+            EmailAlreadyRegistered = emailTaken,
         };
         var code = NewCode();
         draft.Code = code;
@@ -308,6 +329,18 @@ public sealed class TenantSignupService : ITenantSignupService
     /// üzerinden aranır, işletme adı ise çözülmüş değerler üzerinde bellekte karşılaştırılır.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Yetkili e-postası başka bir aktif hesapta kayıtlı mı?
+    /// </summary>
+    /// <remarks>
+    /// <c>TenantUser.Email</c> düz metin saklandığı için SQL eşitliği güvenilirdir (telefon ve
+    /// işletme adı şifreli olduğundan öyle aranamaz — bkz. <see cref="IsDuplicateAsync"/>).
+    /// Bu ayrı yardımcı, e-posta çakışmasının doğrulama SONRASINA ertelenebilmesi için gerekir.
+    /// </remarks>
+    private Task<bool> IsEmailRegisteredAsync(string email, CancellationToken ct)
+        => _db.TenantUsers.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(u => u.IsActive && u.Email == email, ct);
+
     private async Task<bool> IsDuplicateAsync(TenantSignupStartRequest form, CancellationToken ct)
     {
         // 1) Yetkili e-postası — düz kolon, SQL eşitliği güvenilir.
@@ -375,6 +408,21 @@ public sealed class TenantSignupService : ITenantSignupService
 
         var check = CheckCode(draft!, request.Code, request.SignupId);
         if (check is not null) return Result<TenantSignupVerifyEmailResponse>.Failure(check);
+
+        // ADRESİN SAHİBİ OLDUĞU KANITLANDI — artık gerçek durumu söyleyebiliriz.
+        //
+        // Kodu doğru giren kişi o posta kutusuna erişebiliyor demektir; ona "bu adresle zaten
+        // hesabınız var" demek kendi bilgisini vermektir, sızıntı değil. Aynı bilgiyi 1. adımda
+        // vermek ise anonim bir enumerasyon ucu açardı (bkz. StartAsync).
+        //
+        // Taslak burada bilinçli olarak SİLİNİR: kayıt bu noktada bitmiştir, telefon kodu
+        // gönderilmez ve boşuna SMS/WhatsApp maliyeti doğmaz.
+        if (draft!.EmailAlreadyRegistered)
+        {
+            _cache.Remove(DraftKey(request.SignupId));
+            return Result<TenantSignupVerifyEmailResponse>.Failure(Error.Conflict(
+                "Bu e-posta adresiyle zaten bir hesabınız var. Giriş yapın ya da parolanızı sıfırlayın."));
+        }
 
         // E-posta doğrulandı → telefon adımına geç ve yeni kod üret.
         var code = NewCode();

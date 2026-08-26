@@ -126,6 +126,52 @@ public sealed class StoreReviewOtpTests
 
     // ---------------------------------------------------------------- inceleme hesabı
 
+    /// <summary>
+    /// HESAP DEVRALMA FRENİ: giriş kodu, KULLANICININ YAZDIĞI adrese değil kayıttaki adrese gider
+    /// ve yalnız ikisi eşleşirse gönderilir. Aksi hâlde bir müşterinin adını ve telefonunu bilen
+    /// herkes kendi e-postasını yazıp o hesabın kodunu alabilirdi.
+    /// </summary>
+    [Fact]
+    public async Task Login_WithAttackerEmail_SendsNothing()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        // E-POSTA KANALI AÇIK OLMALI: kapalıyken zaten hiçbir şey gönderilmez ve test, eşleşme
+        // kuralını doğrulamadan sahte-geçerdi (gönderimi engelleyen şey kural değil yapılandırma
+        // olurdu). Açıkken "gönderilmedi" iddiası yalnız kimlik kontrolü sayesinde doğrudur.
+        var messaging = NewMessaging(email: true);
+
+        await using var db = NewDb(options);
+        var result = await NewService(db, messaging).RequestAsync(
+            Login("Gercek Musteri", RealPhone), "saldirgan@example.com",
+            CustomerOtpPurpose.Login, CustomerOtpChannel.Email, CancellationToken.None);
+
+        // Yanıt BAŞARILI görünür (enumerasyon olmasın) ama hiçbir yere kod gitmez.
+        Assert.True(result.IsSuccess);
+        await messaging.DidNotReceive().SendEmailAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await messaging.DidNotReceive().SendSmsAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>Kayıttaki adres BÜYÜK/küçük harf farkıyla yazılsa da giriş çalışır.</summary>
+    [Fact]
+    public async Task Login_EmailMatchIsCaseInsensitive()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        var messaging = NewMessaging(email: true);
+
+        await using var db = NewDb(options);
+        var r = await NewService(db, messaging).RequestAsync(
+            Login("Gercek Musteri", RealPhone), RealEmail.ToUpperInvariant(),
+            CustomerOtpPurpose.Login, CustomerOtpChannel.Email, CancellationToken.None);
+
+        Assert.True(r.IsSuccess);
+        await messaging.Received(1).SendEmailAsync(
+            RealEmail, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     /// <summary>İnceleme numarasında hiçbir kanaldan gönderim YAPILMAZ (denetçi kodu alamaz zaten).</summary>
     [Fact]
     public async Task StoreReviewPhone_DoesNotSendAnyMessage()
@@ -163,7 +209,7 @@ public sealed class StoreReviewOtpTests
 
         await using var db = NewDb(options);
         var result = await NewService(db, messaging).RequestAsync(
-            Login("Gercek Musteri", RealPhone), null,
+            Login("Gercek Musteri", RealPhone), RealEmail,
             CustomerOtpPurpose.Login, CustomerOtpChannel.Auto, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -182,7 +228,7 @@ public sealed class StoreReviewOtpTests
 
         await using var db = NewDb(options);
         await NewService(db, messaging).RequestAsync(
-            Login("Gercek Musteri", RealPhone), null,
+            Login("Gercek Musteri", RealPhone), RealEmail,
             CustomerOtpPurpose.Login, CustomerOtpChannel.Auto, CancellationToken.None);
 
         await messaging.DidNotReceive().SendWhatsAppAsync(
@@ -410,7 +456,7 @@ public sealed class StoreReviewOtpTests
 
         await using var db = NewDb(options);
         var result = await NewService(db, messaging).RequestAsync(
-            Login("Gercek Musteri", RealPhone), null,
+            Login("Gercek Musteri", RealPhone), RealEmail,
             CustomerOtpPurpose.Login, CustomerOtpChannel.Email, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -470,7 +516,7 @@ public sealed class StoreReviewOtpTests
 
         await using var db = NewDb(options);
         var result = await NewService(db, messaging).RequestAsync(
-            Login("Gercek Musteri", RealPhone), null,
+            Login("Gercek Musteri", RealPhone), RealEmail,
             CustomerOtpPurpose.Login, CustomerOtpChannel.Auto, CancellationToken.None);
 
         Assert.True(result.IsFailure);
@@ -493,7 +539,7 @@ public sealed class StoreReviewOtpTests
 
         await using var db = NewDb(options);
         await NewService(db, messaging, configured: false).RequestAsync(
-            Login("Gercek Musteri", RealPhone), null,
+            Login("Gercek Musteri", RealPhone), RealEmail,
             CustomerOtpPurpose.Login, CustomerOtpChannel.Sms, CancellationToken.None);
 
         await messaging.Received(1).SendEmailAsync(
@@ -617,7 +663,7 @@ public sealed class StoreReviewOtpTests
         // Giriş kanalı E-POSTA olduğu için e-postası olan müşteriyle ölçülür; doğum tarihi
         // ikisinde de BOŞ — testin iddiası zaten bu.
         var result = await NewService(db, messaging, configured: false).RequestAsync(
-            Login("Gercek Musteri", RealPhone), null,
+            Login("Gercek Musteri", RealPhone), RealEmail,
             CustomerOtpPurpose.Login, CustomerOtpChannel.Auto, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
