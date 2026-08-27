@@ -92,6 +92,7 @@ public sealed class CustomerOtpService
     private readonly IAuthService _auth;
     private readonly ISearchIndexService _search;
     private readonly IHostEnvironment _env;
+    private readonly IConfiguration _config;
     private readonly ILogger<CustomerOtpService> _logger;
 
     /// <summary>
@@ -130,6 +131,7 @@ public sealed class CustomerOtpService
         _auth = auth;
         _search = search;
         _env = env;
+        _config = configuration;
         _logger = logger;
 
         // Tek yapılandırma bloğu: AppReview:* (inceleme hesabı kurucusuyla aynı anahtarlar).
@@ -343,6 +345,9 @@ public sealed class CustomerOtpService
         // Kimlik eşleşmesi: girişte zorunlu, kayıtta aranmaz (kanal sahipliği kanıtlanacak).
         string? emailTarget = CustomerIdentityLookup.NormalizeEmail(email);
         if (emailTarget.Length == 0) emailTarget = null;
+        // E-posta şablonunun başlığındaki kurum adı — ancak kimlik EŞLEŞTİĞİNDE bilinir.
+        // Eşleşmeyen istekte null kalır; zaten o durumda kod hiç üretilmez.
+        string? tenantName = null;
         var shouldSend = purpose == CustomerOtpPurpose.Register;
         if (!shouldSend)
         {
@@ -376,6 +381,7 @@ public sealed class CustomerOtpService
             // uygulanabilirdi.
             shouldSend = matched is not null || (isReview && matches.Count > 0);
             emailTarget = matched?.Email;
+            tenantName = await TenantNameAsync(matched?.TenantId, ct);
         }
 
         // MAĞAZA İNCELEME HESABI: denetçi hiçbir kanaldan kod alamayacağı için bu numarada kod
@@ -402,7 +408,9 @@ public sealed class CustomerOtpService
             if (!isReview)
             {
                 var (sentChannel, target) = await SendCodeAsync(
-                    request.Phone, emailTarget, code, channel, availability, ct);
+                    request.Phone, emailTarget, code, channel, availability,
+                    purpose == CustomerOtpPurpose.Register ? "Müşteri Kaydı" : "Müşteri Girişi",
+                    tenantName, ct);
                 entry.Channel = sentChannel ?? CustomerOtpChannel.Sms;
                 entry.Target = target;
                 delivered = sentChannel is not null;
@@ -472,15 +480,20 @@ public sealed class CustomerOtpService
     /// yalanlıyordu. Yedeklemeyi eklemek "giriş SMS harcamaz" kuralını sessizce delerdi.
     /// </para>
     /// </remarks>
+    /// <param name="operation">E-postadaki "İşlem Tipi" satırı — giriş ile kayıt aynı şey değildir.</param>
+    /// <param name="tenantName">Başlıkta gösterilecek kurum adı; bilinmiyorsa null.</param>
     private async Task<(CustomerOtpChannel? Channel, string? Target)> SendCodeAsync(
         string phone,
         string? emailTarget,
         string code,
         CustomerOtpChannel requested,
         CustomerOtpChannelAvailability availability,
+        string operation,
+        string? tenantName,
         CancellationToken ct)
     {
-        var message = $"BeautyAsist doğrulama kodunuz: {code}. Kod 5 dakika geçerlidir. Kimseyle paylaşmayın.";
+        var minutes = (int)CodeLifetime.TotalMinutes;
+        var message = $"BeautyAsist doğrulama kodunuz: {code}. Kod {minutes} dakika geçerlidir. Kimseyle paylaşmayın.";
 
         foreach (var candidate in OrderChannels(requested))
         {
@@ -499,13 +512,20 @@ public sealed class CustomerOtpService
                 {
                     CustomerOtpChannel.WhatsApp => await _messaging.SendWhatsAppAsync(phone, message, ct),
                     CustomerOtpChannel.Sms => await _messaging.SendSmsAsync(phone, message, ct),
+                    // Markalı "DOĞRULAMA KODU BİLGİLERİ" şablonu; geçerlilik metni CodeLifetime'dan
+                    // türer, elle yazılmaz (bkz. VerificationEmailTemplate).
                     _ => await _messaging.SendEmailAsync(
                         emailTarget!,
                         "BeautyAsist doğrulama kodunuz",
-                        $"<div style='font-family:sans-serif;font-size:15px'>" +
-                        $"<p>Merhaba,</p><p>BeautyAsist doğrulama kodunuz:</p>" +
-                        $"<p style='font-size:28px;font-weight:700;letter-spacing:6px'>{code}</p>" +
-                        $"<p>Kod 5 dakika geçerlidir. Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.</p></div>",
+                        VerificationEmailTemplate.Build(new VerificationEmailContent(
+                            Code: code,
+                            Email: emailTarget!,
+                            Validity: CodeLifetime,
+                            OperationType: operation,
+                            TenantName: tenantName,
+                            VerificationLink: VerificationEmailTemplate.BuildLink("/randevu/giris",
+                                _config["App:PublicBaseUrl"], _config["Frontend:PublicBaseUrl"], _config["WhatsApp:PublicBaseUrl"]),
+                            SecurityNote: "Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.")),
                         ct),
                 };
 
@@ -541,6 +561,31 @@ public sealed class CustomerOtpService
     /// tamamen ölürdü — oysa WhatsApp kuruluysa akış çalışabilir.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Doğrulama e-postasının başlığındaki kurum adı. Bulunamazsa <c>null</c> döner ve satır hiç
+    /// basılmaz — kod gönderimi kurum adı yüzünden ASLA düşmemeli.
+    /// </summary>
+    /// <remarks>
+    /// <c>IgnoreQueryFilters</c> gerekmez: <c>Tenant</c> yalnız <c>!IsDeleted</c> ile süzülür,
+    /// kurum kapsamı filtresi taşımaz.
+    /// </remarks>
+    private async Task<string?> TenantNameAsync(Guid? tenantId, CancellationToken ct)
+    {
+        if (tenantId is null || tenantId == Guid.Empty) return null;
+        try
+        {
+            return await _db.Tenants.AsNoTracking()
+                .Where(t => t.Id == tenantId)
+                .Select(t => t.Name)
+                .FirstOrDefaultAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Müşteri OTP e-postası için kurum adı okunamadı.");
+            return null;
+        }
+    }
+
     private static IEnumerable<CustomerOtpChannel> OrderChannels(CustomerOtpChannel requested) =>
         requested switch
         {
@@ -624,7 +669,7 @@ public sealed class CustomerOtpService
 
                 var emailCode = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
                 var sent = await SendCodeAsync(request.Phone, mail, emailCode, CustomerOtpChannel.Email,
-                    await GetAvailableChannelsAsync(ct), ct);
+                    await GetAvailableChannelsAsync(ct), "Müşteri Kaydı", tenantName: null, ct);
                 if (sent.Channel is null)
                 {
                     return Result<LoginResponse>.Failure(Error.Unauthorized(

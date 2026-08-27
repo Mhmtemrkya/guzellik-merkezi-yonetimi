@@ -3,7 +3,10 @@ using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Auth;
 using GuzellikMerkezi.Application.Features.PlatformMessaging;
+using GuzellikMerkezi.Domain.Enums;
+using GuzellikMerkezi.Infrastructure.Persistence;
 using GuzellikMerkezi.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace GuzellikMerkezi.Api.Services;
@@ -48,6 +51,8 @@ public sealed class PanelLoginOtpService
     private readonly IAuthService _auth;
     private readonly IOtpStateStore _store;
     private readonly IPlatformMessagingService _messaging;
+    private readonly GuzellikDbContext _db;
+    private readonly IConfiguration _config;
     private readonly IHostEnvironment _env;
     private readonly ILogger<PanelLoginOtpService> _logger;
 
@@ -55,12 +60,16 @@ public sealed class PanelLoginOtpService
         IAuthService auth,
         IOtpStateStore store,
         IPlatformMessagingService messaging,
+        GuzellikDbContext db,
+        IConfiguration config,
         IHostEnvironment env,
         ILogger<PanelLoginOtpService> logger)
     {
         _auth = auth;
         _store = store;
         _messaging = messaging;
+        _db = db;
+        _config = config;
         _env = env;
         _logger = logger;
     }
@@ -95,7 +104,7 @@ public sealed class PanelLoginOtpService
         var email = session.User.Email;
         var code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
 
-        var sent = await SendAsync(email, session.User.FullName, code, ct);
+        var sent = await SendAsync(session.User, code, ct);
         if (!sent)
         {
             // FAIL-CLOSED: kod gönderilemediyse oturum TESLİM EDİLMEZ. "Gönderemedik, buyur gir"
@@ -149,14 +158,26 @@ public sealed class PanelLoginOtpService
         return Result<LoginResponse>.Success(decision.Session);
     }
 
-    private async Task<bool> SendAsync(string email, string? fullName, string code, CancellationToken ct)
+    /// <summary>
+    /// Kodu markalı "DOĞRULAMA KODU BİLGİLERİ" şablonuyla gönderir (bkz.
+    /// <see cref="VerificationEmailTemplate"/>).
+    /// </summary>
+    /// <remarks>
+    /// Geçerlilik metni ELLE YAZILMAZ: <see cref="ChallengeLifetime"/> geçirilir. Eskiden gövdede
+    /// "Kod 10 dakika geçerlidir" sabit yazıyordu; sabit değiştiğinde e-posta yalan söylerdi.
+    /// </remarks>
+    private async Task<bool> SendAsync(UserProfileDto user, string code, CancellationToken ct)
     {
-        var body =
-            $"<div style='font-family:sans-serif;font-size:15px;color:#2f1724'>" +
-            $"<p>Merhaba {System.Net.WebUtility.HtmlEncode(fullName ?? "")},</p>" +
-            $"<p>BeautyAsist paneline giriş doğrulama kodunuz:</p>" +
-            $"<p style='font-size:30px;font-weight:700;letter-spacing:8px;color:#c85776'>{code}</p>" +
-            $"<p>Kod 10 dakika geçerlidir. Bu girişi siz yapmadıysanız <b>parolanızı hemen değiştirin</b>.</p></div>";
+        var email = user.Email;
+        var body = VerificationEmailTemplate.Build(new VerificationEmailContent(
+            Code: code,
+            Email: email,
+            Validity: ChallengeLifetime,
+            OperationType: OperationLabel(user.Role),
+            TenantName: await TenantNameAsync(user.TenantId, ct),
+            VerificationLink: VerificationEmailTemplate.BuildLink("/login",
+                _config["App:PublicBaseUrl"], _config["Frontend:PublicBaseUrl"], _config["WhatsApp:PublicBaseUrl"]),
+            SecurityNote: "Bu girişi siz yapmadıysanız parolanızı hemen değiştirin."));
 
         try
         {
@@ -169,6 +190,40 @@ public sealed class PanelLoginOtpService
         {
             _logger.LogWarning(ex, "Panel giriş kodu gönderilemedi.");
             return false;
+        }
+    }
+
+    /// <summary>
+    /// E-postadaki "İşlem Tipi" satırı. Bu uç YALNIZ yöneticiye değil personele de hizmet eder;
+    /// herkese "Yönetici Girişi" yazmak kullanıcıya yanlış bilgi verirdi.
+    /// </summary>
+    private static string OperationLabel(UserRole role) => role switch
+    {
+        UserRole.InstitutionOwner => "Yönetici Girişi",
+        UserRole.BranchManager => "Şube Yöneticisi Girişi",
+        UserRole.Staff => "Personel Girişi",
+        UserRole.PlatformAdmin => "Platform Yöneticisi Girişi",
+        _ => "Panel Girişi",
+    };
+
+    /// <summary>
+    /// Başlık altındaki kurum adı. Bulunamazsa <c>null</c> döner ve satır hiç basılmaz —
+    /// kod gönderimi kurum adı yüzünden ASLA düşmemeli.
+    /// </summary>
+    private async Task<string?> TenantNameAsync(Guid? tenantId, CancellationToken ct)
+    {
+        if (tenantId is null || tenantId == Guid.Empty) return null;
+        try
+        {
+            return await _db.Tenants.AsNoTracking()
+                .Where(t => t.Id == tenantId)
+                .Select(t => t.Name)
+                .FirstOrDefaultAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Panel giriş e-postası için kurum adı okunamadı.");
+            return null;
         }
     }
 }

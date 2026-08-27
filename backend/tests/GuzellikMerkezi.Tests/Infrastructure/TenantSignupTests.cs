@@ -108,6 +108,34 @@ public sealed class TenantSignupTests
                 .Last(),
             @"(\d{6})").Groups[1].Value;
 
+    /// <summary>
+    /// Kayıt kodu markalı "DOĞRULAMA KODU BİLGİLERİ" şablonuyla gider ve alanlar BU AKIŞTAN
+    /// gelir: geçerlilik <c>DraftLifetime</c>'dan (30 dk) türer, işlem tipi "Kurum Kaydı",
+    /// başlıkta kurum adı.
+    /// </summary>
+    [Fact]
+    public async Task EmailKodu_MarkaliSablonla_AkisinKendiDegerleriniTasir()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        var messaging = NewMessaging();
+
+        await using var db = NewDb(options);
+        var start = await NewService(db, messaging).StartAsync(Form());
+        Assert.True(start.IsSuccess);
+
+        var body = (string)messaging.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(IPlatformMessagingService.SendEmailAsync))
+            .Select(c => c.GetArguments()[2]!)
+            .Last();
+
+        Assert.Contains("DOĞRULAMA KODU BİLGİLERİ", body, StringComparison.Ordinal);
+        Assert.Contains("30 Dakika", body, StringComparison.Ordinal);   // DraftLifetime
+        Assert.Contains("Kurum Kaydı", body, StringComparison.Ordinal);
+        Assert.Contains("Güzel Salon", body, StringComparison.Ordinal); // ham UTF-8, varlık değil
+        Assert.Contains("sahip@ornek.com", body, StringComparison.Ordinal);
+    }
+
     // ------------------------------------------------------------------ mutlu yol
 
     /// <summary>

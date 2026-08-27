@@ -81,6 +81,9 @@ public sealed class TenantSignupService : ITenantSignupService
     /// <summary>Denemede atanacak paket anahtarı (<c>TenantSignup:TrialPlanKey</c>).</summary>
     private readonly string? _trialPlanKey;
 
+    /// <summary>Doğrulama e-postasındaki "Doğrulama Bağlantısı" satırının taban adresi için.</summary>
+    private readonly Microsoft.Extensions.Configuration.IConfiguration _config;
+
     public TenantSignupService(
         GuzellikDbContext db,
         IOtpStateStore store,
@@ -95,6 +98,7 @@ public sealed class TenantSignupService : ITenantSignupService
         ILogger<TenantSignupService> logger)
     {
         _trialPlanKey = configuration["TenantSignup:TrialPlanKey"];
+        _config = configuration;
         _db = db;
         _store = store;
         _messaging = messaging;
@@ -799,15 +803,25 @@ public sealed class TenantSignupService : ITenantSignupService
         }, ct);
     }
 
+    /// <summary>
+    /// Kayıt e-posta kodunu markalı "DOĞRULAMA KODU BİLGİLERİ" şablonuyla gönderir
+    /// (bkz. <see cref="VerificationEmailTemplate"/>).
+    /// </summary>
+    /// <remarks>
+    /// Geçerlilik metni ELLE YAZILMAZ: <see cref="DraftLifetime"/> geçirilir — sabit değiştiğinde
+    /// e-posta kendiliğinden doğru kalır.
+    /// </remarks>
     private async Task<bool> SendEmailCodeAsync(TenantSignupStartRequest form, string code, CancellationToken ct)
     {
-        var body =
-            $"<div style='font-family:sans-serif;font-size:15px;color:#2f1724'>" +
-            $"<p>Merhaba {System.Net.WebUtility.HtmlEncode(form.OwnerName)},</p>" +
-            $"<p><b>{System.Net.WebUtility.HtmlEncode(form.TenantName)}</b> için BeautyAsist kaydınızı tamamlamak üzeresiniz. " +
-            $"E-posta doğrulama kodunuz:</p>" +
-            $"<p style='font-size:30px;font-weight:700;letter-spacing:8px;color:#c85776'>{code}</p>" +
-            $"<p>Kod 30 dakika geçerlidir. Bu işlemi siz başlatmadıysanız bu e-postayı yok sayabilirsiniz.</p></div>";
+        var body = VerificationEmailTemplate.Build(new VerificationEmailContent(
+            Code: code,
+            Email: form.Email,
+            Validity: DraftLifetime,
+            OperationType: "Kurum Kaydı",
+            TenantName: form.TenantName,
+            VerificationLink: VerificationEmailTemplate.BuildLink("/kayit",
+                _config["App:PublicBaseUrl"], _config["Frontend:PublicBaseUrl"], _config["WhatsApp:PublicBaseUrl"]),
+            SecurityNote: "Bu işlemi siz başlatmadıysanız bu e-postayı yok sayabilirsiniz."));
 
         return await TrySendAsync(() => _messaging.SendEmailAsync(form.Email, "BeautyAsist kayıt doğrulama kodunuz", body, ct), "e-posta");
     }

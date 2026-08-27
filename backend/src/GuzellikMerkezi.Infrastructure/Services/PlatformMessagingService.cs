@@ -121,11 +121,18 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         try
         {
             var pw = _encryption.Decrypt(s.SmtpPasswordEncrypted) ?? string.Empty;
+            // UTF-8 AÇIKÇA VERİLİR: gövde artık tam bir HTML belgesi ve baştan sona Türkçe
+            // ("DOĞRULAMA KODU BİLGİLERİ", "Geçerlilik", "NASIL KULLANILIR?"). Kodlama
+            // belirtilmediğinde bazı SMTP yığınları gövdeyi ASCII sayıp Türkçe harfleri "?" yapar;
+            // konu satırı da aynı şekilde bozulur. Belgedeki <meta charset> tek başına yetmez,
+            // çünkü sorun MIME başlığında çıkar.
             using var msg = new MailMessage
             {
                 From = new MailAddress(s.EmailFromAddress!, s.EmailFromName ?? s.EmailFromAddress!),
                 Subject = subject,
+                SubjectEncoding = Encoding.UTF8,
                 Body = htmlBody,
+                BodyEncoding = Encoding.UTF8,
                 IsBodyHtml = true,
             };
             msg.To.Add(toEmail);
