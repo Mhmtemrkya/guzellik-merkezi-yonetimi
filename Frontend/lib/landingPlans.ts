@@ -12,18 +12,11 @@ import 'server-only'
  * bağımlı olmamalıdır.
  */
 
-export interface PublicPlan {
-  id: string
-  name: string
-  description: string | null
-  monthlyPriceTRY: number
-  yearlyPriceTRY: number
-  maxBranches: number
-  maxStaff: number
-  maxCustomers: number
-  features: string | null
-  displayOrder: number
-}
+export type { PublicPlan } from './plans'
+// Etiket çeviricileri istemcide de gerekiyor; tek tanım `./plans` dosyasındadır.
+export { planFeatureLabels, planLimitLabels } from './plans'
+
+import type { PublicPlan } from './plans'
 
 /** Sunucu tarafı çağrı için backend adresi (proxy rotasıyla aynı env değişkenleri). */
 function backendBaseUrl(): string {
@@ -54,51 +47,4 @@ export async function fetchPublicPlans(): Promise<PublicPlan[] | null> {
     // Ağ hatası / zaman aşımı — tanıtım sayfası fiyatsız akışa düşer.
     return null
   }
-}
-
-/**
- * Paketin `Features` alanı özellik ANAHTARLARINI taşır (ör. "appointments.waitlist").
- * Vitrinde okunabilir Türkçe karşılıkları gösterilir; eşleşmeyen anahtar atlanır ki
- * ziyaretçiye teknik anahtar görünmesin.
- */
-const FEATURE_LABELS: Array<[RegExp, string]> = [
-  [/waitlist/i, 'Bekleme listesi otomasyonu'],
-  [/whatsapp/i, 'WhatsApp hatırlatma'],
-  [/sms/i, 'SMS bildirimi'],
-  [/mail|email/i, 'E-posta bildirimi'],
-  [/online|portal|booking/i, 'Online randevu portalı'],
-  [/report|rapor|analytic/i, 'Gelişmiş raporlar'],
-  [/stock|stok|inventory/i, 'Stok yönetimi'],
-  [/account|muhasebe|cash|kasa/i, 'Ön muhasebe ve kasa'],
-  [/staff|personel|schedule|cizelge|çizelge/i, 'Personel ve çizelge'],
-  [/package|paket|session|seans/i, 'Paket ve seans takibi'],
-  [/consent|onam|kvkk/i, 'Onam ve KVKK formları'],
-  [/loyalty|sadakat|gift|hediye|coupon|kupon/i, 'Sadakat ve hediye çeki'],
-  [/device|cihaz|security|guvenlik|güvenlik/i, 'Cihaz güvenliği'],
-  [/branch|sube|şube|multi/i, 'Çok şubeli kullanım'],
-  [/salon|vitrin|showcase|public/i, 'Salon vitrini'],
-]
-
-export function planFeatureLabels(features: string | null, limit = 6): string[] {
-  if (!features) return []
-  const out: string[] = []
-  for (const raw of features.split(',')) {
-    const key = raw.trim()
-    if (!key) continue
-    const match = FEATURE_LABELS.find(([re]) => re.test(key))
-    if (!match) continue
-    if (!out.includes(match[1])) out.push(match[1])
-    if (out.length >= limit) break
-  }
-  return out
-}
-
-/** Limit satırları: 0/negatif = sınırsız (paket kataloğundaki kural). */
-export function planLimitLabels(plan: PublicPlan): string[] {
-  const rows: string[] = []
-  rows.push(plan.maxBranches > 0 ? `${plan.maxBranches} şube` : 'Sınırsız şube')
-  rows.push(plan.maxStaff > 0 ? `${plan.maxStaff} kullanıcı` : 'Sınırsız kullanıcı')
-  if (plan.maxCustomers > 0) rows.push(`${plan.maxCustomers.toLocaleString('tr-TR')} danışan`)
-  else rows.push('Sınırsız danışan')
-  return rows
 }

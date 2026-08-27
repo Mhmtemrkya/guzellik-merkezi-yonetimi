@@ -1,17 +1,23 @@
+import type { ReactNode } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import CountUp from '@/components/landing/CountUp'
 import ProductTour from '@/components/landing/ProductTour'
 import Reveal from '@/components/landing/Reveal'
-import StickyTour from '@/components/landing/StickyTour'
-import { HeroStage, HeroWords } from '@/components/landing/HeroStage'
-import { Magnetic, ScrollProgress, Spotlight } from '@/components/landing/Interactions'
-import LiveEvents from '@/components/landing/LiveEvents'
+import { HeroStage } from '@/components/landing/HeroStage'
+import Hero from '@/components/landing/apple/Hero'
+import Nav from '@/components/landing/apple/Nav'
+import Film from '@/components/landing/apple/Film'
+import DragRail from '@/components/landing/apple/DragRail'
+import PressButton from '@/components/landing/apple/PressButton'
+import PlanPicker from '@/components/landing/apple/PlanPicker'
+import AmbientVideo from '@/components/landing/apple/AmbientVideo'
+import JourneyBackdrop from '@/components/landing/apple/JourneyBackdrop'
 import { fetchPublicPlans, planFeatureLabels, planLimitLabels, type PublicPlan } from '@/lib/landingPlans'
 import {
-  ArrowRight, BarChart3, BellRing, Boxes, CalendarDays, CalendarPlus, Check, ClipboardList,
-  CreditCard, FileBarChart, Globe, Landmark, Layers, MessageCircle, Package, PlayCircle, Quote,
-  ShieldCheck, Sparkles, Star, UserCog, Users, Wallet, type LucideIcon,
+  ArrowRight, BellRing, Boxes, CalendarDays, Check, ClipboardList, FileBarChart, Globe,
+  Landmark, MessageCircle, Package, Quote, ShieldCheck, Star, UserCog, Users, Wallet,
+  type LucideIcon,
 } from 'lucide-react'
 import PaymentBadges, { LegalLinkRow } from '@/components/legal/PaymentBadges'
 import { legalLinks } from '@/lib/legal/company'
@@ -22,14 +28,42 @@ export const revalidate = 300
 /**
  * TANITIM SAYFASI.
  *
- * DİL: Apple'ın ürün sayfaları — dev tipografi, kenardan kenara görseller, sahne sahne açılan
- * bölümler, kaydırmaya bağlı sinematik hareket. Renk ve yüzeyler panelden gelir (#FFF7FA zemin,
- * #EF6F94 aksan, blush tonlar) ki tanıtımdan panele geçen kullanıcı aynı ürünün içinde kalsın.
+ * ANLATI: sayfa bir SENARYODUR — "bir merkezin bir günü". Arkada 48 saniyelik TEK KESİNTİSİZ
+ * çekim akar (bkz. JourneyBackdrop) ve onu oynatan kaydırmanın kendisidir: sayfanın en üstü
+ * klibin şafağı, en altı gecesidir. "Bir gün" bölümündeki saatler (08:40 → 20:10) bu yüzden
+ * gerçekten arkadaki ışıkla aynı saati gösterir. Her sahne panelde GERÇEKTEN VAR OLAN bir
+ * sayfaya bağlıdır (bkz. Film.tsx `panel` alanı); vitrinde olmayan bir özellik vaat edilmez.
  *
- * HAREKET İLKESİ — İÇERİK ASLA HAREKETE BAĞLI DEĞİLDİR:
- *   · `Reveal` gizlemeyi yalnız JavaScript çalışınca uygular (bkz. .landing-js kuralı).
- *   · `cine-*` sınıfları CSS scroll-driven animasyondur, `@supports` ile korunur.
- * Script yüklenmezse ya da tarayıcı desteklemezse sayfa statik ama TAM okunur kalır.
+ * İKİ ZEMİN:
+ *   · YOLCULUK (`yolculuk.mp4`) — sayfanın tamamının arkasında, kaydırmayla sürülür.
+ *   · İPEK DÜZLEM (`moduller.mp4`) — ürün turundan paketlere kadar olan blok kendi sakin
+ *     zeminine geçer (`SilkStage`); konu merkezin günü olmaktan çıkıp ÜRÜN olur. Paketlerden
+ *     sonra yolculuk kaldığı yerden sürer.
+ * Üçüncü klip `kurulum.mp4` zemin değil NESNEDİR: "Nasıl çalışır" bölümünde kendi çerçevesinde durur.
+ *
+ * HAREKET (Apple dili — bkz. components/landing/apple/springs.ts):
+ *   · Kullanıcının DOKUNDUĞU her şey YAY ile sürülür ve kesilebilirdir: butonlar basınca
+ *     (bırakınca değil) tepki verir, sürüklenen ray parmağın hızını devralır ve momentumun
+ *     taşıyacağı karta oturur.
+ *   · Kullanıcının dokunmadığı bölüm girişleri kritik sönümlü bir CSS eğrisiyle gelir —
+ *     aşma yoktur ve JavaScript'siz güvenlidir.
+ *   · Aşma (bounce) yalnız kullanıcının kendisi momentum verdiği hareketlerde vardır.
+ *
+ * MALZEME: içerik hareketli görüntünün ÜSTÜNDE durur. Okunabilirlik metnin opaklığını
+ * düşürerek değil, ARADAKİ MALZEME ile kurulur (`.material-light` / `.material-dark`):
+ * koyu bölümlerde koyu cam + beyaz metin, açık bölümlerde açık cam + koyu metin. Fiyat
+ * kartları DÜZ BEYAZDIR — karar noktasında okunabilirlik süse feda edilmez.
+ *
+ * İÇERİK ASLA HAREKETE BAĞLI DEĞİLDİR: `Reveal` gizlemeyi yalnız JS çalışınca uygular,
+ * `cine-*` sınıfları `@supports` ile korunur, videolar süstür (kaynak yalnız JS ile takılır,
+ * hareket azaltma açıksa hiç indirilmez, altlarında durağan kare durur).
+ *
+ * TUZAK: sabitlenen katmanların (JourneyBackdrop, SilkStage) ata zincirinde `overflow-hidden`
+ * OLAMAZ — tarayıcı `hidden` için kaydırma bağlamı doğurur ve `position: sticky` sessizce
+ * ölür. Her yerde `overflow-clip` kullanılır; kök sarmalayıcıdaki `overflow-x-clip` de bu yüzden.
+ *
+ * SATIN ALMA: "Planı seç" (PlanPicker) planı sepete koyup `/odeme`'ye götürür; kimlik orada
+ * sorulur (bkz. lib/cart.ts, components/checkout/CheckoutClient.tsx).
  *
  * ÖRNEK VERİ UYARISI: sayaçlar, referans salon adları ve yorumlar TEMSİLİDİR; yayına almadan
  * önce gerçek rakam ve referanslarla değiştirilmelidir.
@@ -77,6 +111,7 @@ const tl = (n: number) => `₺${Math.round(n).toLocaleString('tr-TR')}`
 const testimonials = [
   { quote: 'Randevu karışıklığı bitti. Danışanlar 7/24 online randevu alabiliyor, WhatsApp hatırlatmaları sayesinde gelmeyen danışan oranımız belirgin şekilde azaldı.', name: 'Lale Güzellik Merkezi', city: 'İzmir' },
   { quote: 'Rapor ve paket takibi çok net. Gelirimizi, kalan seansları ve stoğu tek yerden görüyoruz; gün sonunda kasa tutuyor mu tutmuyor mu hemen belli oluyor.', name: 'Mona Güzellik', city: 'Ankara' },
+  { quote: 'Personel yetkileri sayesinde herkes yalnız kendi işini görüyor. Onay kutusundan geçmeden hiçbir kayıt değişmiyor; ay sonunda tartışma çıkmıyor.', name: 'Derma Luxe', city: 'İstanbul' },
 ]
 
 export default async function LandingPage() {
@@ -84,169 +119,192 @@ export default async function LandingPage() {
   // sayfa fiyatsız "teklif iste" akışına düşer (bkz. Pricing).
   const plans = await fetchPublicPlans()
 
-  // Kök sarmalayıcıda overflow-x: CLIP (hidden DEĞİL). `overflow-x: hidden` tarayıcıda karşı
-  // ekseni otomatik `auto` yapar ve yeni bir kaydırma bağlamı doğurur; bu da içerideki
-  // `position: sticky` öğelerini sessizce devre dışı bırakır — ürün turunun sabitlenen ekranı
-  // tam bu yüzden kayboluyordu. `clip` taşmayı aynı şekilde keser ama kaydırma bağlamı üretmez.
   return (
-    <div className="min-h-screen overflow-x-clip bg-[#FFF7FA] text-[#352432] antialiased">
-      <ScrollProgress />
-      <SiteNav />
+    <div className="relative min-h-screen overflow-x-clip bg-[#140A11] text-[#352432] antialiased">
+      {/* Sayfanın TAMAMININ arkasındaki tek kesintisiz çekim; kaydırma onu sürer. */}
+      <JourneyBackdrop />
+      <div className="relative z-10">
+      <Nav />
       <main>
         <Hero />
-        <ClientStrip />
-        <ImageStatement />
-        <StickyTour />
-        <Modules />
-        <SplitStatement />
-        <Steps />
-        <Pricing plans={plans} />
-        <Testimonials />
+        <ProofStrip />
+        <Film />
+
+        {/* ÜRÜN BÖLÜMÜ — yolculuk burada bir süreliğine durur.
+            "Bir gün" anlatısı bittiğinde konu değişir: artık merkezin günü değil, ÜRÜN
+            anlatılır. Bu yüzden zemin de değişir — kesintisiz çekimin yerini sakin, krem
+            ipek dokusu alır ve ürün turu, modüller, kurulum ve fiyat aynı yüzeyin üstünde
+            tek bir blok olarak okunur. Paketlerden sonra yolculuk kaldığı yerden sürer. */}
+        <SilkStage>
+          <ProductStage />
+          <Modules />
+          <Steps />
+          <Pricing plans={plans} />
+        </SilkStage>
+
+        <Voices />
         <FinalCta />
       </main>
       <SiteFooter />
+      </div>
     </div>
   )
 }
 
 /* ------------------------------------------------------------------ */
 
-function SiteNav() {
-  const links = [
-    { href: '#tur', label: 'Ürün turu' },
-    { href: '#moduller', label: 'Modüller' },
-    { href: '#nasil', label: 'Nasıl çalışır' },
-    { href: '#fiyat', label: 'Fiyatlandırma' },
-    { href: '#referans', label: 'Referanslar' },
-  ]
+/**
+ * BÖLÜM ZEMİNİ — uzun bölümlerin altında duran video düzlemi.
+ *
+ * NEDEN `sticky`: bölüm bir kart ızgarası kadar uzun olabilir. Videoyu bölümün TAMAMINA
+ * yaymak 16:9 kaynağı dikeyde ezip aşırı kırpar ve bulanıklaştırır. Bunun yerine video ekran
+ * boyunda kalır, içerik onun üstünden akar — görüntü hep kendi en-boy oranında ve net durur.
+ * Peçe zeminin İÇİNDEDİR: ekranda ne görünüyorsa onun üstünü örter.
+ */
+function Veil({ color }: { color: string }) {
+  return <div aria-hidden className="pointer-events-none absolute inset-0" style={{ background: color }} />
+}
+
+/**
+ * İPEK SAHNE — ürün bölümünün ortak zemini.
+ *
+ * Ürün turundan paketlere kadar olan dört bölüm tek bir yüzeyin üstünde durur: yavaşça
+ * dalgalanan krem-blush ipek. Bu bir SAHNE değil DÜZLEMDİR — anlatacak bir olayı yoktur,
+ * yüzeye canlılık verir ve arkadaki yolculuğu bu blok boyunca örter.
+ *
+ * NEDEN `sticky`: blok dört bölüm boyu uzundur. 16:9 klibi bu yüksekliğe yaymak görüntüyü
+ * dikeyde ezip bulanıklaştırır. Video ekran boyunda kalır, içerik üstünden akar.
+ * Ata zincirinde `overflow-hidden` OLAMAZ (sticky ölür) — `overflow-clip` kullanılır.
+ *
+ * Üstteki ve alttaki yumuşak geçişler, yolculuktan ipeğe ve ipekten yolculuğa dönüşü
+ * sert bir kenar olmadan bağlar.
+ */
+function SilkStage({ children }: { children: ReactNode }) {
   return (
-    <header className="sticky top-0 z-50 border-b border-[#F2DFE7]/80 bg-[#FFF7FA]/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between gap-4 px-5 sm:px-8">
-        <Link href="/" className="flex items-center gap-2.5">
-          <Image src="/logo.png" alt="" width={44} height={44} priority className="h-11 w-11 object-contain" />
-          <span className="text-[16.5px] font-semibold tracking-[-0.015em]">BeautyAsist</span>
-        </Link>
-
-        <nav className="hidden items-center gap-8 text-[12.5px] text-[#4A3A44] lg:flex">
-          {links.map((l) => (
-            <a key={l.href} href={l.href} className="transition-colors hover:text-[#EF6F94]">{l.label}</a>
-          ))}
-        </nav>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <Link href="/login" className="whitespace-nowrap rounded-full px-3 py-1.5 text-[12.5px] text-[#4A3A44] transition-colors hover:text-[#EF6F94]">
-            Giriş
-          </Link>
-          {/* Danışan tarafı: önce salon vitrini — ziyaretçi merkezi seçer, randevuyu oradan alır. */}
-          <Link href="/salonlar" className="whitespace-nowrap rounded-full border border-[#EEC9D7] bg-white px-3.5 py-1.5 text-[12.5px] text-[#4A3A44] transition-colors hover:border-[#EF6F94]">
-            Randevu<span className="hidden sm:inline"> al</span>
-          </Link>
-          <Link href="/kayit" className="whitespace-nowrap rounded-full bg-[#EF6F94] px-4 py-1.5 text-[12.5px] font-medium text-white transition-transform hover:-translate-y-px">
-            Ücretsiz<span className="hidden sm:inline"> dene</span>
-          </Link>
+    <div className="relative isolate overflow-clip">
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="sticky top-0 h-[100svh]">
+          <AmbientVideo src="/landing/film/moduller.mp4" poster="/landing/film/moduller.webp" />
+          {/* Doku görünsün ama kartların altında sakinleşsin. */}
+          <div className="absolute inset-0 bg-[#FFF7FA]/72" />
         </div>
       </div>
-    </header>
+
+      {/* Yolculuktan ipeğe ve ipekten yolculuğa yumuşak geçiş. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-40"
+        style={{ background: 'linear-gradient(to bottom, rgba(20,10,17,0.85), rgba(255,247,250,0))' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-40"
+        style={{ background: 'linear-gradient(to top, rgba(20,10,17,0.85), rgba(255,247,250,0))' }}
+      />
+
+      <div className="relative">{children}</div>
+    </div>
   )
 }
 
-function Hero() {
+function SectionHead({
+  eyebrow,
+  title,
+  body,
+  tone = 'light',
+}: {
+  eyebrow: string
+  title: string
+  body?: string
+  /** `dark` = koyu sahne üstünde beyaz metin. */
+  tone?: 'light' | 'dark'
+}) {
+  const dark = tone === 'dark'
+  // Başlık hareketli bir görüntünün üstünde durur; okunabilirlik metnin rengiyle değil
+  // ALTINDAKİ MALZEME ile kurulur. Aksi hâlde arkadaki ışık değiştikçe başlık titrer.
   return (
-    <section className="relative overflow-hidden">
-      {/* Zeminde yavaşça sürüklenen renk bulutları — sakin canlılık, dikkat çalmaz. */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="bloom absolute -top-40 left-[22%] h-[620px] w-[620px] rounded-full bg-[#FFDCE8]/60 blur-[130px]" />
-        <div className="bloom-slow absolute -top-24 right-[6%] h-[520px] w-[520px] rounded-full bg-[#FFECF2]/85 blur-[120px]" />
-        <div className="bloom absolute top-[42%] left-[4%] h-[380px] w-[380px] rounded-full bg-[#F7C7D8]/40 blur-[110px]" />
-      </div>
+    <div
+      className={`mx-auto max-w-[68ch] rounded-[24px] px-7 py-8 text-center sm:px-10 sm:py-10 ${
+        dark ? 'material-dark material-thick' : 'material-light material-thick'
+      }`}
+    >
+      <span className={`text-[11.5px] font-semibold uppercase tracking-[0.18em] ${dark ? 'text-[#FFB6CC]' : 'text-[#EF6F94]'}`}>
+        {eyebrow}
+      </span>
+      <h2 className={`display-lg balance mt-4 ${dark ? 'text-white' : 'text-[#352432]'}`}>{title}</h2>
+      {body && (
+        <p className={`on-material balance mt-4 text-[16px] leading-relaxed ${dark ? 'text-white' : 'text-[#4A3A44]'}`}>
+          {body}
+        </p>
+      )}
+    </div>
+  )
+}
 
-      <div className="relative mx-auto max-w-[1200px] px-5 pb-8 pt-14 sm:px-8 sm:pt-20">
-        <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,296px)]">
-          <div className="text-center lg:text-left">
-            <Reveal>
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#EEC9D7] bg-white/85 px-3.5 py-1.5 text-[12px] font-medium text-[#8E3F5B] backdrop-blur">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#EF6F94] opacity-70" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#EF6F94]" />
-                </span>
-                Güzellik merkezlerinin büyüme ortağı
-              </span>
-            </Reveal>
+/** Açılıştan sonraki tek nefes: rakamlar ve birlikte çalışılan merkezler. */
+function ProofStrip() {
+  const row = [...clients, ...clients]
+  return (
+    <section className="relative isolate">
+      <Veil color="rgba(255,247,250,0.55)" />
 
-            <h1 className="display-xl mx-auto mt-6 max-w-[15ch] text-[#352432] lg:mx-0">
-              <HeroWords text="Merkeziniz büyür." />
-              <br />
-              <span className="text-[#EF6F94]">
-                <HeroWords text="Kaosu büyümez." delay={0.34} />
-              </span>
-            </h1>
+      <div className="relative mx-auto max-w-[1200px] px-5 py-14 sm:px-8">
+        <Reveal>
+          <div className="material-light material-thick rounded-[24px] px-6 py-8 sm:px-10">
+            <dl className="flex flex-wrap items-center justify-center gap-x-14 gap-y-6 text-center">
+              {stats.map((s) => (
+                <div key={s.label}>
+                  <dt className="sr-only">{s.label}</dt>
+                  <dd>
+                    <span className="block text-[30px] font-semibold tracking-[-0.035em] text-[#352432]">
+                      <CountUp value={s.value} prefix={'prefix' in s ? s.prefix : ''} suffix={'suffix' in s ? s.suffix : ''} />
+                    </span>
+                    <span className="on-material mt-1 block text-[12px] text-[#5A4752]">{s.label}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
 
-            <Reveal delay={200}>
-              <p className="mx-auto mt-6 max-w-[52ch] text-[17px] leading-relaxed text-[#4A3A44] lg:mx-0">
-                Randevu, danışan, paket seansı, stok, tahsilat ve raporlar tek panelde. Boş kalan
-                saat kendiliğinden dolar, biten seans otomatik düşer, gün sonunda hesap tutar.
+            <div className="mt-8 border-t border-[#F2DFE7] pt-7">
+              <p className="on-material px-5 text-center text-[12.5px] text-[#5A4752]">
+                Türkiye’nin dört bir yanındaki güzellik merkezleri BeautyAsist ile çalışıyor
               </p>
-            </Reveal>
-
-            <Reveal delay={260}>
-              <div className="mt-9 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
-                <Magnetic>
-                  <Link
-                    href="/kayit"
-                    className="inline-flex items-center gap-2 rounded-full bg-[#EF6F94] px-7 py-3.5 text-[15px] font-medium text-white shadow-[0_20px_44px_-18px_rgba(239,111,148,0.95)] transition-shadow duration-300 hover:shadow-[0_28px_56px_-16px_rgba(239,111,148,1)]"
-                  >
-                    14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Magnetic>
-                <Magnetic>
-                  <a
-                    href="#tur"
-                    className="inline-flex items-center gap-2 rounded-full border border-[#EEC9D7] bg-white/90 px-7 py-3.5 text-[15px] text-[#4A3A44] backdrop-blur transition-colors hover:border-[#EF6F94]"
-                  >
-                    <PlayCircle className="h-4 w-4 text-[#EF6F94]" /> Ürün turunu izle
-                  </a>
-                </Magnetic>
+              <div className="landing-marquee mt-5 overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
+                <div className="landing-marquee-track flex w-max items-center gap-14 px-6">
+                  {row.map((name, i) => (
+                    <span key={`${name}-${i}`} className="whitespace-nowrap font-display text-[18px] tracking-[-0.02em] text-[#9E8390]">
+                      {name}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </Reveal>
-
-            <Reveal delay={300}>
-              {/* Danışan yolu: bu sayfaya merkez sahibi de danışan da gelir. */}
-              <p className="mt-5 text-[13px] text-[#705A66]">
-                Bir merkezden randevu almak mı istiyorsunuz?{' '}
-                <Link href="/salonlar" className="font-medium text-[#EF6F94] underline-offset-4 hover:underline">
-                  Salonları görün
-                </Link>
-              </p>
-            </Reveal>
-
-            <Reveal delay={340}>
-              <dl className="mt-9 flex flex-wrap items-center justify-center gap-x-10 gap-y-5 lg:justify-start">
-                {stats.map((s) => (
-                  <div key={s.label} className="text-center lg:text-left">
-                    <dt className="sr-only">{s.label}</dt>
-                    <dd>
-                      <span className="block text-[27px] font-semibold tracking-[-0.03em] text-[#352432]">
-                        <CountUp value={s.value} prefix={'prefix' in s ? s.prefix : ''} suffix={'suffix' in s ? s.suffix : ''} />
-                      </span>
-                      <span className="mt-0.5 block text-[12px] text-[#705A66]">{s.label}</span>
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </Reveal>
-          </div>
-
-          {/* Canlı olay akışı — ürünün gerçekten ürettiği olaylar, olurken. */}
-          <Reveal delay={240} className="hidden lg:block">
-            <div className="soft-float">
-              <LiveEvents />
             </div>
-          </Reveal>
-        </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * ÜRÜN SAHNESİ — panelin gerçek ekranları.
+ * Sinematik anlatının hemen ardından gelir: güzel görüntünün arkasında gerçek bir ürün
+ * olduğu görülsün. Ekran sahneye yatık girer, kaydırdıkça doğrulur.
+ */
+function ProductStage() {
+  return (
+    <section id="tur" className="relative isolate scroll-mt-16 px-5 py-24 sm:px-8 sm:py-32">
+      <div className="relative mx-auto max-w-[1200px]">
+        <Reveal>
+          <SectionHead
+            eyebrow="Ürün turu"
+            title="Panelin kendisi, süslemesi değil."
+            body="Aşağıdaki ekranlar panelin gerçek yüzeyidir. Modüle dokunun, tur o modülde dursun."
+          />
+        </Reveal>
       </div>
 
-      {/* Ürün ekranı — sahneye yatık girer, kaydırdıkça doğrulup karşınıza dikilir. */}
-      <div className="relative mx-auto max-w-[1080px] px-5 pb-20 sm:px-8">
+      <div className="relative mx-auto mt-12 max-w-[1080px]">
         <HeroStage>
           <ProductTour />
         </HeroStage>
@@ -255,211 +313,97 @@ function Hero() {
   )
 }
 
-function ClientStrip() {
-  const row = [...clients, ...clients]
-  return (
-    <section className="border-y border-[#F2DFE7] bg-white/60 py-9">
-      <p className="px-5 text-center text-[12.5px] text-[#705A66]">
-        Türkiye’nin dört bir yanındaki güzellik merkezleri BeautyAsist ile çalışıyor
-      </p>
-      <div className="landing-marquee mt-6 overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
-        <div className="landing-marquee-track flex w-max items-center gap-14 px-6">
-          {row.map((name, i) => (
-            <span key={`${name}-${i}`} className="whitespace-nowrap font-display text-[18px] tracking-[-0.02em] text-[#B79AA6] transition-colors hover:text-[#8E3F5B]">
-              {name}
-            </span>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
 /**
- * Kenardan kenara görsel + üstünde tek cümlelik iddia.
- * Fotoğraf sayfadan yavaş kayar (parallax) → derinlik.
+ * MODÜLLER — az kontrastlı ipek dokusu üstünde SÜRÜKLENEN cam kartlar.
+ *
+ * Buradaki klip bir SAHNE değil DÜZLEMDİR: anlatacak bir olayı yoktur, yüzeye canlılık verir.
+ * Kartlar bir rayda durur; ray parmakla sürüklenir, bırakma hızını devralır ve momentumun
+ * taşıyacağı karta oturur (bkz. DragRail). On iki modül böylece sayfayı şişirmeden gezilir.
  */
-function ImageStatement() {
-  return (
-    <section className="relative h-[78vh] min-h-[460px] overflow-hidden">
-      <div className="absolute inset-0 scale-[1.14]">
-        <div className="cine-parallax relative h-full w-full">
-          <Image
-            src="/landing/resepsiyon.webp"
-            alt="Modern bir güzellik merkezinin resepsiyonunda danışanı karşılayan uzman"
-            fill
-            sizes="100vw"
-            className="object-cover"
-            priority={false}
-          />
-        </div>
-      </div>
-      {/* Metnin okunması için ölçülü bir örtü — görseli boğmaz. */}
-      <div aria-hidden className="absolute inset-0 bg-gradient-to-r from-[#2A1320]/70 via-[#2A1320]/35 to-transparent" />
-
-      <div className="relative mx-auto flex h-full max-w-[1200px] items-center px-5 sm:px-8">
-        <Reveal>
-          <div className="max-w-[36ch]">
-            <h2 className="display-lg text-white">Danışanınız kapıdan girdiğinde her şey hazır.</h2>
-            <p className="mt-5 max-w-[44ch] text-[16.5px] leading-relaxed text-white/90">
-              Geçmişi, paketi, kalan seansı ve borcu tek ekranda. Karşılama, aramayla değil bakışla başlar.
-            </p>
-          </div>
-        </Reveal>
-      </div>
-    </section>
-  )
-}
-
-/**
- * İki yönlü anlatı: solda danışanın telefonu (online randevu), sağda uzmanın tableti (panel).
- * Görseller kaydırma ile ölçeklenir; metin katmanı üstte kalır.
- */
-function SplitStatement() {
-  const items = [
-    {
-      src: '/landing/danisan-telefon.webp',
-      alt: 'Bekleme alanında telefonundan randevu alan danışan',
-      eyebrow: 'Danışan tarafı',
-      title: 'Telefonundan randevu alır.',
-      body: 'Kendi sayfanızdan uygun saati seçer, kalan seansını görür. Hatırlatma WhatsApp’tan gider; “Evet” yanıtı randevuyu onaylar.',
-      href: '/salonlar',
-      cta: 'Salonları görün',
-    },
-    {
-      src: '/landing/tablet.webp',
-      alt: 'Resepsiyonda tabletten paneli kullanan uzman',
-      eyebrow: 'Merkez tarafı',
-      title: 'Siz paneli açarsınız.',
-      body: 'Gün, danışan geçmişi, kalan seans ve kasa aynı ekranda. Tablet, masaüstü ve telefonda aynı veriyle çalışır.',
-      href: '#tur',
-      cta: 'Ürün turunu izleyin',
-    },
-  ]
-
-  return (
-    <section className="px-5 py-6 sm:px-8">
-      <div className="mx-auto grid max-w-[1200px] gap-4 lg:grid-cols-2">
-        {items.map((it, i) => (
-          <Reveal key={it.title} delay={i * 90}>
-            <article className="group relative h-[440px] overflow-hidden rounded-[22px] sm:h-[520px]">
-              <div className="absolute inset-0">
-                {/* Süre, kısayol yardımcısıyla değil açık CSS özelliğiyle veriliyor: Tailwind 3.4'te
-                    kısayol hem transition hem animation süresiyle eşleşiyor ve build "ambiguous"
-                    uyarısı veriyor. Açık özellik aynı CSS'i üretir, belirsizlik kalmaz.
-                    NOT: uyarıyı tetikleyen sözdizimi bu yoruma YAZILMAZ — Tailwind ham dosya
-                    metnini tarar, yorumdaki örnek bile sınıf sanılıp uyarıyı geri getirir. */}
-                <Image
-                  src={it.src}
-                  alt={it.alt}
-                  fill
-                  sizes="(max-width: 1024px) 100vw, 50vw"
-                  className="object-cover object-center transition-transform [transition-duration:1200ms] group-hover:scale-[1.05]"
-                />
-              </div>
-              {/* Örtü yalnız ALT ÜÇTE BİRDE yoğunlaşır: metin okunur kalır, fotoğrafın üst
-                  bölümü (yüz, ortam) kararmaz. Tam yükseklikte degrade görseli boğuyordu. */}
-              <div aria-hidden className="absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-[#2A1320]/88 via-[#2A1320]/45 to-transparent" />
-
-              <div className="relative flex h-full flex-col justify-end p-6 sm:p-8">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#FFDCE8]">{it.eyebrow}</span>
-                <h3 className="mt-2.5 font-display text-[26px] leading-[1.1] tracking-[-0.03em] text-white sm:text-[32px]">{it.title}</h3>
-                <p className="mt-3 max-w-[42ch] text-[14.5px] leading-relaxed text-white/90">{it.body}</p>
-                <Link
-                  href={it.href}
-                  className="mt-5 inline-flex w-fit items-center gap-2 rounded-full bg-white/95 px-5 py-2.5 text-[13.5px] font-medium text-[#8E3F5B] transition-transform hover:-translate-y-0.5"
-                >
-                  {it.cta} <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </div>
-            </article>
-          </Reveal>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function SectionHead({ eyebrow, title, body }: { eyebrow: string; title: string; body?: string }) {
-  return (
-    <div className="mx-auto max-w-[64ch] text-center">
-      <span className="text-[11.5px] font-semibold uppercase tracking-[0.18em] text-[#EF6F94]">{eyebrow}</span>
-      <h2 className="display-lg mt-4 text-[#352432]">{title}</h2>
-      {body && <p className="mt-4 text-[16px] leading-relaxed text-[#4A3A44]">{body}</p>}
-    </div>
-  )
-}
-
 function Modules() {
   return (
-    <section id="moduller" className="scroll-mt-16 px-5 py-20 sm:px-8 sm:py-28">
-      <div className="mx-auto max-w-[1200px]">
-        <Reveal>
-          <SectionHead
-            eyebrow="Tüm ihtiyaçlarınız tek platformda"
-            title="Eksiksiz modüller, tek veri."
-            body="Randevudan tahsilata bütün operasyon aynı veri üzerinde çalışır; modüller arası kopukluk olmaz."
-          />
-        </Reveal>
+    <section id="moduller" className="relative isolate scroll-mt-16 py-24 sm:py-32">
 
-        <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {modules.map((m, i) => (
-            <Reveal key={m.title} delay={(i % 3) * 70}>
-              <Spotlight className="h-full">
-                <article className="group relative h-full overflow-hidden rounded-[20px] border border-[#EEC9D7] bg-white p-6 transition-all duration-500 hover:-translate-y-1.5 hover:border-[#EF6F94] hover:shadow-[0_30px_66px_-40px_rgba(150,78,104,0.7)]">
-                  <span className="relative z-[2] grid h-11 w-11 place-items-center rounded-[13px] bg-[#FFF0F5] text-[#EF6F94] transition-colors duration-500 group-hover:bg-[#EF6F94] group-hover:text-white">
-                    <m.icon className="h-5 w-5" strokeWidth={1.7} />
-                  </span>
-                  <h3 className="relative z-[2] mt-5 text-[15.5px] font-semibold tracking-[-0.015em] text-[#352432]">{m.title}</h3>
-                  <p className="relative z-[2] mt-2.5 text-[13.5px] leading-relaxed text-[#705A66]">{m.body}</p>
-                </article>
-              </Spotlight>
-            </Reveal>
-          ))}
+      <div className="relative">
+        <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
+          <Reveal>
+            <SectionHead
+              eyebrow="Tüm ihtiyaçlarınız tek platformda"
+              title="Eksiksiz modüller, tek veri."
+              body="Randevudan tahsilata bütün operasyon aynı veri üzerinde çalışır; modüller arası kopukluk olmaz."
+            />
+          </Reveal>
         </div>
 
-        <Reveal delay={80}>
-          <p className="mt-8 text-center text-[13px] text-[#705A66]">
-            Hepsi kurum yöneticisi panelinde hazır — ayrı ayrı satın alınan eklentiler değil.
-          </p>
-        </Reveal>
+        <div className="mx-auto mt-14 max-w-[1200px] px-5 sm:px-8">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {modules.map((m, i) => (
+              <Reveal key={m.title} delay={(i % 3) * 70}>
+                <article className="material-light h-full rounded-[22px] p-6">
+                  <span className="grid h-11 w-11 place-items-center rounded-[13px] bg-[#FFF0F5] text-[#EF6F94]">
+                    <m.icon className="h-5 w-5" strokeWidth={1.7} />
+                  </span>
+                  <h3 className="mt-5 text-[15.5px] font-semibold tracking-[-0.015em] text-[#352432]">{m.title}</h3>
+                  <p className="on-material mt-2.5 text-[13.5px] leading-relaxed text-[#5A4752]">{m.body}</p>
+                </article>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+
+        <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
+          <Reveal delay={120}>
+            <div className="mt-8 flex flex-col items-center gap-4">
+              <p className="material-light on-material w-fit rounded-full px-5 py-2.5 text-center text-[13px] text-[#4A3A44]">
+                Hepsi kurum yöneticisi panelinde hazır — ayrı ayrı satın alınan eklentiler değil.
+              </p>
+              <PressButton href="/moduller" tone="glass-light" className="border border-[#EEC9D7] px-6 py-3 text-[14px] font-medium">
+                Tüm özellikleri görün <ArrowRight className="h-4 w-4" />
+              </PressButton>
+            </div>
+          </Reveal>
+        </div>
       </div>
     </section>
   )
 }
 
+/**
+ * NASIL ÇALIŞIR — solda çerçeveli video, sağda dört adım.
+ * Klip burada zemin değil NESNEDİR: kendi yuvarlatılmış çerçevesinde durur, adımlar yanında
+ * düz zeminde okunur. Kurulumun "elle hazırlanan" hissi görüntüyle, bilgi metinle taşınır.
+ */
 function Steps() {
   return (
-    <section id="nasil" className="scroll-mt-16 border-y border-[#F2DFE7] bg-[#FFF0F5] px-5 py-20 sm:px-8 sm:py-28">
-      <div className="mx-auto max-w-[1200px]">
+    <section id="nasil" className="relative isolate scroll-mt-16 px-5 py-24 sm:px-8 sm:py-32">
+      <div className="relative mx-auto max-w-[1200px]">
         <Reveal>
-          <SectionHead eyebrow="Nasıl çalışır" title="4 adımda merkezinizi dijitale taşıyın" />
+          <SectionHead
+            eyebrow="Nasıl çalışır"
+            title="4 adımda merkezinizi dijitale taşıyın"
+            body="Kurulumu biz yapıyoruz. Siz yalnız hizmet listenizi onaylıyorsunuz."
+          />
         </Reveal>
 
-        <Reveal delay={60}>
-          <div className="mx-auto mt-11 max-w-[760px] overflow-hidden rounded-[22px]">
-            <div className="cine-zoom relative h-[220px] w-full sm:h-[280px]">
-              <Image
-                src="/landing/bakim.webp"
-                alt="Güzellik merkezinde uygulanan bir cilt bakımı"
-                fill
-                sizes="(max-width: 760px) 100vw, 760px"
-                className="object-cover"
-              />
+        <div className="mt-14 grid items-center gap-10 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:gap-14">
+          <Reveal>
+            <div className="relative aspect-[4/3] overflow-hidden rounded-[26px] shadow-[0_40px_90px_-55px_rgba(90,40,62,0.85)]">
+              <AmbientVideo src="/landing/film/kurulum.mp4" poster="/landing/film/kurulum.webp" />
             </div>
-          </div>
-        </Reveal>
+          </Reveal>
 
-        <div className="relative mt-12">
-          <div aria-hidden className="absolute left-0 right-0 top-5 hidden h-px bg-[#EEC9D7] lg:block" />
-          <ol className="relative grid gap-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+          <ol className="material-light space-y-7 rounded-[24px] p-7 sm:p-9">
             {steps.map((s, i) => (
-              <Reveal key={s.title} as="li" delay={i * 90}>
-                <span className="grid h-10 w-10 place-items-center rounded-full border border-[#EEC9D7] bg-white text-[14px] font-semibold text-[#EF6F94]">
-                  {i + 1}
-                </span>
-                <h3 className="mt-5 text-[15.5px] font-semibold tracking-[-0.015em] text-[#352432]">{s.title}</h3>
-                <p className="mt-2.5 text-[13.5px] leading-relaxed text-[#705A66]">{s.body}</p>
+              <Reveal key={s.title} as="li" delay={i * 80}>
+                <div className="flex gap-5">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#EEC9D7] bg-white text-[14px] font-semibold text-[#EF6F94]">
+                    {i + 1}
+                  </span>
+                  <div>
+                    <h3 className="text-[16px] font-semibold tracking-[-0.015em] text-[#352432]">{s.title}</h3>
+                    <p className="on-material mt-2 text-[14px] leading-relaxed text-[#4A3A44]">{s.body}</p>
+                  </div>
+                </div>
               </Reveal>
             ))}
           </ol>
@@ -472,6 +416,9 @@ function Steps() {
 /**
  * Fiyat bölümü — platformdaki gerçek paketlerden üretilir.
  * `plans` null ise (backend kapalı ya da tanımlı ücretli paket yok) fiyat yerine teklif akışı gösterilir.
+ *
+ * Zeminde su yüzeyi düzlemi döner; fiyat KARARININ verildiği yer olduğu için peçe burada en
+ * güçlüdür ve kartlar DÜZ BEYAZDIR — okunabilirlik süse feda edilmez.
  */
 function Pricing({ plans }: { plans: PublicPlan[] | null }) {
   // Vitrinde en fazla dört paket (kataloğun tamamı daha fazlaysa ilk dördü): beşinci kart
@@ -481,8 +428,9 @@ function Pricing({ plans }: { plans: PublicPlan[] | null }) {
   const featuredIndex = shown.length >= 3 ? 1 : shown.length - 1
 
   return (
-    <section id="fiyat" className="scroll-mt-16 px-5 py-20 sm:px-8 sm:py-28">
-      <div className="mx-auto max-w-[1200px]">
+    <section id="fiyat" className="relative isolate scroll-mt-16 px-5 py-24 sm:px-8 sm:py-32">
+
+      <div className="relative mx-auto max-w-[1200px]">
         <Reveal>
           <SectionHead
             eyebrow="Fiyatlandırma"
@@ -493,18 +441,15 @@ function Pricing({ plans }: { plans: PublicPlan[] | null }) {
 
         {shown.length === 0 ? (
           <Reveal delay={80}>
-            <div className="mx-auto mt-12 max-w-[560px] rounded-[20px] border border-[#EEC9D7] bg-white p-8 text-center">
+            <div className="mx-auto mt-12 max-w-[560px] rounded-[22px] border border-[#EEC9D7] bg-white p-8 text-center shadow-[0_30px_70px_-46px_rgba(90,40,62,0.75)]">
               <h3 className="font-display text-[19px] tracking-[-0.02em] text-[#352432]">Size özel teklif hazırlayalım</h3>
               <p className="mx-auto mt-3 max-w-[46ch] text-[14px] leading-relaxed text-[#4A3A44]">
                 Paket, şube ve kullanıcı sayınıza göre belirlenir. Merkezinizin ölçüsünü paylaşın,
                 uygun planı fiyatıyla birlikte gönderelim.
               </p>
-              <Link
-                href="/login"
-                className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#EF6F94] px-6 py-3 text-[14.5px] font-medium text-white transition-transform hover:-translate-y-0.5"
-              >
+              <PressButton href="/login" tone="primary" className="mt-6 px-6 py-3 text-[14.5px] font-medium">
                 Teklif iste <ArrowRight className="h-4 w-4" />
-              </Link>
+              </PressButton>
             </div>
           </Reveal>
         ) : (
@@ -516,10 +461,10 @@ function Pricing({ plans }: { plans: PublicPlan[] | null }) {
               return (
                 <Reveal key={p.id} delay={i * 80}>
                   <article
-                    className={`relative flex h-full flex-col rounded-[20px] border p-6 transition-all duration-500 hover:-translate-y-1.5 ${
+                    className={`relative flex h-full flex-col rounded-[22px] border bg-white p-6 ${
                       featured
-                        ? 'border-[#EF6F94] bg-white shadow-[0_34px_78px_-44px_rgba(239,111,148,0.9)]'
-                        : 'border-[#EEC9D7] bg-white hover:border-[#EF6F94]'
+                        ? 'border-[#EF6F94] shadow-[0_38px_84px_-40px_rgba(239,111,148,0.95)]'
+                        : 'border-[#EEC9D7] shadow-[0_30px_70px_-46px_rgba(90,40,62,0.75)]'
                     }`}
                   >
                     {featured && (
@@ -537,9 +482,7 @@ function Pricing({ plans }: { plans: PublicPlan[] | null }) {
                       <span className="text-[13px] text-[#705A66]">/ay</span>
                     </div>
                     {yearlyPerMonth > 0 && yearlyPerMonth < p.monthlyPriceTRY && (
-                      <p className="mt-1 text-[11.5px] text-[#8E3F5B]">
-                        Yıllık ödemede {tl(yearlyPerMonth)}/ay
-                      </p>
+                      <p className="mt-1 text-[11.5px] text-[#8E3F5B]">Yıllık ödemede {tl(yearlyPerMonth)}/ay</p>
                     )}
 
                     <ul className="mt-6 flex-1 space-y-2.5">
@@ -551,30 +494,28 @@ function Pricing({ plans }: { plans: PublicPlan[] | null }) {
                       ))}
                     </ul>
 
-                    <Link
-                      href="/login"
-                      className={`mt-7 block rounded-full px-5 py-3 text-center text-[14px] font-medium transition-transform hover:-translate-y-px ${
-                        featured ? 'bg-[#EF6F94] text-white' : 'border border-[#EEC9D7] bg-white text-[#4A3A44] hover:border-[#EF6F94]'
-                      }`}
-                    >
-                      Planı seç
-                    </Link>
+                    {/* Seçim sepete düşer; kimlik ödeme sayfasında sorulur (bkz. PlanPicker). */}
+                    <PlanPicker
+                      planId={p.id}
+                      planName={p.name}
+                      priceTRY={p.monthlyPriceTRY}
+                      featured={featured}
+                    />
                   </article>
                 </Reveal>
               )
             })}
-
           </div>
         )}
 
         {shown.length > 0 && (
           <Reveal delay={120}>
-            <aside className="mt-4 grid gap-6 rounded-[20px] border border-[#EEC9D7] bg-[#FFF0F5] p-6 sm:p-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <aside className="material-light mt-4 grid gap-6 rounded-[22px] p-6 sm:p-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
               <div>
                 <h3 className="font-display text-[17px] leading-snug tracking-[-0.02em] text-[#352432]">Yatırımınızın gerçek getirisi</h3>
                 <ul className="mt-4 flex flex-wrap gap-x-7 gap-y-2.5">
                   {['Telefon trafiği azalır', 'Gelmeyen danışan oranı düşer', 'Operasyon hızlanır', 'Kasa gün sonunda tutar'].map((t) => (
-                    <li key={t} className="flex gap-2.5 text-[12.5px] text-[#4A3A44]">
+                    <li key={t} className="on-material flex gap-2.5 text-[12.5px] text-[#4A3A44]">
                       <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#EF6F94]" strokeWidth={2.4} />
                       {t}
                     </li>
@@ -582,24 +523,18 @@ function Pricing({ plans }: { plans: PublicPlan[] | null }) {
                 </ul>
               </div>
               <div className="rounded-[16px] border border-[#EEC9D7] bg-white px-6 py-4 text-center lg:min-w-[190px]">
-                <div className="text-[10.5px] uppercase tracking-[0.14em] text-[#705A66]">Ortalama geri dönüş</div>
+                <div className="text-fine text-[10.5px] uppercase tracking-[0.14em] text-[#705A66]">Ortalama geri dönüş</div>
                 <div className="mt-1 text-[26px] font-semibold tabular-nums tracking-[-0.03em] text-[#EF6F94]">3–6 ay</div>
               </div>
             </aside>
           </Reveal>
         )}
 
-        <Reveal delay={80}>
-          <p className="mt-7 text-center text-[12.5px] text-[#705A66]">
-            Kurulum bir kereliktir: hesap açılışı, kullanıcılar, paket tanımları ve online eğitim dahil.
-          </p>
-        </Reveal>
-
         {/* SATIN ALMA NOKTASINDA ÖDEME + YASAL BİLGİ.
             Ödeme kuruluşu incelemesi bu bilgileri yalnız footer'da değil, fiyatın görüldüğü
             yerde de arar; kullanıcı da hangi kartla ödeyeceğini burada görmek ister. */}
-        <Reveal delay={100}>
-          <div className="mx-auto mt-6 flex max-w-[760px] flex-col items-center gap-3 rounded-[18px] border border-[#EEC9D7] bg-white/80 px-6 py-5 text-center">
+        <Reveal delay={140}>
+          <div className="material-light mx-auto mt-6 flex max-w-[760px] flex-col items-center gap-3 rounded-[18px] px-6 py-5 text-center">
             <PaymentBadges />
             <LegalLinkRow className="justify-center text-[#705A66]" />
           </div>
@@ -609,97 +544,99 @@ function Pricing({ plans }: { plans: PublicPlan[] | null }) {
   )
 }
 
-function Testimonials() {
+/**
+ * REFERANSLAR — uzaktan, odak dışı bir salon iç mekânı üstünde SÜRÜKLENEN koyu cam alıntılar.
+ * Sahne klibi olduğu için muamele koyudur; kartlar `material-dark` katmanıdır.
+ */
+function Voices() {
   return (
-    <section id="referans" className="scroll-mt-16 border-y border-[#F2DFE7] bg-white/60 px-5 py-20 sm:px-8 sm:py-28">
-      <div className="mx-auto max-w-[1200px]">
-        <Reveal>
-          <SectionHead eyebrow="Referanslar" title="Kullanıcılarımız ne diyor?" />
-        </Reveal>
+    <section id="referans" className="relative isolate scroll-mt-16 py-24 sm:py-32">
+      <Veil color="rgba(20,10,17,0.48)" />
 
-        {/* Ekip fotoğrafı — referansların insan yüzü. Kaydırmayla kadraja oturur. */}
-        <Reveal delay={60}>
-          <div className="mt-12 overflow-hidden rounded-[22px]">
-            <div className="cine-zoom relative h-[240px] w-full sm:h-[320px]">
-              <Image
-                src="/landing/ekip.webp"
-                alt="Bir güzellik merkezinin ekibi"
-                fill
-                sizes="(max-width: 1200px) 100vw, 1200px"
-                className="object-cover"
-              />
-            </div>
-          </div>
-        </Reveal>
-
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          {testimonials.map((t, i) => (
-            <Reveal key={t.name} delay={i * 90}>
-              <figure className="h-full rounded-[20px] border border-[#EEC9D7] bg-white p-7 transition-shadow duration-500 hover:shadow-[0_30px_66px_-42px_rgba(150,78,104,0.65)]">
-                <Quote className="h-7 w-7 text-[#FFDCE8]" strokeWidth={2} />
-                <blockquote className="mt-4 text-[15.5px] leading-relaxed text-[#4A3A44]">{t.quote}</blockquote>
-                <figcaption className="mt-6 flex items-center gap-3 border-t border-[#F2DFE7] pt-5">
-                  <span aria-hidden className="grid h-10 w-10 place-items-center rounded-full bg-[#FFDCE8] text-[13px] font-semibold text-[#8E3F5B]">
-                    {t.name.slice(0, 2).toUpperCase()}
-                  </span>
-                  <span>
-                    <span className="block text-[13.5px] font-semibold text-[#352432]">{t.name}</span>
-                    <span className="block text-[12px] text-[#705A66]">{t.city}</span>
-                  </span>
-                  <span className="ml-auto flex gap-0.5" aria-label="5 üzerinden 5">
-                    {Array.from({ length: 5 }).map((_, s) => (
-                      <Star key={s} className="h-3.5 w-3.5 fill-[#EF6F94] text-[#EF6F94]" />
-                    ))}
-                  </span>
-                </figcaption>
-              </figure>
-            </Reveal>
-          ))}
+      <div className="relative">
+        <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
+          <Reveal>
+            <SectionHead eyebrow="Referanslar" title="Kullanıcılarımız ne diyor?" tone="dark" />
+          </Reveal>
         </div>
+
+        <Reveal delay={80}>
+          <DragRail label="Kullanıcı yorumları" className="mt-14">
+            <div className="flex gap-4 px-5 pb-2 sm:px-8">
+              {testimonials.map((t) => (
+                <figure
+                  key={t.name}
+                  className="material-dark material-thick w-[320px] shrink-0 snap-start rounded-[22px] p-7 sm:w-[420px]"
+                >
+                  <Quote className="h-7 w-7 text-[#FFB6CC]" strokeWidth={2} />
+                  <blockquote className="on-material mt-4 text-[15.5px] leading-relaxed text-white">{t.quote}</blockquote>
+                  <figcaption className="mt-6 flex items-center gap-3 border-t border-white/20 pt-5">
+                    <span aria-hidden className="grid h-10 w-10 place-items-center rounded-full bg-[#FFB6CC] text-[13px] font-semibold text-[#5A2038]">
+                      {t.name.slice(0, 2).toUpperCase()}
+                    </span>
+                    <span>
+                      <span className="block text-[13.5px] font-semibold text-white">{t.name}</span>
+                      <span className="text-fine block text-[12px] text-white/80">{t.city}</span>
+                    </span>
+                    <span className="ml-auto flex gap-0.5" aria-label="5 üzerinden 5">
+                      {Array.from({ length: 5 }).map((_, s) => (
+                        <Star key={s} className="h-3.5 w-3.5 fill-[#FFB6CC] text-[#FFB6CC]" />
+                      ))}
+                    </span>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </DragRail>
+        </Reveal>
       </div>
     </section>
   )
 }
 
+/**
+ * KAPANIŞ — yolculuğun son karesi.
+ *
+ * Arkada tek çekimin gecesi akar (camın ardında şehir ışıkları). Metin doğrudan görüntünün
+ * üstüne serilmez: kendi KOYU CAM PANELİNDE durur, böylece hareketli ışık kontrastı bozamaz.
+ * Panel geniş bir yüzey olduğu için `material-thick` ile daha kalın okunur.
+ */
 function FinalCta() {
   return (
-    <section className="relative overflow-hidden">
-      <div className="absolute inset-0 scale-[1.14]">
-        <div className="cine-parallax relative h-full w-full">
-          <Image
-            src="/landing/tedavi-odasi.webp"
-            alt="Modern bir güzellik merkezinin bakım odası"
-            fill
-            sizes="100vw"
-            className="object-cover"
-          />
-        </div>
-      </div>
-      {/* Fotoğrafın açık bölgelerinde beyaz metnin kontrastı düşüyordu; örtü bir tık koyulaştırıldı. */}
-      <div aria-hidden className="absolute inset-0 bg-[#2A1320]/80" />
+    <section className="relative isolate">
+      <Veil color="rgba(20,10,17,0.55)" />
 
-      <div className="relative mx-auto max-w-[1200px] px-5 py-24 text-center sm:px-8 sm:py-32">
+      <div className="relative mx-auto max-w-[1200px] px-5 py-24 sm:px-8 sm:py-32">
         <Reveal>
-          <h2 className="display-lg mx-auto max-w-[20ch] text-white">Merkezinizi bir üst seviyeye taşıyın.</h2>
-          <p className="mx-auto mt-5 max-w-[50ch] text-[16.5px] leading-relaxed text-white/95">
-            Kartsız, 14 gün ücretsiz deneyin; farkı ilk günden görün. Mevcut danışan ve paket kayıtlarınızı biz aktarıyoruz.
-          </p>
-          <div className="mt-9 flex flex-wrap justify-center gap-3">
-            <Link href="/kayit" className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[15px] font-medium text-[#8E3F5B] transition-transform hover:-translate-y-0.5">
-              14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link href="/salonlar" className="inline-flex items-center gap-2 rounded-full border border-white/40 px-7 py-3.5 text-[15px] text-white transition-colors hover:bg-white/10">
-              <MessageCircle className="h-4 w-4" /> Salonları keşfet
-            </Link>
+          <div className="material-dark material-thick mx-auto max-w-[760px] rounded-[28px] p-9 text-center sm:p-12">
+            <h2 className="display-lg balance mx-auto max-w-[20ch] text-white">Yarın sabah, gün yine hazır olsun.</h2>
+            <p className="on-material balance mx-auto mt-5 max-w-[50ch] text-[16.5px] leading-relaxed text-white">
+              Kartsız, 14 gün ücretsiz deneyin; farkı ilk günden görün. Mevcut danışan ve paket
+              kayıtlarınızı biz aktarıyoruz.
+            </p>
+
+            <div className="mt-10 flex flex-wrap justify-center gap-3">
+              <PressButton href="/kayit" tone="primary" className="px-7 py-3.5 text-[15px] font-medium">
+                14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
+              </PressButton>
+              <PressButton
+                href="/salonlar"
+                tone="glass-dark"
+                className="border border-white/40 px-7 py-3.5 text-[15px]"
+              >
+                <MessageCircle className="h-4 w-4" /> Salonları keşfet
+              </PressButton>
+            </div>
+
+            <ul className="mt-9 flex flex-wrap justify-center gap-x-7 gap-y-2.5 border-t border-white/20 pt-7">
+              {['14 gün ücretsiz deneme', 'Kurulum ve eğitim dahil', 'Kredi kartı gerektirmez'].map((t) => (
+                <li key={t} className="flex items-center gap-2 text-[13.5px] text-white">
+                  <Check className="h-4 w-4 shrink-0 text-[#FFB6CC]" strokeWidth={2.4} />
+                  {t}
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="mt-9 flex flex-wrap justify-center gap-x-7 gap-y-2.5">
-            {['14 gün ücretsiz deneme', 'Kurulum ve eğitim dahil', 'Kredi kartı gerektirmez'].map((t) => (
-              <li key={t} className="flex items-center gap-2 text-[13.5px] text-white/90">
-                <Check className="h-4 w-4 shrink-0 text-[#FFDCE8]" strokeWidth={2.4} />
-                {t}
-              </li>
-            ))}
-          </ul>
         </Reveal>
       </div>
     </section>
@@ -709,61 +646,52 @@ function FinalCta() {
 function SiteFooter() {
   // YASAL SÜTUN ZORUNLU: ödeme kuruluşu (iyzico) üye iş yeri incelemesinde hakkımızda,
   // mesafeli satış, teslimat/iade ve gizlilik metinlerinin siteden ulaşılabilir olmasını arar.
-  // Eskiden buradaki `/kvkk` bağlantısı 404 veriyordu (o rota kuruma özel `/kvkk/[slug]`),
-  // yerine platformun kendi metinleri kondu.
   const columns = [
-    { title: 'Ürün', links: [['#tur', 'Ürün turu'], ['#moduller', 'Modüller'], ['#nasil', 'Nasıl çalışır'], ['#fiyat', 'Fiyatlandırma']] },
+    { title: 'Ürün', links: [['#bir-gun', 'Bir gün'], ['#tur', 'Ürün turu'], ['/moduller', 'Modüller'], ['#nasil', 'Nasıl çalışır'], ['#fiyat', 'Fiyatlandırma']] },
     { title: 'Danışanlar', links: [['/salonlar', 'Salonları keşfet'], ['/salonlar', 'Randevu al'], ['/randevu', 'Randevularım']] },
-    // "Hakkımızda" YASAL sütununda duruyor (kriterler listesinde sözleşmelerle birlikte aranır),
-    // burada tekrar edilmez.
+    // "Hakkımızda" YASAL sütununda duruyor (kriterler listesinde sözleşmelerle birlikte aranır).
     { title: 'Kurumsal', links: [['#referans', 'Referanslar'], ['/login', 'Giriş yap']] },
     { title: 'Yasal', links: legalLinks.map((link) => [link.href, link.label] as [string, string]) },
   ]
 
   return (
-    <footer className="relative overflow-hidden border-t border-[#F2DFE7] bg-[#FFF7FA]">
-      {/* Zeminde tek, çok yumuşak bir renk bulutu — hero ile aynı dil, daha sessiz. */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="bloom-slow absolute -bottom-40 left-1/3 h-[460px] w-[560px] rounded-full bg-[#FFDCE8]/45 blur-[120px]" />
-      </div>
+    <footer className="relative isolate overflow-hidden">
+      {/* Yolculuk burada biter: gece karesi tam örtülür ve sayfa kendi zeminine oturur.
+          Yarı saydam bir peçe olsaydı arkadaki hareket altbilgi metnini titretirdi. */}
+      <div aria-hidden className="absolute inset-0 bg-[#FFF7FA]" />
+      {/* Geceden gündüze geçiş: sert bir kenar yerine gecenin rengi footer zeminine erir. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-40"
+        style={{ background: 'linear-gradient(to bottom, #140A11 0%, rgba(90,32,56,0.35) 38%, rgba(255,247,250,0) 100%)' }}
+      />
 
-      {/* Kapanış çağrısı — sayfanın sonuna gelen ziyaretçiye son bir kapı. */}
-      <div className="mx-auto max-w-[1200px] px-5 pt-14 sm:px-8">
+      <div className="relative mx-auto max-w-[1200px] px-5 pt-16 sm:px-8">
         <Reveal>
-          <div className="flex flex-col items-start justify-between gap-6 rounded-[20px] border border-[#EEC9D7] bg-white/80 p-6 backdrop-blur sm:p-8 lg:flex-row lg:items-center">
+          <div className="material-light flex flex-col items-start justify-between gap-6 rounded-[22px] p-6 sm:p-8 lg:flex-row lg:items-center">
             <div>
-              <h2 className="font-display text-[22px] leading-snug tracking-[-0.025em] text-[#352432] sm:text-[26px]">
-                Merkezinizi 14 gün ücretsiz deneyin.
-              </h2>
-              <p className="mt-2 max-w-[52ch] text-[14px] leading-relaxed text-[#4A3A44]">
+              <h2 className="display-md text-[#352432]">Merkezinizi 14 gün ücretsiz deneyin.</h2>
+              <p className="on-material mt-2 max-w-[52ch] text-[14px] leading-relaxed text-[#4A3A44]">
                 Kurulum, veri aktarımı ve eğitim bizde. Kredi kartı gerekmez.
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap gap-3">
-              <Magnetic>
-                <Link
-                  href="/kayit"
-                  className="inline-flex items-center gap-2 rounded-full bg-[#EF6F94] px-6 py-3 text-[14.5px] font-medium text-white shadow-[0_18px_40px_-20px_rgba(239,111,148,0.95)] transition-shadow hover:shadow-[0_24px_50px_-18px_rgba(239,111,148,1)]"
-                >
-                  14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Magnetic>
-              <Link
-                href="/salonlar"
-                className="inline-flex items-center gap-2 rounded-full border border-[#EEC9D7] bg-white px-6 py-3 text-[14.5px] text-[#4A3A44] transition-colors hover:border-[#EF6F94]"
-              >
+              <PressButton href="/kayit" tone="primary" className="px-6 py-3 text-[14.5px] font-medium">
+                14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
+              </PressButton>
+              <PressButton href="/salonlar" tone="glass-light" className="border border-[#EEC9D7] px-6 py-3 text-[14.5px]">
                 Salonları görün
-              </Link>
+              </PressButton>
             </div>
           </div>
         </Reveal>
       </div>
 
-      <div className="mx-auto grid max-w-[1200px] gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))]">
+      <div className="relative mx-auto grid max-w-[1200px] gap-10 px-5 py-14 sm:px-8 lg:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,1fr))]">
         <div>
           <Link href="/" className="flex items-center gap-3">
-            <Image src="/logo.png" alt="" width={52} height={52} className="h-13 w-13 object-contain" />
-            <span className="text-[18px] font-semibold tracking-[-0.015em]">BeautyAsist</span>
+            <Image src="/logo.png" alt="" width={48} height={48} className="h-12 w-12 object-contain" />
+            <span className="text-[18px] font-semibold tracking-[-0.02em]">BeautyAsist</span>
           </Link>
           <p className="mt-4 max-w-[42ch] text-[13px] leading-relaxed text-[#705A66]">
             Güzellik merkezleri için geliştirilmiş hepsi bir arada yönetim platformu. Daha mutlu
@@ -771,12 +699,11 @@ function SiteFooter() {
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             {['Web', 'Tablet', 'Mobil', 'Masaüstü'].map((p) => (
-              <span key={p} className="rounded-full border border-[#EEC9D7] bg-white/70 px-2.5 py-1 text-[11.5px] text-[#705A66]">
+              <span key={p} className="text-fine rounded-full border border-[#EEC9D7] bg-white/70 px-2.5 py-1 text-[11.5px] text-[#705A66]">
                 {p}
               </span>
             ))}
           </div>
-          {/* Ödeme altyapısı şeridi — kabul edilen kartlar + iyzico markası. */}
           <PaymentBadges className="mt-6" />
         </div>
 
@@ -800,8 +727,8 @@ function SiteFooter() {
         ))}
       </div>
 
-      <div className="border-t border-[#F2DFE7]">
-        <div className="mx-auto flex max-w-[1200px] flex-col gap-2 px-5 py-5 text-[12px] text-[#705A66] sm:flex-row sm:items-center sm:justify-between sm:px-8">
+      <div className="relative border-t border-[#F2DFE7]">
+        <div className="text-fine mx-auto flex max-w-[1200px] flex-col gap-2 px-5 py-5 text-[12px] text-[#705A66] sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <p>© {new Date().getFullYear()} BeautyAsist. Tüm hakları saklıdır.</p>
           <p className="flex items-center gap-1.5">
             <ShieldCheck className="h-3.5 w-3.5 text-[#EF6F94]" />

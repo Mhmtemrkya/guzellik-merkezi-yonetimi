@@ -1,6 +1,9 @@
 'use client'
 import { AnimatePresence, motion, type Variants } from 'framer-motion'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { hasPendingCart } from '@/lib/cart'
+import { tenantHasPanelAccess } from '@/lib/subscriptionGate'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   ArrowRight,
@@ -22,7 +25,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useAuth } from '@/components/dashboard/AuthContext'
-import type { Branch, Institution, UserRole } from '@/lib/types'
+import type { AuthSession, Branch, Institution, UserRole } from '@/lib/types'
 
 function tenantStatusLabel(status: string | null | undefined): string {
   const key = String(status || '').toLowerCase()
@@ -82,6 +85,28 @@ const roleMetas: RoleMeta[] = [
     cardClass: 'from-[#4a2236] via-[#3a1a2b] to-[#2a1220] text-white',
   },
 ]
+
+/**
+ * GİRİŞ SONRASI NEREYE?
+ *
+ * Sıra bilinçlidir:
+ *   1) SEPET DOLUYSA → ana sayfa. Kullanıcı satın alma niyetiyle geldi; seçtiği paketi üst
+ *      çubuktaki sepette görür ve ödemeye oradan devam eder.
+ *   2) KURUM YÖNETİCİSİ ve kurumun panele girme hakkı YOKSA → ana sayfa. Geçerli paketi
+ *      olmayan ya da süresi dolmuş kurum panele girse 403 duvarına çarpardı; onun yerine
+ *      paket seçebileceği yere gönderilir.
+ *   3) Diğer herkes → kendi rolünün sayfası.
+ *
+ * (2) YALNIZ KURUM YÖNETİCİSİ İÇİNDİR. Personel ve şube yöneticisi paket satın alamaz
+ * (bkz. BillingEndpoints yetki kontrolü); onları tanıtım sayfasına atmak hiçbir şey
+ * yapamayacakları bir çıkmaz sokak olurdu — panele gider, orada askı ekranını görürler.
+ * Platform yöneticisinin aboneliği yoktur, kapı ona da sorulmaz.
+ */
+async function destinationAfterLogin(session: AuthSession | null, roleHref: string): Promise<string> {
+  if (hasPendingCart()) return '/'
+  if (!session || session.user?.role !== 'InstitutionOwner') return roleHref
+  return (await tenantHasPanelAccess(session)) ? roleHref : '/'
+}
 
 function roleMetaFor(role: UserRole | string | null | undefined): RoleMeta | null {
   return roleMetas.find((m) => m.role === role) ?? null
@@ -355,7 +380,7 @@ export default function LoginPage() {
         router.push('/change-password')
         return
       }
-      router.push(pending.href)
+      router.push(await destinationAfterLogin(session, pending.href))
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Kod doğrulanamadı.')
     } finally {
@@ -394,6 +419,10 @@ export default function LoginPage() {
 
   // Masaüstü (Tauri) kabuğu her açılışta /login yükler; "beni hatırla" ile saklanan geçerli
   // oturum varsa formu göstermeden doğrudan role uygun panele geç. Web'de davranış değişmez.
+  //
+  // ABONELİK KAPISI BURADA UYGULANMAZ (bilerek): masaüstü kabuğu panel için vardır, tanıtım
+  // sayfası orada anlamsızdır. Süresi dolmuş kurum panele girer ve backend'in askı mesajını
+  // görür ("Abonelik süreniz doldu…"); paket satın alma web tarafında yapılır.
   useEffect(() => {
     if (!hydrated || !isAuthenticated) return
     if (typeof navigator === 'undefined' || !navigator.userAgent.includes('BeautyAsistDesktop')) return
@@ -1129,6 +1158,15 @@ export default function LoginPage() {
               <p className="flex items-center justify-center gap-2 pt-1 text-center text-[11px] text-[#352432]/[0.45]">
                 <ShieldCheck className="h-3.5 w-3.5 text-[#c85776]/70" strokeWidth={1.6} />
                 Giriş sonrası yetkinize göre ilgili panele yönlendirileceksiniz.
+              </p>
+
+              {/* KAYIT YOLU: bu ekranda hiç yoktu. Paket seçip giriş ekranına düşen ama henüz
+                  hesabı olmayan ziyaretçi buradan 14 günlük denemeye geçer. */}
+              <p className="pt-1 text-center text-[12.5px] text-[#352432]/[0.65]">
+                Hesabınız yok mu?{' '}
+                <Link href="/kayit" className="font-semibold text-[#c85776] underline-offset-4 hover:underline">
+                  Ücretsiz kayıt olun
+                </Link>
               </p>
             </div>
             </>

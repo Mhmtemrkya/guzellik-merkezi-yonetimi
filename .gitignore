@@ -116,3 +116,13 @@ Thumbs.db
 *.xlsx
 *.docx
 ~*
+
+# Tanitim sunumu: 142 MB'lik URETILMIS cikti (pptx/pdf + ekran goruntuleri).
+# Siteyi calistirmak icin GEREKMEZ ve git gecmisi kalicidir -- bir kez push edilirse
+# repoyu kalici olarak sisirir. Kaynagi Sunum/ disinda (Drive/OneDrive) tutulur.
+# Landing'in KULLANDIGI video/webp'ler Frontend/public/landing/film/ altinda ve repoda.
+Sunum/
+
+# Arac yedegi, kaynak degil
+.mcp.json.bak-*
+

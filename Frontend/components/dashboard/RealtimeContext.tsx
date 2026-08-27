@@ -53,6 +53,41 @@ const RealtimeContext = createContext<RealtimeContextValue>({
  * Süre bilgisi yoksa ENGELLEMEYİZ (fail-open): eski/eksik oturum şekilleri gerçek zamanlı katmanı
  * büsbütün kapatmasın.
  */
+/**
+ * SIGNALR LOGLAYICISI — BEKLENEN bağlantı hatalarını konsola basmaz.
+ *
+ * Sorun: `configureLogging(LogLevel.Error)` verildiğinde SignalR, negotiate/start
+ * başarısızlıklarını KENDİ logger'ıyla konsola yazar. Bu hatayı biz zaten `start()` içindeki
+ * `catch` ile ele alıyoruz (bağlantıyı kapatıp 10 sn sonra yeniden deniyoruz), yani konsola
+ * düşen satır kullanıcıya ve geliştiriciye yeni bir bilgi vermez — sadece gerçek hataları
+ * gizleyen bir gürültü katmanı olur. Backend kapalıyken ya da gerçek zamanlı katman hiç
+ * kurulmamışken (yerelde sık) her 10 saniyede iki kırmızı satır birikir.
+ *
+ * Bu yüzden hata seviyesindeki mesajlar YUTULUR; yerine ilk başarısızlıkta BİR KEZ, tek satırlık
+ * bilgilendirme verilir (yalnız geliştirmede). Kritik seviye asla susturulmaz.
+ */
+const realtimeLogger = {
+  log(level: LogLevel, message: string): void {
+    if (level >= LogLevel.Critical) {
+      console.error('[realtime]', message)
+      return
+    }
+    // Error ve altı: beklenen bağlantı gürültüsü — `start()` catch'i zaten yönetiyor.
+  },
+}
+
+/** Bağlanamama bilgisi oturum başına BİR KEZ yazılır; her denemede tekrarlanmaz. */
+let offlineNoticeShown = false
+
+function noteRealtimeOffline(url: string): void {
+  if (offlineNoticeShown || process.env.NODE_ENV === 'production') return
+  offlineNoticeShown = true
+  console.info(
+    `[realtime] Gerçek zamanlı katman kapalı — ${url} adresine bağlanılamadı. ` +
+      'Uygulama normal isteklerle çalışmaya devam ediyor.',
+  )
+}
+
 function usableToken(): string | null {
   const token = getAccessToken()
   if (!token) return null
@@ -120,7 +155,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       connection = new HubConnectionBuilder()
         .withUrl(url, { accessTokenFactory: () => getAccessToken() || '' })
         .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
-        .configureLogging(LogLevel.Error)
+        .configureLogging(realtimeLogger)
         .build()
 
       connection.on('realtime', (event: RealtimeEvent) => dispatch(event))
@@ -144,6 +179,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       } catch {
         // Backend kapalı olabilir — uygulama normal isteklerle çalışmaya devam eder.
         setConnected(false)
+        noteRealtimeOffline(url)
         retryTimer = setTimeout(() => void start(), 10000)
       }
     }

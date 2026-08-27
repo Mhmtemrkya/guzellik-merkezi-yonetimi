@@ -29,6 +29,7 @@ import { useAuth } from '@/components/dashboard/AuthContext'
 import { generateCredentialsPdf } from '@/lib/credentialsPdf'
 import { company } from '@/lib/legal/company'
 import {
+  SignupError,
   getSignupReadiness,
   resendSignupCode,
   startSignup,
@@ -164,6 +165,11 @@ export default function TenantSignupPage() {
   const { adoptSession } = useAuth()
 
   const [step, setStep] = useState<StepKey>('form')
+  /**
+   * Kod doğrulandı ve e-postanın BAŞKA bir hesapta kayıtlı olduğu ortaya çıktı.
+   * Bu bir hata değil, bir yol ayrımıdır: kullanıcının zaten hesabı var, girişe gitmeli.
+   */
+  const [emailTaken, setEmailTaken] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [readiness, setReadiness] = useState<SignupReadiness | null>(null)
@@ -323,6 +329,15 @@ export default function TenantSignupPage() {
       setCooldown(60)
       setStep('phone')
     } catch (err) {
+      // MÜKERRER E-POSTA BURADA ORTAYA ÇIKAR (409). Sunucu bunu 1. adımda söylemez: kayıtlı
+      // adresi anonim bir uçtan doğrulamak, adres listesi deneyerek "bu işletme sistemde var mı?"
+      // sorusunu cevaplanabilir hâle getirirdi. Kullanıcı kodu doğru girdiğine göre kutunun
+      // sahibidir; artık kendi durumunu öğrenebilir ve doğru yere — girişe — yönlendirilir.
+      if (err instanceof SignupError && err.status === 409) {
+        setEmailTaken(true)
+        setError('')
+        return
+      }
       setError(err instanceof Error ? err.message : 'Kod doğrulanamadı.')
     } finally {
       setLoading(false)
@@ -578,10 +593,17 @@ export default function TenantSignupPage() {
                       <Field label="İşletme Adı" icon={Building2} value={form.tenantName} onChange={set('tenantName')} onBlur={markTouched('tenantName')} error={shownError('tenantName')} placeholder="Güzel Salon Güzellik Merkezi" autoComplete="organization" />
                       <Field label="Yetkili Ad Soyad" icon={UserRound} value={form.ownerName} onChange={set('ownerName')} onBlur={markTouched('ownerName')} error={shownError('ownerName')} placeholder="Ayşe Yılmaz" autoComplete="name" />
                       <div className="grid gap-5 sm:grid-cols-2">
-                        <Field label="E-posta" icon={Mail} value={form.email} onChange={set('email')} onBlur={markTouched('email')} error={shownError('email')} placeholder="ayse@guzelsalon.com" type="email" autoComplete="email" />
+                        <Field label="E-posta (Giriş Adresiniz)" icon={Mail} value={form.email} onChange={set('email')} onBlur={markTouched('email')} error={shownError('email')} placeholder="ayse@guzelsalon.com" type="email" autoComplete="email" />
                         <Field label="Telefon" icon={Phone} value={form.phone} onChange={set('phone')} onBlur={markTouched('phone')} error={shownError('phone')} placeholder="05XX XXX XX XX" type="tel" autoComplete="tel" />
                       </div>
                       <div className="grid gap-5 sm:grid-cols-2">
+                        <div className="sm:col-span-2 -mt-1">
+                          <p className="text-[11.5px] leading-relaxed text-[#352432]/[0.55]">
+                            Kendi e-posta adresinizle kaydolursunuz: doğrulama kodu oraya gelir ve
+                            panele bu adresle girersiniz. Adres başka bir hesapta kayıtlıysa
+                            doğrulamadan sonra size bildirilir.
+                          </p>
+                        </div>
                         <Field label="Şube Adı" icon={Store} value={form.branchName} onChange={set('branchName')} onBlur={markTouched('branchName')} error={shownError('branchName')} placeholder="Merkez" />
                         <Field label="Şehir" icon={MapPin} value={form.city} onChange={set('city')} onBlur={markTouched('city')} error={shownError('city')} placeholder="İstanbul" autoComplete="address-level2" />
                       </div>
@@ -637,7 +659,7 @@ export default function TenantSignupPage() {
                 )}
 
                 {/* ---------------- ADIM 2: e-posta kodu ---------------- */}
-                {step === 'email' && (
+                {step === 'email' && !emailTaken && (
                   <motion.div key="email" variants={fade} initial="hidden" animate="visible" exit="exit" className="relative">
                     <StepHeader
                       icon={Mail}
@@ -645,6 +667,8 @@ export default function TenantSignupPage() {
                       subtitle={
                         <>
                           6 haneli kodu <b className="text-[#2f1724]">{maskedEmail}</b> adresine gönderdik.
+                          <br />
+                          Bu adres aynı zamanda <b className="text-[#2f1724]">giriş kullanıcı adınız</b> olur.
                         </>
                       }
                     />
@@ -656,6 +680,52 @@ export default function TenantSignupPage() {
                     {error && <ErrorBox message={error} />}
                     <SubmitButton loading={loading} label="Doğrula ve Devam Et" loadingLabel="Doğrulanıyor" onClick={() => handleVerifyEmail()} />
                     <StepFooter onBack={() => setStep('form')} backLabel="Bilgileri düzenle" onResend={handleResend} loading={loading} cooldown={cooldown} />
+                  </motion.div>
+                )}
+
+                {/* ------- E-POSTA ZATEN KAYITLI: yeni kurum değil, GİRİŞ gerekiyor -------
+                    Bu bilgi ancak kod doğrulandıktan sonra gösterilebilir; daha erken söylemek
+                    anonim bir enumerasyon ucu açardı (bkz. handleVerifyEmail). */}
+                {step === 'email' && emailTaken && (
+                  <motion.div key="taken" variants={fade} initial="hidden" animate="visible" exit="exit" className="relative">
+                    <StepHeader
+                      icon={UserRound}
+                      title="Bu e-posta zaten kayıtlı"
+                      subtitle={
+                        <>
+                          <b className="text-[#2f1724]">{maskedEmail}</b> adresiyle açılmış bir hesap
+                          var. Yeni kurum açmak yerine giriş yapmanız yeterli.
+                        </>
+                      }
+                    />
+
+                    <div className="mt-8 space-y-3">
+                      <Link
+                        href="/login"
+                        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#c85776] text-[14px] font-semibold text-white transition-transform hover:-translate-y-px"
+                      >
+                        Giriş yap
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // Başka bir adresle yeniden denemek: taslak sunucuda zaten silindi,
+                          // bu yüzden akış en baştan kurulur.
+                          setEmailTaken(false)
+                          setCode('')
+                          setSignupId('')
+                          setStep('form')
+                        }}
+                        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-[#ead8df] bg-white text-[14px] font-medium text-[#4A3A44] transition-colors hover:border-[#c85776]"
+                      >
+                        Farklı bir e-posta ile kaydol
+                      </button>
+                    </div>
+
+                    <p className="mt-5 text-center text-[12px] leading-relaxed text-[#352432]/[0.55]">
+                      Parolanızı hatırlamıyorsanız giriş ekranındaki{' '}
+                      <b className="text-[#2f1724]">Şifremi unuttum</b> yolunu kullanın.
+                    </p>
                   </motion.div>
                 )}
 

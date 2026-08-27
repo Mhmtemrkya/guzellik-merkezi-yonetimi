@@ -102,6 +102,13 @@ html {
   scroll-behavior: auto;
   background: var(--arm-bg);
   color-scheme: light;
+  /* KAYDIRMA ÖLÇÜMÜ İÇİN GEREKLİ, süs değil.
+     `useScroll({ target })` kullanan bileşenlerde (bkz. HeroStage) kaydırma kabı varsayılan
+     olarak <html>'dir. <html> `static` kaldığı sürece Motion hedefin kap içindeki konumunu
+     güvenilir ölçemez ve geliştirme konsolunda "container has a non-static position" uyarısı
+     verir; ölçüm hatası da sahne animasyonunun yanlış ilerlemesi demektir.
+     `relative` görsel hiçbir şeyi kaydırmaz (top/left verilmiyor), yalnız ölçümü doğrular. */
+  position: relative;
 }
 
 body {
@@ -1112,4 +1119,216 @@ html.theme-light .theme-surface { text-rendering: optimizeLegibility; }
     animation: none !important;
   }
   .word-rise { transform: none; opacity: 1; }
+}
+
+/* ============================================================
+   TANITIM SAYFASI — MALZEME VE DOKUNMA KATMANI (Apple dili)
+   ------------------------------------------------------------
+   Sayfa boyunca içerik VİDEONUN ÜSTÜNDE durur. Okunabilirliği
+   opaklık düşürerek değil, MALZEME ile kurarız: bulanıklaştırılmış
+   yarı saydam bir yüzey, altındaki görüntüyü bastırır ama tümüyle
+   örtmez (Apple: "translucency conveys hierarchy").
+
+   ÜÇ ERİŞİLEBİLİRLİK SİNYALİ AYRI AYRI KARŞILANIR:
+     · prefers-reduced-transparency → yüzey KATILAŞIR, bulanıklık kalkar
+     · prefers-contrast: more       → neredeyse tam opak + belirgin kenar
+     · prefers-reduced-motion       → hareket kalkar, çapraz geçiş kalır
+   ============================================================ */
+
+/* Açık malzeme: soluk/az kontrastlı video düzlemleri üzerinde kullanılır.
+   Metin KOYU olduğu için yüzeyin beyazı baskın tutulur. */
+.material-light {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  /* Kenar AÇIK zeminde de görünmek zorunda: beyaz çerçeve açık kartı zeminde eritir.
+     Sınır blush tonundan çizilir; üstteki iç çizgi ise ışığı yakalayan parlak kenardır
+     (yüzeyin kalınlığını belli eder). */
+  border: 1px solid rgba(238, 201, 215, 0.85);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* Koyu malzeme: sahne videolarının (oda, eller, akşam) üzerinde kullanılır.
+   Metin BEYAZ olduğu için yüzey koyu tutulur. */
+.material-dark {
+  background: rgba(27, 13, 22, 0.52);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* Büyük yüzey daha KALIN okunur: daha güçlü bulanıklık + daha derin gölge. */
+.material-thick {
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  box-shadow: 0 40px 90px -50px rgba(90, 40, 62, 0.75);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .material-light { background: #ffffff; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .material-dark  { background: #1B0D16; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .material-thick { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+
+@media (prefers-contrast: more) {
+  .material-light { background: #ffffff; border-color: #8E3F5B; }
+  .material-dark  { background: #140811; border-color: rgba(255, 255, 255, 0.6); }
+}
+
+/* Yarı saydam yüzey üzerindeki metin: düz gri KULLANILMAZ. Kontrast yüksek
+   tutulur, ağırlık bir tık artar, harf aralığı hafifçe açılır (Apple: vibrancy). */
+.on-material {
+  font-weight: 500;
+  letter-spacing: 0.005em;
+}
+
+/* Basma geri bildirimi BIRAKINCA değil, DOKUNUNCA verilir. Gecikme hissi
+   burada başlar; `:active` işaretçi indiği anda uygular. */
+.press {
+  transition: transform 100ms ease-out;
+}
+.press:active { transform: scale(0.97); }
+
+/* Sabit çubuğun altında 1px çizgi yerine yumuşak kenar geçişi: içerik
+   çubuğun altından akarken sert bir ayraç görünmez. */
+.scroll-edge { position: relative; }
+.scroll-edge::after {
+  content: '';
+  position: absolute;
+  inset: 100% 0 auto 0;
+  height: 22px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(255, 247, 250, 0.75), rgba(255, 247, 250, 0));
+}
+
+/* Büyük başlıklarda satır sonlarını dengele — tek kelimelik dul satır kalmasın. */
+.balance { text-wrap: balance; }
+
+/* Tipografi: harf aralığı PUNTOYA ÖZGÜDÜR. Büyük metin sıkılaşır, küçük
+   metin hafifçe açılır; tek bir değer her ölçekte yanlıştır. */
+.display-md {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
+  font-size: clamp(24px, 3.1vw, 38px);
+}
+
+.text-fine {
+  letter-spacing: 0.01em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .press { transition: none; }
+  .press:active { transform: none; }
+}
+
+/* ============================================================
+   AÇILIŞ SAHNESİ — KAYDIRMAYA BAĞLI HAREKET
+   ------------------------------------------------------------
+   Video kaydırdıkça çok hafif büyür, metin sahneden yukarı doğru
+   çekilerek çıkar. Amaç: bir sonraki bölüme geçişin yönünü önceden
+   sezdirmek (Apple: "hint in the direction of the gesture").
+
+   JavaScript GEREKTİRMEZ; `@supports` dışında hiçbir gizleme kuralı
+   yoktur, desteklemeyen tarayıcıda sahne durağan ve TAM görünür kalır.
+   ============================================================ */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .cine-hero-media {
+      animation: cine-hero-media linear both;
+      animation-timeline: view();
+      animation-range: cover 0% cover 100%;
+    }
+
+    .cine-hero-copy {
+      animation: cine-hero-copy linear both;
+      animation-timeline: view();
+      animation-range: exit 0% exit 85%;
+    }
+  }
+}
+
+@keyframes cine-hero-media {
+  from { transform: scale(1); }
+  to   { transform: scale(1.10); }
+}
+
+@keyframes cine-hero-copy {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-30px); }
+}
+
+/* ============================================================
+   SİNEMATİK BÖLÜM — SAHNE METNİ GİRİŞ/ÇIKIŞ
+   ------------------------------------------------------------
+   Sahne metinleri 100svh'lik bloklarda aktığı için, biri alttan
+   girerken bir öncekinin kuyruğu hâlâ üstte duruyordu; ekranda
+   iki sahne birden okunuyordu. Metin artık kendi bloğu kadraja
+   girerken belirir, çıkarken söner — aynı anda tek sahne okunur.
+
+   Görüntü ile SİMETRİK: nasıl girdiyse öyle çıkar (alttan gelir,
+   üstten gider). `@supports` dışında hiçbir gizleme kuralı yoktur;
+   desteklemeyen tarayıcıda altı sahnenin metni de tam görünür.
+   ============================================================ */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .cine-beat {
+      animation: cine-beat linear both;
+      animation-timeline: view();
+      animation-range: cover 0% cover 100%;
+    }
+  }
+}
+
+@keyframes cine-beat {
+  0%   { opacity: 0; transform: translateY(26px); }
+  26%  { opacity: 1; transform: translateY(0); }
+  68%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-26px); }
+}
+
+/* ============================================================
+   AÇILIŞ TİPOGRAFİSİ VE RAY YARDIMCILARI
+   ------------------------------------------------------------
+   Harf aralığı PUNTOYA ÖZGÜDÜR: metin büyüdükçe harfler birbirinden
+   uzak okunur, bu yüzden büyük başlıkta aralık NEGATİFE çekilir ve
+   satır arası sıkılaşır. Tek bir değer her ölçekte yanlıştır.
+   ============================================================ */
+.display-hero {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+  font-size: clamp(44px, 8.4vw, 112px);
+}
+
+/* Sürüklenen rayda çubuk gizlenir; kaydırmanın kendisi açık kalır. */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Kaydırma daveti: içeride yavaşça inip çıkan bir nokta. */
+.scroll-hint { position: relative; }
+.scroll-hint::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  width: 3px;
+  height: 7px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.85);
+  animation: scroll-hint 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes scroll-hint {
+  0%, 12%   { transform: translateY(0);    opacity: 0; }
+  30%       { opacity: 1; }
+  70%       { transform: translateY(11px); opacity: 1; }
+  92%, 100% { transform: translateY(11px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-hint::after { animation: none; opacity: 0.85; }
 }
