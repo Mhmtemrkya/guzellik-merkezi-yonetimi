@@ -109,7 +109,7 @@ public sealed class PanelLoginOtpService
         await _store.SetAsync(Key(challengeId), new PendingLogin { Code = code, Email = email, Session = session }, ChallengeLifetime, ct);
 
         return Result<PanelLoginChallenge>.Success(new PanelLoginChallenge(
-            challengeId, EmailMask.Mask(email), _env.IsDevelopment() ? code : null));
+            challengeId, EmailMask.Mask(email)!, _env.IsDevelopment() ? code : null));
     }
 
     /// <summary>Adım 2 — kod doğruysa oturum teslim edilir. Kod TEK KULLANIMLIKTIR.</summary>
