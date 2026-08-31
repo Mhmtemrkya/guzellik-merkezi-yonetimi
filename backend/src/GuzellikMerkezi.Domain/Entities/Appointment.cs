@@ -123,6 +123,21 @@ public sealed class Appointment : Entity
         Touch();
     }
 
+    /// <summary>
+    /// OTOMATİK hatırlatma sahiplenildikten sonra onay durumunu Beklemede'ye çeker.
+    /// <para>
+    /// Sahiplenme (<c>LastReminderAtUtc</c>) artık tek atomik UPDATE ile veritabanında yapılır
+    /// (bkz. <c>WhatsAppService.ClaimAutomaticReminderAsync</c>); burada yalnız gönderim
+    /// GERÇEKLEŞTİKTEN sonra anlamlı olan onay rozeti güncellenir.
+    /// </para>
+    /// </summary>
+    public void MarkReminderPendingConfirmation()
+    {
+        if (CustomerConfirmation != WhatsAppConfirmationStatus.None) return;
+        CustomerConfirmation = WhatsAppConfirmationStatus.Pending;
+        Touch();
+    }
+
     /// <summary>Müşterinin WhatsApp yanıtına göre onay durumunu günceller (Status'a dokunmaz).</summary>
     public void SetCustomerConfirmation(WhatsAppConfirmationStatus status)
     {

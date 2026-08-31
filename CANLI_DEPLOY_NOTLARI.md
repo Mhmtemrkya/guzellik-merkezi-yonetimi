@@ -38,6 +38,15 @@
 >
 > Aşağıdaki migration listesi *ne değiştiğini* anlatır; hepsi bu tek komutla uygulanır.
 
+- [ ] ⚠️ **WhatsApp mükerrer webhook migration'ı:** `AddWhatsAppInboundProviderDeduplication` (`20260831125407`).
+  - `whatsapp_messages` tablosuna `ProviderChannelId` (nullable `varchar(64)`) + `(ProviderChannelId,
+    ProviderMessageId)` üzerinde **benzersiz** indeks (`ux_whatsapp_messages_provider_channel_message`).
+  - Yeni kolon tüm eski satırlarda NULL kalır; MariaDB benzersiz indekste birden çok NULL'a izin
+    verdiği için **mevcut veri üzerinde çakışma üretmez** (indeks kurulumu güvenlidir).
+  - Uygulanmazsa: Meta'nın tekrar teslim ettiği webhook **ikinci kez işlenir** — aynı "İPTAL"
+    yanıtı randevuyu iki kez iptal eder, KVKK teşekkürü iki kez gider, kontör iki kez harcanır.
+  - Doğrulama: `SHOW INDEX FROM whatsapp_messages WHERE Key_name='ux_whatsapp_messages_provider_channel_message';`
+    → `Non_unique=0`
 - [ ] **WhatsApp bekleme/değerlendirme şablon migration'ı:** `WhatsAppWaitlistRatingTemplates` (`20260831064756`).
   - `whatsapp_settings` tablosuna `WaitlistOfferTemplateName`, `WaitlistActivatedTemplateName`,
     `RatingTemplateName` (üçü de nullable `varchar(128)`) ekler. Mevcut veri değişmez.

@@ -18,8 +18,10 @@ public sealed class WhatsAppMessage : Entity
         Guid? waitlistEntryId = null,
         WhatsAppMessageCategory category = WhatsAppMessageCategory.Utility,
         WhatsAppBillingSource billingSource = WhatsAppBillingSource.None,
-        decimal chargedAmountTry = 0m)
+        decimal chargedAmountTry = 0m,
+        string? providerChannelId = null)
     {
+        ProviderChannelId = string.IsNullOrWhiteSpace(providerChannelId) ? null : providerChannelId.Trim();
         TenantId = tenantId;
         BranchId = branchId;
         AppointmentId = appointmentId;
@@ -53,6 +55,21 @@ public sealed class WhatsAppMessage : Entity
     public WhatsAppReplyIntent Intent { get; private set; }
     public string? TemplateName { get; private set; }
     public string? ProviderMessageId { get; private set; }
+
+    /// <summary>
+    /// Sağlayıcı KANAL kimliği (Meta <c>phone_number_id</c>) — mükerrer webhook teslimini eleyen
+    /// benzersiz indeksin ilk sütunu.
+    ///
+    /// <para>
+    /// <b>Yalnız GELEN mesajlarda doldurulur.</b> Meta bir webhook'u teslim edilemediğini sandığında
+    /// TEKRAR gönderir; kimliği saklanmazsa aynı yanıt ikinci kez işlenir ve randevu iptali, KVKK
+    /// onayı, bekleme listesi teklifi gibi domain yan etkileri TEKRARLANIR. <c>ProviderMessageId</c>
+    /// (Meta <c>wamid</c>) ile birlikte benzersizdir; giden satırlarda null bırakılır ki aynı indeks
+    /// giden mesajları kısıtlamasın (MariaDB benzersiz indekste birden çok NULL'a izin verir).
+    /// </para>
+    /// </summary>
+    public string? ProviderChannelId { get; private set; }
+
     public string? ErrorMessage { get; private set; }
 
     /// <summary>Meta faturalama kategorisi (fiyat bundan çözülür).</summary>

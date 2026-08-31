@@ -213,7 +213,10 @@ public sealed class NotificationDispatchBackgroundService : BackgroundService
         foreach (var id in ids)
         {
             ct.ThrowIfCancellationRequested();
-            var res = await whatsApp.SendReminderAsync(tenantId, id, ct);
+            // SendAutomaticReminderAsync: randevuyu atomik olarak sahiplenir; yarışı kaybeden tur
+            // sağlayıcıya hiç gitmez. Aşağıdaki `LastReminderAtUtc == null` ön süzgeci yalnız ucuz
+            // bir eleme; mükerrer gönderimi engelleyen ASIL güvence oradaki koşullu UPDATE'tir.
+            var res = await whatsApp.SendAutomaticReminderAsync(tenantId, id, ct);
             if (res.IsSuccess)
             {
                 if (res.Value is { Sent: true }) sent++;

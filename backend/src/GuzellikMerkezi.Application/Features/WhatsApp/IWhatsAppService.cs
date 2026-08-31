@@ -44,7 +44,21 @@ public interface IWhatsAppService
     Task<Result<WhatsAppSettingsDto>> GetSettingsAsync(Guid tenantId, CancellationToken cancellationToken = default);
     /// <summary>KURUM: yalnızca içerik (şablon) + faturalama tercihlerini kaydeder. Bağlantıyı platform yönetir.</summary>
     Task<Result<WhatsAppSettingsDto>> SaveSettingsAsync(Guid tenantId, SaveWhatsAppSettingsRequest request, CancellationToken cancellationToken = default);
+    /// <summary>ELLE gönderim (randevu ekranındaki "Hatırlat"). Yönetici aynı randevuyu tekrar hatırlatabilir.</summary>
     Task<Result<ReminderResultDto>> SendReminderAsync(Guid tenantId, Guid appointmentId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// OTOMATİK gönderim (arka plan taraması). Randevu başına EN FAZLA BİR kez.
+    ///
+    /// <para>
+    /// Randevu, gönderimden önce tek atomik <c>UPDATE … WHERE LastReminderAtUtc IS NULL</c> ile
+    /// sahiplenilir: iki API/zamanlayıcı örneği aynı anda çalışsa bile yalnız biri sağlayıcıya
+    /// gider, diğeri hiçbir yan etki üretmeden başarıyla döner (<c>Sent=false</c>). Sağlayıcıya hiç
+    /// gidilemediyse (paket/kota/kontör kapısı, telefon yok) sahiplenme geri bırakılır ki kapı
+    /// açıldığında randevu yeniden denensin.
+    /// </para>
+    /// </summary>
+    Task<Result<ReminderResultDto>> SendAutomaticReminderAsync(Guid tenantId, Guid appointmentId, CancellationToken cancellationToken = default);
     Task<Result<IReadOnlyCollection<WhatsAppMessageDto>>> RecentMessagesAsync(Guid tenantId, Guid? appointmentId, CancellationToken cancellationToken = default);
 
     // --- PLATFORM: bağlantı yönetimi (tek Business Manager + tek token; kurum başına numara bağlanır) ---

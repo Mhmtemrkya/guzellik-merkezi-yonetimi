@@ -206,7 +206,91 @@ public sealed class WhatsAppService : IWhatsAppService
 
     // ==================== GÖNDERİM ====================
 
-    public async Task<Result<ReminderResultDto>> SendReminderAsync(Guid tenantId, Guid appointmentId, CancellationToken ct = default)
+    public Task<Result<ReminderResultDto>> SendReminderAsync(Guid tenantId, Guid appointmentId, CancellationToken ct = default)
+        => SendReminderCoreAsync(tenantId, appointmentId, automatic: false, ct);
+
+    /// <inheritdoc />
+    public async Task<Result<ReminderResultDto>> SendAutomaticReminderAsync(Guid tenantId, Guid appointmentId, CancellationToken ct = default)
+    {
+        /*
+         * SAHİPLENME, GÖNDERİMDEN ÖNCE VE TEK ATOMİK UPDATE İLE.
+         *
+         * SOMUT AÇIK (denetim, 31 Ağu 2026): arka plan taraması randevuları `LastReminderAtUtc IS
+         * NULL` süzgeciyle SEÇİYOR, damgayı ise gönderim BAŞARILI olduktan SONRA vuruyordu. İki API
+         * örneği (ya da iki zamanlayıcı turu) aynı randevuyu aynı anda seçip ikisi de "damgasız"
+         * görüyor, müşteriye AYNI hatırlatma iki kez gidiyor ve kontör iki kez rezerve ediliyordu.
+         * `DispatchAsync` içindeki "önceki deneme sürüyor mu?" kontrolü de SELECT+INSERT olduğu için
+         * bu yarışı kapatmıyordu.
+         *
+         * Çözüm sayma değil, KOŞULLU UPDATE: `SET LastReminderAtUtc=@now WHERE ... AND
+         * LastReminderAtUtc IS NULL`. MariaDB satır kilidi tek kazanan bırakır; etkilenen satır
+         * sayısı 0 ise yarışı kaybettik ve sağlayıcıya HİÇ gitmeden başarıyla çıkarız.
+         */
+        var claimedAtUtc = DateTime.UtcNow;
+        int claimed;
+        try
+        {
+            claimed = await _db.Appointments.IgnoreQueryFilters()
+                .Where(a => a.TenantId == tenantId && a.Id == appointmentId && !a.IsDeleted && a.LastReminderAtUtc == null)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(a => a.LastReminderAtUtc, claimedAtUtc)
+                    .SetProperty(a => a.UpdatedAtUtc, claimedAtUtc), ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[WhatsApp] Hatırlatma sahiplenilemedi: {Appointment}", appointmentId);
+            return Result<ReminderResultDto>.Failure(Error.Validation("Hatırlatma sahiplenilemedi."));
+        }
+
+        if (claimed == 0)
+        {
+            // Başka bir örnek (ya da önceki tur) bu randevuyu zaten aldı — mükerrer değil, no-op.
+            return Result<ReminderResultDto>.Success(
+                new ReminderResultDto(false, false, string.Empty, string.Empty, null, null));
+        }
+
+        var result = await SendReminderCoreAsync(tenantId, appointmentId, automatic: true, ct);
+
+        /*
+         * SAĞLAYICIYA HİÇ GİDİLMEDİYSE SAHİPLENME BIRAKILIR.
+         *
+         * Paket/kota/kontör kapısına takılmak ya da telefonun çözülememesi "hatırlatma yapıldı"
+         * demek değildir; damga kalırsa kota ertesi ay açıldığında bu randevu bir daha HİÇ
+         * denenmez. Buna karşılık sağlayıcı ÇAĞRILDIYSA (kabul etsin ya da reddetsin) damga
+         * KALIR: tekrar denemek mükerrer mesaj riski taşır ve başarısız satır zaten mesaj
+         * listesinde sebebiyle görünür.
+         */
+        if (ShouldReleaseReminderClaim(result))
+        {
+            try
+            {
+                await _db.Appointments.IgnoreQueryFilters()
+                    .Where(a => a.TenantId == tenantId && a.Id == appointmentId && a.LastReminderAtUtc == claimedAtUtc)
+                    .ExecuteUpdateAsync(s => s.SetProperty(a => a.LastReminderAtUtc, (DateTime?)null), ct);
+            }
+            catch (Exception ex)
+            {
+                // Bırakamamak veri bozmaz, yalnız bu randevu bir daha otomatik denenmez.
+                _logger.LogWarning(ex, "[WhatsApp] Hatırlatma sahiplenmesi geri alınamadı: {Appointment}", appointmentId);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Sağlayıcıya hiç gidilmediği için sahiplenmenin bırakılması gereken durumlar.
+    /// <para>Gönderim ENGELLENDİ (paket/kota/kontör/şablon) ya da istek hiç oluşturulamadı
+    /// (randevu yok, telefon yok) → bırak. Sağlayıcı çağrıldıysa → bırakma.</para>
+    /// </summary>
+    private static bool ShouldReleaseReminderClaim(Result<ReminderResultDto> result)
+    {
+        if (!result.IsSuccess) return true;
+        // Başarı ama gönderim yok + hata da yok = telefon çözülemedi (DispatchResult.Skipped).
+        return result.Value is { Sent: false, Error: null };
+    }
+
+    private async Task<Result<ReminderResultDto>> SendReminderCoreAsync(Guid tenantId, Guid appointmentId, bool automatic, CancellationToken ct)
     {
         if (!await _features.IsFeatureAllowedAsync(tenantId, FeatureCatalog.NotificationsWhatsApp, ct))
             return Result<ReminderResultDto>.Failure(Error.Conflict("WhatsApp gönderimi paketinizde yok. Üst pakete geçerek kullanabilirsiniz."));
@@ -264,7 +348,11 @@ public sealed class WhatsAppService : IWhatsAppService
 
         if (result.Success)
         {
-            appt.MarkReminderSent();
+            // Otomatik yolda damga sahiplenme anında ATILDI (bkz. SendAutomaticReminderAsync);
+            // burada yalnız müşteri onay rozeti Beklemede'ye çekilir. Elle gönderimde ikisi de
+            // burada yapılır — yönetici aynı randevuyu bilerek tekrar hatırlatabilir.
+            if (automatic) appt.MarkReminderPendingConfirmation();
+            else appt.MarkReminderSent();
             await _db.SaveChangesAsync(ct);
         }
 
@@ -919,7 +1007,10 @@ public sealed class WhatsAppService : IWhatsAppService
                         var text = msg.TryGetProperty("text", out var txt) && txt.TryGetProperty("body", out var b) ? b.GetString() : null;
                         if (string.IsNullOrWhiteSpace(from) || text is null) continue;
 
-                        await ProcessInboundMessageAsync(tenantId, from!, text, ct);
+                        // Meta'nın mesaj kimliği (wamid) — mükerrer teslimi eleyen tek yetkili anahtar.
+                        var wamid = msg.TryGetProperty("id", out var mid) ? mid.GetString() : null;
+
+                        await ProcessInboundMessageAsync(tenantId, phoneNumberId!, wamid, from!, text, ct);
                     }
                 }
             }
@@ -994,7 +1085,7 @@ public sealed class WhatsAppService : IWhatsAppService
         return CryptographicOperations.FixedTimeEquals(provided, expected);
     }
 
-    private async Task ProcessInboundMessageAsync(Guid tenantId, string fromPhone, string text, CancellationToken ct)
+    private async Task ProcessInboundMessageAsync(Guid tenantId, string providerChannelId, string? providerMessageId, string fromPhone, string text, CancellationToken ct)
     {
         var since = DateTime.UtcNow.AddDays(-3);
         var recentOutbound = await _db.WhatsAppMessages.IgnoreQueryFilters()
@@ -1003,11 +1094,40 @@ public sealed class WhatsAppService : IWhatsAppService
         var match = recentOutbound.FirstOrDefault(m => PhonesMatch(m.Phone, fromPhone));
 
         var intent = Interpret(text);
-        _db.WhatsAppMessages.Add(new WhatsAppMessage(
+        var inbound = new WhatsAppMessage(
             tenantId, match?.BranchId, match?.AppointmentId, match?.CustomerId, WhatsAppMessageDirection.Inbound,
-            NormalizePhone(fromPhone), text, WhatsAppMessageStatus.Received, intent: intent, waitlistEntryId: match?.WaitlistEntryId,
-            category: WhatsAppMessageCategory.Service, billingSource: WhatsAppBillingSource.None));
-        await _db.SaveChangesAsync(ct);
+            NormalizePhone(fromPhone), text, WhatsAppMessageStatus.Received,
+            providerMessageId: providerMessageId, intent: intent, waitlistEntryId: match?.WaitlistEntryId,
+            category: WhatsAppMessageCategory.Service, billingSource: WhatsAppBillingSource.None,
+            // Kanal kimliği YALNIZ wamid varsa yazılır: ikisi birlikte benzersizlik anahtarıdır.
+            // wamid'siz bir yük (eski/biçimsiz webhook) tekilleştirilemez; satırı yazıp devam ederiz.
+            providerChannelId: string.IsNullOrWhiteSpace(providerMessageId) ? null : providerChannelId);
+
+        /*
+         * ATOMİK CLAIM — HER TÜRLÜ DOMAIN YAN ETKİSİNDEN ÖNCE.
+         *
+         * Bu INSERT aynı zamanda "bu webhook'u ben işliyorum" ilanıdır. Benzersiz indeks
+         * (ProviderChannelId, ProviderMessageId) ikinci teslimi reddeder; reddedilen taraf
+         * HİÇBİR yan etki üretmeden çıkar ve Meta'ya başarı döner (aksi hâlde Meta tekrar
+         * dener ve döngü büyür).
+         *
+         * SIRA ÖNEMLİ: satır önce kalıcı olur, sonra randevu iptali / KVKK onayı / bekleme
+         * teklifi çalışır. Ters sırada, yan etki uygulanıp satır yazılamadığında aynı yanıt
+         * bir sonraki teslimde İKİNCİ kez işlenirdi.
+         */
+        _db.WhatsAppMessages.Add(inbound);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (UniqueViolation.Is(ex))
+        {
+            _db.Entry(inbound).State = EntityState.Detached;
+            _logger.LogInformation(
+                "[WhatsApp] Webhook zaten işlenmiş, tekrar teslim yok sayıldı ({Channel}/{Wamid}).",
+                providerChannelId, providerMessageId);
+            return;
+        }
 
         if (match is null || intent == WhatsAppReplyIntent.Unknown) return;
 

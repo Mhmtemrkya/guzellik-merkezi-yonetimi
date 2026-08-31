@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace GuzellikMerkezi.Infrastructure.Services;
 
 /// <summary>
@@ -50,6 +52,15 @@ public static class EmailMask
 {
     public const char MaskChar = PhoneMask.MaskChar;
 
+    /// <summary>
+    /// Maskeli e-posta. <b>null yalnızca girdi null ise döner</b> — gövdedeki tek "null" yolu
+    /// <c>return email;</c> satırıdır. İmza bunu söylemediği için çağıranlar (ör. panel giriş
+    /// meydan okuması) derleyici uyarısını <c>!</c> ile bastırmak zorunda kalıyordu; oysa
+    /// bastırma, ileride gerçekten null dönen bir değişiklikte uyarıyı da susturacaktı.
+    /// <see cref="NotNullIfNotNullAttribute"/> aynı gerçeği derleyiciye SÖYLER: null olmayan
+    /// girdide sonuç da null değildir, null girdide uyarı yerinde durur.
+    /// </summary>
+    [return: NotNullIfNotNull(nameof(email))]
     public static string? Mask(string? email)
     {
         if (string.IsNullOrWhiteSpace(email)) return email;

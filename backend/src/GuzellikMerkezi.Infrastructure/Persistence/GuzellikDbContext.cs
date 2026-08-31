@@ -1053,11 +1053,28 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         m.Property(x => x.Body).HasColumnType("TEXT");
         m.Property(x => x.TemplateName).HasMaxLength(128);
         m.Property(x => x.ProviderMessageId).HasMaxLength(128);
+        m.Property(x => x.ProviderChannelId).HasMaxLength(64);
         m.Property(x => x.ErrorMessage).HasMaxLength(500);
         m.HasIndex(x => new { x.TenantId, x.AppointmentId });
         m.HasIndex(x => new { x.TenantId, x.Direction, x.CreatedAtUtc });
         m.HasIndex(x => new { x.TenantId, x.Category, x.BillingSource, x.CreatedAtUtc }); // kategori bazlı aylık sayım
         m.HasIndex(x => x.ProviderMessageId); // webhook status → wamid eşleşmesi
+
+        /*
+         * MÜKERRER WEBHOOK'U VERİTABANI ELER.
+         *
+         * Meta, 200 alamadığını sandığı her webhook'u TEKRAR gönderir. "Bu wamid'i daha önce
+         * işledim mi?" sorusunu önce SELECT ile sorup sonra INSERT etmek iki eşzamanlı teslimde
+         * yetmez: ikisi de "yok" görüp ikisi de işler, müşterinin tek "İPTAL" yanıtı randevuyu
+         * iki kez iptal eder, KVKK teşekkürü iki kez gider. Tekillik BURADA, tek atomik INSERT
+         * ile zorlanır; ihlal "zaten işlendi" demektir ve HATA DEĞİLDİR.
+         *
+         * Giden satırlarda ProviderChannelId null olduğu için bu indeks onları kısıtlamaz
+         * (MariaDB benzersiz indekste birden çok NULL kabul eder).
+         */
+        m.HasIndex(x => new { x.ProviderChannelId, x.ProviderMessageId })
+            .IsUnique()
+            .HasDatabaseName("ux_whatsapp_messages_provider_channel_message");
         m.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
 
         ConfigureWhatsAppBilling(modelBuilder);

@@ -218,6 +218,35 @@ Kanalı WhatsApp seçip otomatik hatırlatma kuran kurum, geçmişte "Gönderild
   Bunlar serbest metindir — 24 saat penceresi kapalıysa Meta reddeder ve sebep bildirim geçmişine yazılır.
 - **Simülasyon artık "gönderildi" sayılmaz** (SMS/e-posta ile aynı kural).
 
+### ✅ Eksik C2 — ÇÖZÜLDÜ (31 Ağu 2026): iki eşzamanlılık açığı (denetim bulgusu)
+
+Denetim, canlıya geçmeden iki KRİTİK yarış koşulu buldu; ikisi de kapatıldı ve gerçek veritabanı
+testleriyle doğrulandı (düzeltme devre dışı bırakılınca testler kırmızıya döndü — kanıtlandı).
+
+**1. Zamanlayıcı mükerrer hatırlatma.** Arka plan taraması randevuları `LastReminderAtUtc IS NULL`
+ile seçip damgayı gönderim BAŞARILI olduktan SONRA vuruyordu. İki API örneği (ya da iki tarama turu)
+aynı randevuyu aynı anda "damgasız" görüp ikisi de gönderiyordu → müşteriye çift mesaj, kontör iki
+kez rezerve. `DispatchAsync` içindeki "önceki deneme sürüyor mu?" kontrolü SELECT+INSERT olduğu için
+bu yarışı kapatmıyordu.
+→ Yeni `SendAutomaticReminderAsync`: gönderimden ÖNCE tek atomik
+`UPDATE … SET LastReminderAtUtc=@now WHERE … AND LastReminderAtUtc IS NULL`. Etkilenen satır 0 ise
+yarış kaybedilmiştir ve **sağlayıcıya hiç gidilmez**. Sağlayıcıya hiç ulaşılamadıysa (paket/kota/
+kontör kapısı, telefon yok) sahiplenme geri bırakılır ki kota açıldığında yeniden denensin.
+**Elle "Hatırlat" kısıtlanmadı** — randevu ertelenince yönetici bilerek tekrar gönderebilmeli.
+
+**2. Webhook tekrar teslimi.** Meta, 200 alamadığını sandığı webhook'u TEKRAR gönderir. Mesaj
+kimliği (`wamid`) saklanmadığı için aynı yanıt ikinci kez işleniyor, randevu iptali / KVKK onayı /
+bekleme teklifi gibi domain yan etkileri tekrarlanıyordu.
+→ `wamid` + `phone_number_id` artık saklanıyor ve **veritabanı benzersiz indeksi** ikinci teslimi
+eliyor. Satır, her türlü yan etkiden ÖNCE atomik olarak yazılır; ihlal "zaten işlendi" demektir ve
+Meta'ya başarı döner. Aynı metni taşıyan FARKLI mesajlar ayrı kalır (gövdeye göre tekilleştirme yok).
+
+Ayrıca `EmailMask.Mask` imzası `[NotNullIfNotNull]` ile düzeltildi: Release build'i durduran CS8604
+uyarısı `!` ile bastırılmak yerine gerçek sözleşme yazıldı.
+
+Doğrulama: Release `--warnaserror` **0 uyarı / 0 hata**, tam backend suite **681/681 geçti
+(0 atlandı, gerçek veritabanı zorunlu modda)**, migration manifesti 86 dosya.
+
 Bilinen kenar durum (bloke değil): `SendNotificationAsync` yolunda mükerrer koruması anahtarı
 `("notification", müşteri)` çiftidir. Aynı müşteriye 30 dakika içinde **iki farklı** bildirim şablonu
 gider ve ilki `Queued` takılı kalırsa ikincisi "önceki denemenin sonucu bilinmiyor" diyerek engellenir.
