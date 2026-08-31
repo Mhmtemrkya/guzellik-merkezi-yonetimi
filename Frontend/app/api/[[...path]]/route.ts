@@ -398,12 +398,11 @@ async function handleRoute(request: NextRequest, context: RouteContext): Promise
     return withCors(new NextResponse(null, { status: 204 }), request)
   }
 
-  if (route === '/' || route === '/root') {
-    return withCors(NextResponse.json({ message: 'BeautyAsist API proxy' }), request)
-  }
-
-  if (route === '/proxy') {
-    return withCors(NextResponse.json({ message: 'Backend proxy hazır' }), request)
+  // MİMARİYİ ANLATMA (pentest DÜŞÜK-3). Bu uçlar "önümde bir proxy var, arkasında ayrı bir backend
+  // var, istekler /api/proxy ile başlıyor" bilgisini kimlik doğrulaması olmadan veriyordu; keşif
+  // adımını saldırgan için ücretsiz hâle getirir. Yanıt artık yalnız "ayaktayım" der.
+  if (route === '/' || route === '/root' || route === '/proxy') {
+    return withCors(NextResponse.json({ status: 'ok' }), request)
   }
 
   if (route.startsWith('/proxy/')) {
@@ -414,10 +413,8 @@ async function handleRoute(request: NextRequest, context: RouteContext): Promise
     NextResponse.json(
       {
         success: false,
-        error: {
-          code: 'RouteNotFound',
-          message: `Route ${route} bulunamadı. Backend istekleri /api/proxy ile başlamalı.`,
-        },
+        // Yol ADI yankılanmaz ve yönlendirme kuralı açıklanmaz (bkz. yukarıdaki not).
+        error: { code: 'RouteNotFound', message: 'Kaynak bulunamadı.' },
         traceId: null,
       },
       { status: 404 },

@@ -95,6 +95,7 @@
   },
   "overrides": {
     "postcss": "$postcss",
-    "glob": "^13.0.6"
+    "glob": "^13.0.6",
+    "uuid": "$uuid"
   }
 }

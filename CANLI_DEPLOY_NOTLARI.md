@@ -323,6 +323,53 @@ Derin denetim düzeltmeleriyle üç davranış sıkılaştı. Deploy otomasyonun
 
 ---
 
+## 🔐 Güvenlik başlıkları — HSTS + CSP (27 Ağu 2026 pentest, ORTA-1 / ORTA-2)
+
+### HSTS — ÖNCE KISA ÖMÜR, SONRA UZAT
+
+`Strict-Transport-Security` artık hem panelden (Next `headers()`) hem API'den (`UseHsts`)
+gönderiliyor. **Varsayılan ömür 300 saniyedir ve bu bilinçlidir:** başlık tarayıcıda önbelleğe
+alınır ve süresi dolana kadar GERİ ALINAMAZ. `includeSubDomains` ile bir yıl basıldığında,
+HTTP'den servis edilen tek bir alt alan (bir kurumun `*.beautyasist.com` adresi dâhil) kalsa o
+adres bir yıl boyunca erişilemez olur.
+
+- [ ] **Önce doğrula:** her tenant alt alanı + `beautyasist.com` + API alan adı HTTPS'ten
+      çalışıyor mu? (`curl -I http://<alt-alan>` → 301/308 https)
+- [ ] Doğrulandıktan **sonra** uzat: frontend `HSTS_MAX_AGE=31536000` ile **yeniden build**
+      (next.config.js değeri build zamanında okur), backend `Security__HstsMaxAgeSeconds=31536000`
+      (restart yeter).
+- [ ] `preload` **eklenmedi ve eklenmemeli** — listeye girmek kolay, çıkmak aylar sürer.
+
+**Asıl yer edge'dir.** nginx'e de eklenmeli (uygulama katmanı yedektir; nginx bir hata sayfası
+döndürdüğünde uygulama başlığı hiç çalışmaz):
+
+```nginx
+# beautyasist.com ve maydanozasist.beautyasist.com server bloklarının İKİSİNE de:
+# always → 4xx/5xx yanıtlarda da gönderilir.
+add_header Strict-Transport-Security "max-age=300; includeSubDomains" always;
+# Alt alanların tamamı HTTPS doğrulandıktan sonra: max-age=31536000
+```
+
+> `add_header` bir `location` bloğunda kullanılırsa üst bloktaki TÜM `add_header`'ları iptal eder.
+> Aynı blokta tanımlı diğer başlıkları da tekrarlamayı unutmayın.
+
+### CSP — script kaynakları artık kısıtlı (nonce)
+
+Politika `Frontend/proxy.ts` içinde istek başına üretilen nonce ile kurulur (Next 16'da
+`middleware.ts`'in yeni adı `proxy.ts`). **Ön koşul:** kök layout `await connection()` çağırır,
+yani tüm sayfalar istek anında render edilir. Statik üretilen HTML'e nonce basılamaz; ikisi
+karıştırılırsa uygulamanın kendi script'leri bloklanır ve **beyaz ekran** olur.
+
+- [ ] `NEXT_PUBLIC_REALTIME_URL` çalışma ortamında tanımlı olmalı: `connect-src` bu değerden
+      üretilir, tanımsızsa SignalR WebSocket'i CSP'ye takılır. (Değer **çalışma zamanında**
+      okunur — doğrulandı, bu satır için yeniden build gerekmez.)
+- [ ] `next.config.js` CSP başlığı **göndermez** ve göndermemeli: iki CSP başlığı tarayıcıda
+      KESİŞİM olarak uygulanır, nonce'suz olan her şeyi bloklar.
+- [ ] nginx CSP başlığı **eklemeyin** (aynı kesişim tuzağı).
+- [ ] Yeni bir üçüncü taraf script eklenirken önce `CSP_REPORT_ONLY=true` ile ihlalleri toplayın.
+
+---
+
 ## 🔐 Güvenlik denetimi düzeltmeleri (5 Tem 2026)
 
 Pentest/güvenlik denetimi sonrası kapatılan açıklar:

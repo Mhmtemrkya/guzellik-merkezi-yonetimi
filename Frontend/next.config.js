@@ -49,16 +49,24 @@ const nextConfig = {
     // her origin'e izin verdiği için oturum açmış yöneticiye görünmez iframe üzerinden
     // tıklatma yapılabiliyordu. Gerçekten gömülmesi gereken bir route çıkarsa YALNIZ o
     // route için ayrı bir kayıt eklenip partner origin'i tek tek listelenmelidir.
+    //
+    // CSP BURADA DEĞİL, middleware.ts İÇİNDE. Politika artık `script-src`'i de kısıtlıyor ve bu
+    // yalnız istek başına üretilen bir nonce ile mümkün (Next kendi satır-içi script'lerine o
+    // nonce'u ekler). Statik bir başlık nonce üretemez. İKİSİNİ BİRDEN GÖNDERMEK KESİNLİKLE
+    // YANLIŞTIR: tarayıcı iki CSP başlığının KESİŞİMİNİ uygular ve buradaki nonce'suz politika
+    // uygulamanın kendi script'lerini bloklayarak teşhisi zor bir beyaz ekran üretir.
+    //
+    // HSTS: ilk yayında KISA ömürle. `Strict-Transport-Security` tarayıcıda önbelleğe alınır ve
+    // süresi dolana kadar geri alınamaz; `includeSubDomains` ile bir yıl basmak, HTTP'den servis
+    // edilen bir alt alan (kurumların `*.beautyasist.com` adresleri dâhil) kalırsa o adresi bir yıl
+    // erişilemez yapar. Tüm alt alanların HTTPS olduğu doğrulandıktan sonra HSTS_MAX_AGE=31536000
+    // ile YENİDEN BUILD alınır. `preload` bilinçli olarak yok (geri dönüşü aylar sürer).
+    // Başlığın asıl yeri edge'dir (nginx) — bkz. CANLI_DEPLOY_NOTLARI.md; buradaki kopya edge
+    // yanlış yapılandırılırsa uygulamanın kendini korumasıdır. Tarayıcı HTTP yanıtındaki HSTS'i
+    // spec gereği yok sayar, bu yüzden geliştirmede zararsızdır.
+    const hstsMaxAge = (process.env.HSTS_MAX_AGE || "300").trim();
     const securityHeaders = [
-      {
-        key: "Content-Security-Policy",
-        value: [
-          "frame-ancestors 'none'",
-          "object-src 'none'",
-          "base-uri 'self'",
-          "form-action 'self'",
-        ].join("; "),
-      },
+      { key: "Strict-Transport-Security", value: `max-age=${hstsMaxAge}; includeSubDomains` },
       { key: "X-Frame-Options", value: "DENY" },
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

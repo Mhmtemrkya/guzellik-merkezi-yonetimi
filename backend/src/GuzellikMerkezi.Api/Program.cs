@@ -46,6 +46,26 @@ builder.Services.AddSingleton<GuzellikMerkezi.Application.Abstractions.IAppEnvir
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApiServices(builder.Configuration);
 // Müşteri OTP girişi — kodlar bellekte 5 dk tutulur (tek örnekli dağıtım).
+// HSTS — API ALAN ADI DA HTTPS'E KİLİTLENİR (pentest ORTA-1).
+//
+// Ne panel ne de API `Strict-Transport-Security` gönderiyordu: HTTP→HTTPS yönlendirmesi olsa bile
+// İLK temas düz HTTP'den geçtiği için SSL-stripping'e açık kalıyordu.
+//
+// ÖMÜR İLK YAYINDA KISA (300 sn). Bu başlık tarayıcıda ÖNBELLEĞE ALINIR ve süresi dolana kadar
+// GERİ ALINAMAZ; `includeSubDomains` ile bir yıl basmak, HTTP'den servis edilen bir alt alan
+// (kurumların `*.beautyasist.com` adresleri dâhil) kalırsa o adresi bir yıl erişilemez yapar.
+// Tüm alt alanların HTTPS olduğu doğrulandıktan sonra Security:HstsMaxAgeSeconds=31536000 yapılır.
+// `Preload` bilinçli olarak KAPALI: listeye girmek kolay, çıkmak aylar sürer.
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromSeconds(
+        int.TryParse(builder.Configuration["Security:HstsMaxAgeSeconds"], out var hstsMaxAge) && hstsMaxAge > 0
+            ? hstsMaxAge
+            : 300);
+    options.IncludeSubDomains = true;
+    options.Preload = false;
+});
+
 builder.Services.AddMemoryCache();
 builder.Services.AddScoped<GuzellikMerkezi.Api.Services.CustomerOtpService>();
 // Panel girişinde ikinci faktör (parola + e-posta kodu) — bkz. PanelLoginOtpService.
@@ -362,6 +382,11 @@ await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(app.Services, app.Config
     }
     app.UseForwardedHeaders(fh);
 }
+
+// HSTS yalnız HTTPS isteklerinde yazılır (HstsMiddleware localhost'u zaten dışlar) ve
+// ForwardedHeaders'tan SONRA gelmelidir: `Request.IsHttps` kararı X-Forwarded-Proto'ya bağlıdır.
+// Development'ta kapalı — yerelde HTTP ile çalışılıyor.
+if (!app.Environment.IsDevelopment()) app.UseHsts();
 
 app.UseResponseCompression();
 app.UseRateLimiter();
