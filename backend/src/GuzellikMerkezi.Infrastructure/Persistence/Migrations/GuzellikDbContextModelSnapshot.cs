@@ -4930,6 +4930,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("varchar(32)");
 
+                    b.Property<string>("ProviderChannelId")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
                     b.Property<string>("ProviderMessageId")
                         .HasMaxLength(128)
                         .HasColumnType("varchar(128)");
@@ -4958,6 +4962,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ProviderMessageId");
+
+                    b.HasIndex("ProviderChannelId", "ProviderMessageId")
+                        .IsUnique();
 
                     b.HasIndex("TenantId", "AppointmentId");
 

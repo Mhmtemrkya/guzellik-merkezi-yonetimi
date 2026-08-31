@@ -913,13 +913,14 @@ public sealed class WhatsAppService : IWhatsAppService
 
                     foreach (var msg in messages.EnumerateArray())
                     {
+                        var providerMessageId = msg.TryGetProperty("id", out var mid) ? mid.GetString() : null;
                         var type = msg.TryGetProperty("type", out var t) ? t.GetString() : null;
                         if (type != "text") continue;
                         var from = msg.TryGetProperty("from", out var f) ? f.GetString() : null;
                         var text = msg.TryGetProperty("text", out var txt) && txt.TryGetProperty("body", out var b) ? b.GetString() : null;
-                        if (string.IsNullOrWhiteSpace(from) || text is null) continue;
+                        if (string.IsNullOrWhiteSpace(providerMessageId) || string.IsNullOrWhiteSpace(from) || text is null) continue;
 
-                        await ProcessInboundMessageAsync(tenantId, from!, text, ct);
+                        await ProcessInboundMessageAsync(tenantId, phoneNumberId!, providerMessageId!, from!, text, ct);
                     }
                 }
             }
@@ -994,8 +995,15 @@ public sealed class WhatsAppService : IWhatsAppService
         return CryptographicOperations.FixedTimeEquals(provided, expected);
     }
 
-    private async Task ProcessInboundMessageAsync(Guid tenantId, string fromPhone, string text, CancellationToken ct)
+    private async Task ProcessInboundMessageAsync(
+        Guid tenantId, string providerChannelId, string providerMessageId,
+        string fromPhone, string text, CancellationToken ct)
     {
+        // Hızlı yol; asıl yarış koruması aşağıdaki unique veritabanı kısıtıdır.
+        if (await _db.WhatsAppMessages.IgnoreQueryFilters().AsNoTracking().AnyAsync(
+                m => m.ProviderChannelId == providerChannelId && m.ProviderMessageId == providerMessageId, ct))
+            return;
+
         var since = DateTime.UtcNow.AddDays(-3);
         var recentOutbound = await _db.WhatsAppMessages.IgnoreQueryFilters()
             .Where(m => m.TenantId == tenantId && m.Direction == WhatsAppMessageDirection.Outbound && m.CreatedAtUtc >= since)
@@ -1006,8 +1014,18 @@ public sealed class WhatsAppService : IWhatsAppService
         _db.WhatsAppMessages.Add(new WhatsAppMessage(
             tenantId, match?.BranchId, match?.AppointmentId, match?.CustomerId, WhatsAppMessageDirection.Inbound,
             NormalizePhone(fromPhone), text, WhatsAppMessageStatus.Received, intent: intent, waitlistEntryId: match?.WaitlistEntryId,
-            category: WhatsAppMessageCategory.Service, billingSource: WhatsAppBillingSource.None));
-        await _db.SaveChangesAsync(ct);
+            category: WhatsAppMessageCategory.Service, billingSource: WhatsAppBillingSource.None,
+            providerMessageId: providerMessageId, providerChannelId: providerChannelId));
+        try
+        {
+            // Kalıcı inbox claim'i hiçbir domain yan etkisinden önce yazılır. Aynı claim'i iki
+            // instance yarışarak eklerse yalnız biri kazanır; diğeri webhook'u başarıyla ACK eder.
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (DbConstraints.IsUniqueViolation(ex))
+        {
+            return;
+        }
 
         if (match is null || intent == WhatsAppReplyIntent.Unknown) return;
 

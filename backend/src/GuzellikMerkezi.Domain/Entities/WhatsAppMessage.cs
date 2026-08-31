@@ -18,7 +18,8 @@ public sealed class WhatsAppMessage : Entity
         Guid? waitlistEntryId = null,
         WhatsAppMessageCategory category = WhatsAppMessageCategory.Utility,
         WhatsAppBillingSource billingSource = WhatsAppBillingSource.None,
-        decimal chargedAmountTry = 0m)
+        decimal chargedAmountTry = 0m,
+        string? providerChannelId = null)
     {
         TenantId = tenantId;
         BranchId = branchId;
@@ -30,6 +31,7 @@ public sealed class WhatsAppMessage : Entity
         Status = status;
         TemplateName = templateName;
         ProviderMessageId = providerMessageId;
+        ProviderChannelId = providerChannelId;
         Intent = intent;
         ErrorMessage = error;
         WaitlistEntryId = waitlistEntryId;
@@ -53,6 +55,8 @@ public sealed class WhatsAppMessage : Entity
     public WhatsAppReplyIntent Intent { get; private set; }
     public string? TemplateName { get; private set; }
     public string? ProviderMessageId { get; private set; }
+    /// <summary>Sağlayıcı mesaj kimliğinin ait olduğu kanal (Meta phone_number_id).</summary>
+    public string? ProviderChannelId { get; private set; }
     public string? ErrorMessage { get; private set; }
 
     /// <summary>Meta faturalama kategorisi (fiyat bundan çözülür).</summary>

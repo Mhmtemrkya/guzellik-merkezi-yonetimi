@@ -1053,11 +1053,15 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         m.Property(x => x.Body).HasColumnType("TEXT");
         m.Property(x => x.TemplateName).HasMaxLength(128);
         m.Property(x => x.ProviderMessageId).HasMaxLength(128);
+        m.Property(x => x.ProviderChannelId).HasMaxLength(64);
         m.Property(x => x.ErrorMessage).HasMaxLength(500);
         m.HasIndex(x => new { x.TenantId, x.AppointmentId });
         m.HasIndex(x => new { x.TenantId, x.Direction, x.CreatedAtUtc });
         m.HasIndex(x => new { x.TenantId, x.Category, x.BillingSource, x.CreatedAtUtc }); // kategori bazlı aylık sayım
         m.HasIndex(x => x.ProviderMessageId); // webhook status → wamid eşleşmesi
+        // Meta aynı webhook'u tekrar gönderebilir. Kanal + sağlayıcı mesaj kimliği, gelen mesajın
+        // kalıcı inbox anahtarıdır; unique kısıt paralel instance'larda da tek işlemeyi zorlar.
+        m.HasIndex(x => new { x.ProviderChannelId, x.ProviderMessageId }).IsUnique();
         m.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId) && (BranchFilterDisabled || x.BranchId == null || x.BranchId == BranchFilterId));
 
         ConfigureWhatsAppBilling(modelBuilder);
