@@ -1,4 +1,5 @@
 using GuzellikMerkezi.Api.Extensions;
+using GuzellikMerkezi.Api.Validation;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Auth;
@@ -46,8 +47,13 @@ public static class AuthEndpoints
     {
         var group = app.MapGroup("/api/auth").WithTags("Auth");
 
+        // DOĞRULAYICI BAĞLI DEĞİLDİ (pentest DÜŞÜK-1): LoginScopeRequestValidator yazılmıştı ama uca
+        // takılmamıştı; biçimsiz e-posta 400 yerine 200 + boş kapsam dönüyordu. Hesap sızdırma
+        // koruması bozulmuyordu ama uç, doğrulanmamış girdiyle e-posta aramasına giriyordu.
         group.MapPost("/login-scope", async (LoginScopeRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
-            (await service.GetLoginScopeAsync(request, ct)).ToHttpResult(http)).RequireRateLimiting("auth-login");
+            (await service.GetLoginScopeAsync(request, ct)).ToHttpResult(http))
+            .ValidatesRequest<LoginScopeRequest>()
+            .RequireRateLimiting("auth-login");
 
         // PANEL GİRİŞİ İKİ ADIMLIDIR: parola → e-postaya kod → oturum.
         //

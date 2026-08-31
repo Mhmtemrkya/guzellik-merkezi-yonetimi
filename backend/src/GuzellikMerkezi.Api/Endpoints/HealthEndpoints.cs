@@ -10,9 +10,14 @@ public static class HealthEndpoints
 {
     public static IEndpointRouteBuilder MapHealthEndpoints(this IEndpointRouteBuilder app)
     {
+        // TRACE ID KİMLİK DOĞRULAMASIZ UÇTA VERİLMEZ (pentest DÜŞÜK-3). Bu üç uç anonimdir; yanıttaki
+        // izleme kimliği istek/örnek ilişkilendirmesine yarayan iç bir teşhis verisidir ve dışarıdan
+        // yoklayan biri için değeri yalnız keşiftir. Zarf biçimi (success/data) KORUNUR — dış uptime
+        // kontrolleri ona bakıyor olabilir; yalnız traceId düşer.
+        //
         // Basit /health (liveness) — dış uptime kontrolleri çoğu zaman /health/live yerine /health'e bakar.
-        app.MapGet("/health", (HttpContext http) => Results.Ok(ApiResponse<object>.Ok(new { status = "ok" }, http.TraceIdentifier))).WithTags("Health");
-        app.MapGet("/health/live", (HttpContext http) => Results.Ok(ApiResponse<object>.Ok(new { status = "live" }, http.TraceIdentifier))).WithTags("Health");
+        app.MapGet("/health", () => Results.Ok(ApiResponse<object>.Ok(new { status = "ok" }))).WithTags("Health");
+        app.MapGet("/health/live", () => Results.Ok(ApiResponse<object>.Ok(new { status = "live" }))).WithTags("Health");
         // HAZIRLIK = BAĞLANTI + ŞEMA PARİTESİ.
         //
         // Eskiden yalnız "veritabanına bağlanabiliyor muyum?" soruluyordu. Migration'lar canlıda
@@ -28,15 +33,41 @@ public static class HealthEndpoints
             GuzellikDbContext db,
             IPaymentGatewayResolver payments,
             ILoggerFactory loggerFactory,
+            IConfiguration configuration,
+            GuzellikMerkezi.Application.Abstractions.ICurrentUser currentUser,
             HttpContext http,
             CancellationToken ct) =>
         {
             var log = loggerFactory.CreateLogger("Health.Ready");
+
+            // HATA KODU DA KEŞİF BİLGİSİDİR. "SchemaOutOfDate" dışarıdan yoklayan birine şemanın
+            // geride olduğunu, "PaymentConfigInvalid" ödeme entegrasyonunun yarım olduğunu söyler.
+            // Kod yalnız GÜVENİLEN yoklayıcıya açılır: aynı makine (loopback) ya da yapılandırılmış
+            // Health:ProbeToken'ı taşıyan istek. Ayrıntı her hâlükârda sunucu günlüğüne yazılır.
+            //
+            // FAIL-OPEN: token TANIMSIZSA uç kapanmaz, yalnız kod genelleşir. Deploy otomasyonu
+            // HTTP DURUM KODUNA (503) bakar; token'ı sunucuya koymayı unutmak örneği asla
+            // "kalıcı olarak hazır değil" hâline getirmez.
+            static bool IsTrustedProbe(HttpContext ctx, IConfiguration config)
+            {
+                if (ctx.Connection.RemoteIpAddress is { } ip && System.Net.IPAddress.IsLoopback(ip)) return true;
+                var expected = config["Health:ProbeToken"];
+                if (string.IsNullOrWhiteSpace(expected)) return false;
+                return ctx.Request.Headers.TryGetValue("X-Health-Probe", out var sent)
+                    && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                        System.Text.Encoding.UTF8.GetBytes(sent.ToString()),
+                        System.Text.Encoding.UTF8.GetBytes(expected));
+            }
+
+            // Platform yöneticisi (mobil "Sağlık uyarıları" ekranı) ayrıntıyı görebilir: uç anonim
+            // olsa da kimlik doğrulama ardışık düzeni her istekte çalışır, token varsa çözülür.
+            var trusted = currentUser.IsPlatformAdmin || IsTrustedProbe(http, configuration);
+
             IResult NotReady(string code, string detail)
             {
                 log.LogError("Hazırlık başarısız ({Code}): {Detail}", code, detail);
                 return Results.Json(
-                    ApiResponse<object>.Fail(code, "Bu örnek henüz trafiğe hazır değil.", http.TraceIdentifier),
+                    ApiResponse<object>.Fail(trusted ? code : "NotReady", "Bu örnek henüz trafiğe hazır değil."),
                     statusCode: StatusCodes.Status503ServiceUnavailable);
             }
 
@@ -52,7 +83,7 @@ public static class HealthEndpoints
             if (paymentIssue is not null) return NotReady("PaymentConfigInvalid", paymentIssue);
 
             if (db.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true)
-                return Results.Ok(ApiResponse<object>.Ok(new { status = "ready" }, http.TraceIdentifier));
+                return Results.Ok(ApiResponse<object>.Ok(new { status = "ready" }));
 
             if (!await db.Database.CanConnectAsync(ct))
                 return NotReady("DatabaseUnavailable", "Veritabanı bağlantısı kurulamadı.");
@@ -73,7 +104,7 @@ public static class HealthEndpoints
             if (pending.Length > 0)
                 return NotReady("SchemaOutOfDate", $"Uygulanmamış {pending.Length} migration var (ilki: {pending[0]}).");
 
-            return Results.Ok(ApiResponse<object>.Ok(new { status = "ready" }, http.TraceIdentifier));
+            return Results.Ok(ApiResponse<object>.Ok(new { status = "ready" }));
         }).WithTags("Health");
         return app;
     }

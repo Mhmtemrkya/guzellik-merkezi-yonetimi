@@ -99,3 +99,81 @@ matematiksel olarak imkânsız: beyaz zaten en açık ton ve koyu metin **daha k
 Bu turda, çalışmamla ilgisiz olarak `CustomerLedgerModal.tsx` · `lib/accountStatement.ts` ·
 `reportPdf.ts` · `vitest.config.ts` · `on-muhasebe/page.tsx` üzerinde **başka bir oturuma ait**
 "cari hesap ekstresi" değişiklikleri çalışma ağacında duruyordu. Onlara dokunmadım.
+
+
+---
+
+# Pentest Turu — 27 Ağustos 2026
+
+**Taban sürüm:** `ba08aa5` · Kapsam: `BeautyAsist Pentest Raporu — 2026-08-27`
+
+Kullanıcı talebi: **Apple'ın mağaza incelemesi için istediği madde (YÜKSEK-1) HARİÇ** tüm bulgular kapatıldı.
+
+Doğrulama: backend `dotnet build` 0 hata · `dotnet test` **674/674 geçti (0 atlandı — gerçek MySQL ile)** ·
+web `tsc` temiz · `vitest` **149/149 geçti** · `next build --webpack` başarılı · `npm audit` **0 açık**.
+
+## Bulgu bazında durum
+
+| Bulgu | Durum | Yapılan |
+|---|---|---|
+| **YÜKSEK-1** — mağaza-inceleme sabit OTP yolu | **KAPSAM DIŞI (sizin kararınız)** | Apple incelemesi için gerekli olduğundan dokunulmadı. Rapordaki not geçerli: inceleme biter bitmez eski `CustomerOtp:StoreReview*` anahtarları sunucudan kaldırılmalı. |
+| **YÜKSEK-2** — BranchManager kardeş şubenin kataloğunu yönetebiliyor | **KAPATILDI** | İki kapı birden: (1) tekil **GET/PUT/DELETE** (+ paket iptal/geri-al/kategori) artık liste ile aynı kapsam sorgusundan geçiyor — `InScope(tenantId)`; (2) **INSERT** ayrıca doğrulanıyor (`BranchScopeGuard`): kapsam sorgusu okumayı süzer, INSERT'i süzmez. 14 yeni test. |
+| **ORTA-1** — HSTS yok | **KAPATILDI** | Panel (`next.config.js`) + API (`UseHsts`). **Ömür 300 sn ile başlıyor**, `preload` yok. Uzatma adımları + nginx örneği `CANLI_DEPLOY_NOTLARI.md`'de. |
+| **ORTA-2** — CSP script kaynaklarını kısıtlamıyor | **KAPATILDI (script tarafı)** | Nonce + `strict-dynamic` tabanlı politika (`Frontend/proxy.ts`). Ön koşul olarak kök layout `await connection()` çağırıyor. Access token taşınması yapılmadı — aşağıya bakın. |
+| **ORTA-3** — exceljs → savunmasız uuid | **KAPATILDI** | `overrides: { "uuid": "$uuid" }` → transitif uuid 8.3.2 yerine kök bağımlılıktaki 14.x. `npm audit` temiz, `require('exceljs')` ve production build doğrulandı. (Eski #46 maddesi de bu turda kapandı.) |
+| **DÜŞÜK-1** — `/api/auth/login-scope` doğrulayıcısı bağlı değil | **KAPATILDI** | `.ValidatesRequest<LoginScopeRequest>()` bağlandı; mesajlar Türkçeleştirildi (metin doğrudan giriş ekranında görünüyor). |
+| **DÜŞÜK-2** — health uçları + trace ID anonim | **KAPATILDI** | Üç uçtan da `traceId` kaldırıldı (zarf biçimi korundu — dış uptime kontrolleri kırılmasın). `/health/ready` hata KODU (`SchemaOutOfDate`, `PaymentConfigInvalid` …) yalnız güvenilen yoklayıcıya (loopback ya da `Health:ProbeToken`) açılıyor; diğerlerine `NotReady`. **Fail-open:** token tanımsızsa uç kapanmaz, yalnız kod genelleşir. |
+| **DÜŞÜK-3** — hata yanıtları proxy mimarisini açıklıyor | **KAPATILDI** | `/api`, `/api/proxy` → `{status:"ok"}`; 404 metni yol adını yankılamıyor ve "/api/proxy ile başlamalı" ipucunu vermiyor. |
+
+## Raporda OLMAYAN, bu turda bulunan
+
+- **Kampanyalar aynı açığın kopyasıydı.** `Campaign.BranchId` var ama hiçbir sorguda uygulanmıyordu:
+  şube yöneticisi kardeş şubenin kampanyasını listeleyip değiştirebiliyor ve silebiliyordu. Hizmet/paket ile
+  **aynı desenle** kapatıldı (`InScope` + create doğrulaması), testi de yazıldı.
+- **Kurumlar arası `BranchId` enjeksiyonu.** Yabancı bir kurumun şube kimliğiyle katalog kaydı açılabiliyordu
+  (FK `Restrict` buna izin verir — şube gerçekten vardır, yalnız başka kurumundur). Artık kurum sahibi için de
+  reddediliyor.
+
+### Aynı sınıf — bakıldı, kapatılmadı (gerekçesiyle)
+
+`BranchId` taşıyıp global şube süzgeci **olmayan** tüm varlıklar tek tek incelendi:
+
+| Varlık | Neden dokunulmadı |
+|---|---|
+| `PendingOperation` | Kapsam servis katmanında **açıkça** uygulanıyor (`OutOfBranchScope`, önceki denetimde kapatıldı). |
+| `TenantUser` | Yalnız **şube süzgeçli** `StaffMember` üzerinden erişiliyor; doğrudan uç yok. |
+| `AuditLog`, `NotificationLog` | Kurum düzeyinde denetim/gönderim kaydı — şubeye daraltmak kasıtlı davranışı değiştirir. |
+| `NotificationTemplate` | Kurum geneli şablon; şubeye daraltmak ürün kararıdır. |
+| `AppNotification` | Kullanıcı bazlı; alıcı kimliğiyle süzülüyor. |
+| `AppointmentRating` | Tek kullanımlık **token** ile anonim erişilen uç; şube kapsamı anlamsız. |
+
+## Bilinçli kararlar (eksik değil, tercih)
+
+1. **Kurala global query filter DEĞİL, uç seviyesinde uygulandı — ölçümle.**
+   İlk uygulamada kapsam `GuzellikDbContext`'e global süzgeç olarak konmuştu; daha temiz görünüyor
+   ve tüm sorguları tek noktadan kapsıyordu. **Geliştirme veritabanında ölçüldü: şubesi FARKLI bir
+   hizmete işaret eden 7 randevu var.** Bu referanslar üretilebiliyor çünkü kurum sahibi şube
+   değiştirebiliyor ve `AppointmentService.PinnedBranchId` ona kapsam koymuyor. Global süzgeçle o
+   randevular kendi şubelerinde **adı boş** görünürdü (projeksiyon `LEFT JOIN` üretiyor) — güvenlik
+   kazancı olmadan görünür veri kaybı. Kural bu yüzden katalog uçlarında duruyor; kimlikle okuyan iç
+   yollar (randevu/adisyon/seans/rapor) tenant geneli kaldı. Yön bir testle sabitlendi:
+   `CatalogLookupById_StaysTenantWide_SoHistoricReferencesKeepResolving`.
+2. **Kurum geneli (`BranchId = null`) katalog kaydına yazma şube yöneticisine AÇIK bırakıldı.**
+   Rapor bunu Owner'a kapatmayı öneriyordu; uygulanmadı çünkü (a) tek şubeli ve eski kurumların **tüm**
+   kataloğu `BranchId = null`'dır — kapatmak onları kilitlerdi, (b) personelin onaya düşen isteği onaylandığında
+   **personelin kapsamıyla** replay edilir (`IApprovalReplayer`), yani kural onay akışını da kırardı.
+   Kanıtlanan açık kardeş-şube erişimiydi ve o kapandı.
+3. **Access token hâlâ Web Storage'da.** Refresh token zaten HttpOnly çerezde (`/api/proxy` katmanı).
+   Access token'ı çereze taşımak; JWT claim'lerinden beslenen tüm arayüz yetki kapılarını, SignalR
+   bağlantısını ve mobil/masaüstü istemcileri kapsayan ayrı bir iş kalemidir. CSP artık script
+   enjeksiyonunun **çalışmasını** engellediği için zincirin ilk halkası koptu; kalan risk 60 dk ömürlü
+   access token'dır.
+4. **CSP `style-src 'unsafe-inline'` içeriyor.** framer-motion/gsap satır-içi `style` yazar; bulgunun
+   konusu script kaynaklarıdır.
+
+## Yayın öncesi dikkat
+
+- **Kök layout artık `await connection()` çağırıyor** → tüm sayfalar istek anında render ediliyor
+  (önceden çoğu statikti). Nonce'un ön koşulu budur; ölçüm: TTFB ~10-20 ms → ~15-30 ms.
+  Statik üretimi geri açarsanız **CSP'yi de kapatmanız gerekir**, aksi hâlde beyaz ekran olur.
+- `HSTS_MAX_AGE` **build zamanında** okunur (frontend). Uzatmak için yeniden build gerekir.

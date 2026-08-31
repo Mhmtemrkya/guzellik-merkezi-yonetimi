@@ -11,7 +11,11 @@ namespace GuzellikMerkezi.Application.Validation;
 
 public sealed class LoginScopeRequestValidator : AbstractValidator<LoginScopeRequest>
 {
-    public LoginScopeRequestValidator() => RuleFor(x => x.Email).NotEmpty().EmailAddress();
+    // Mesaj Türkçe: bu doğrulayıcı artık uca BAĞLI (bkz. AuthEndpoints) ve hata metni doğrudan
+    // giriş ekranındaki uyarı şeridinde görünür.
+    public LoginScopeRequestValidator() => RuleFor(x => x.Email)
+        .NotEmpty().WithMessage("E-posta adresi zorunlu.")
+        .EmailAddress().WithMessage("Geçerli bir e-posta adresi girin.");
 }
 
 public sealed class LoginRequestValidator : AbstractValidator<LoginRequest>
