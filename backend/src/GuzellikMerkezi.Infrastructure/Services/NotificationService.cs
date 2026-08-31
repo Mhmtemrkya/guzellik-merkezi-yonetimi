@@ -9,6 +9,7 @@ using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GuzellikMerkezi.Infrastructure.Services;
 
@@ -19,12 +20,20 @@ public sealed class NotificationService : INotificationService
     private readonly IFeatureService _features;
     private readonly IPlatformMessagingService _messaging;
 
-    public NotificationService(GuzellikDbContext db, IUsageService usage, IFeatureService features, IPlatformMessagingService messaging)
+    /// <summary>
+    /// WhatsApp gönderimi kendi modülünden (kontör rezervasyonu, 24 saat penceresi, mesaj defteri)
+    /// geçer. Çalışma anında çözülür: <c>IWhatsAppService</c> zinciri (waitlist → randevu → …)
+    /// ctor bağımlılığında dairesellik riski taşır; aynı scope'tan çözmek bu riski tümden kaldırır.
+    /// </summary>
+    private readonly IServiceProvider _services;
+
+    public NotificationService(GuzellikDbContext db, IUsageService usage, IFeatureService features, IPlatformMessagingService messaging, IServiceProvider services)
     {
         _db = db;
         _usage = usage;
         _features = features;
         _messaging = messaging;
+        _services = services;
     }
 
     // ---------------- Templates ----------------
@@ -246,9 +255,28 @@ public sealed class NotificationService : INotificationService
                     (ok, error) = Judge(await _messaging.SendEmailAsync(recipient, template.Name, body, ct));
                     break;
                 }
+                case NotificationChannel.WhatsApp:
+                {
+                    /*
+                     * GÖNDERİLMEDEN "GÖNDERİLDİ" DEMEK YOK.
+                     *
+                     * Burası eskiden `default` dalıydı ve "kendi dedike modülünden gönderilir" diyerek
+                     * `ok = true` işaretliyordu. Ama hiçbir yerde gönderilmiyordu: WhatsApp kanalıyla
+                     * otomatik hatırlatma kuran kurum, geçmişte "Gönderildi" görüyor, müşteriye hiçbir
+                     * şey ulaşmıyordu. Artık gerçek gönderim yapılır ve sonuç ne ise o yazılır.
+                     *
+                     * KATEGORİ = Meta'nın faturalama sınıfı. Hatırlatma ve ödeme bildirimi işlemseldir
+                     * (Utility, ucuz); doğum günü / geri kazanım / seans yenileme / elle kampanya
+                     * pazarlamadır (Marketing, ~10 kat pahalı) ve kurumun açık iznini gerektirir.
+                     */
+                    var marketing = template.Trigger is not (NotificationTrigger.AppointmentReminder or NotificationTrigger.PaymentDue);
+                    var whatsApp = _services.GetRequiredService<Application.Features.WhatsApp.IWhatsAppService>();
+                    (ok, error) = Judge(await whatsApp.SendNotificationAsync(tenantId, c.Id, body, marketing, ct));
+                    break;
+                }
                 default:
-                    // WhatsApp vb. kendi dedike modülünden gönderilir; burada gönderilmiş kabul edilir.
-                    ok = true; error = null;
+                    ok = false;
+                    error = $"Desteklenmeyen bildirim kanalı: {template.Channel}.";
                     break;
             }
 

@@ -5,6 +5,7 @@ using System.Text.Json;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Features;
+using GuzellikMerkezi.Application.Features.PlatformMessaging;
 using GuzellikMerkezi.Application.Features.Waitlist;
 using GuzellikMerkezi.Application.Features.WhatsApp;
 using GuzellikMerkezi.Domain;
@@ -102,7 +103,8 @@ public sealed class WhatsAppService : IWhatsAppService
         }
         s.UpdateContent(request.ReminderTemplate);
         s.UpdateBillingPreferences(request.MarketingEnabled, request.AllowWalletOverage, request.MonthlySpendCapTry);
-        s.UpdateTemplateBindings(request.KvkkTemplateName, request.ReminderTemplateName, request.TemplateLanguageCode);
+        s.UpdateTemplateBindings(request.KvkkTemplateName, request.ReminderTemplateName, request.TemplateLanguageCode,
+            request.WaitlistOfferTemplateName, request.WaitlistActivatedTemplateName, request.RatingTemplateName);
         await _db.SaveChangesAsync(ct);
         return Result<WhatsAppSettingsDto>.Success(BuildSettingsDto(s));
     }
@@ -224,8 +226,38 @@ public sealed class WhatsAppService : IWhatsAppService
         var settings = await _db.WhatsAppSettings.FirstOrDefaultAsync(x => x.TenantId == tenantId, ct);
         var body = RenderTemplate(settings?.ReminderTemplate ?? DefaultTemplate, appt);
 
+        /*
+         * 24 SAAT PENCERESİ KAPALIYKEN ONAYLI ŞABLON KULLANILIR.
+         *
+         * Meta, müşteri son 24 saatte yazmadıysa serbest metni İLETMEZ. Gerçek hayatta hatırlatma
+         * mesajlarının neredeyse tamamı bu durumdadır (müşteri önce yazmaz), yani şablon bağlanmadan
+         * canlıda hatırlatma HİÇ ULAŞMAZ — panelde "başarısız" görünür, sebebi Meta'nın ham hata
+         * metnidir. Ayardaki `ReminderTemplateName` bu yüzden vardı ama gönderim yolunda hiç
+         * okunmuyordu; artık okunuyor.
+         *
+         * Parametre sırası Meta'da onaylanan şablonla BİREBİR aynı olmalı (bkz. WhatsAppSettings):
+         *   {{1}}=ad, {{2}}=tarih, {{3}}=saat, {{4}}=hizmet, {{5}}=kurum
+         */
+        var local = appt.StartUtc.AddHours(3); // Türkiye UTC+3
+        var salonName = await SalonNameAsync(tenantId, appt.BranchId, ct);
+        var reminderParams = new[]
+        {
+            TemplateParam(appt.Customer?.FullName, "Değerli müşterimiz"),
+            local.ToString("dd.MM.yyyy"),
+            local.ToString("HH:mm"),
+            TemplateParam(appt.ServiceDefinition?.Name, "hizmet"),
+            TemplateParam(salonName, "Salonumuz"),
+        };
+
         var result = await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null,
-            phone!, body, WhatsAppMessageCategory.Utility, templateName: "reminder", ct);
+            phone!, body, WhatsAppMessageCategory.Utility, templateName: "reminder", ct,
+            attachment: null,
+            templateFallback: s => string.IsNullOrWhiteSpace(s?.ReminderTemplateName)
+                ? null
+                : new TemplateFallback(s.ReminderTemplateName!, s.TemplateLanguageCode, reminderParams),
+            // Şablon tanımlı değilken pencere kapalıysa denemek yerine ANLAŞILIR sebeple engelle:
+            // serbest metin nasılsa Meta'dan dönecek, üstelik kontör rezervasyonu boşuna yapılacaktı.
+            requireTemplateOutsideWindow: true);
 
         if (result.Blocked)
             return Result<ReminderResultDto>.Failure(Error.Conflict(result.BlockReason!));
@@ -284,7 +316,12 @@ public sealed class WhatsAppService : IWhatsAppService
                 salonName = await _db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct) ?? string.Empty;
 
             var body = RenderSlotTemplate(WaitlistOfferTemplate, customer.FullName, startUtc, serviceName, salonName);
-            return Report(await DispatchAsync(tenantId, entry.BranchId, appointmentId: null, entry.CustomerId, waitlistEntryId: entry.Id, customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "waitlist-offer", ct));
+            var slotParams = SlotTemplateParams(customer.FullName, startUtc, serviceName, salonName);
+            return Report(await DispatchAsync(tenantId, entry.BranchId, appointmentId: null, entry.CustomerId, waitlistEntryId: entry.Id, customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "waitlist-offer", ct,
+                attachment: null,
+                templateFallback: s => string.IsNullOrWhiteSpace(s?.WaitlistOfferTemplateName)
+                    ? null
+                    : new TemplateFallback(s.WaitlistOfferTemplateName!, s.TemplateLanguageCode, slotParams)));
         }
         catch (Exception ex)
         {
@@ -431,6 +468,33 @@ public sealed class WhatsAppService : IWhatsAppService
             true, dispatch.Simulated, dispatch.ToPhone, dispatch.Body, dispatch.ProviderMessageId, dispatch.Error));
     }
 
+    /// <inheritdoc />
+    public async Task<MessagingTestResult> SendNotificationAsync(Guid tenantId, Guid customerId, string body, bool marketing, CancellationToken ct = default)
+    {
+        try
+        {
+            var customer = await _db.Customers.IgnoreQueryFilters().AsNoTracking()
+                .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == customerId && !c.IsDeleted, ct);
+            if (customer is null || string.IsNullOrWhiteSpace(customer.Phone))
+                return new MessagingTestResult(false, false, null, "Müşterinin telefon numarası yok.");
+
+            var category = marketing ? WhatsAppMessageCategory.Marketing : WhatsAppMessageCategory.Utility;
+            var result = await DispatchAsync(tenantId, customer.BranchId, appointmentId: null, customer.Id,
+                waitlistEntryId: null, customer.Phone!, body, category, templateName: "notification", ct);
+
+            // Engellenen gönderim de BAŞARISIZDIR: sebep (paket/kota/kontör/kampanya izni) çağırana
+            // aynen taşınır ki bildirim geçmişinde "neden gitmedi" yazsın.
+            if (result.Blocked) return new MessagingTestResult(false, false, null, result.BlockReason);
+            if (result.Message is null) return new MessagingTestResult(false, false, null, "Telefon numarası çözümlenemedi.");
+            return new MessagingTestResult(result.Success, result.Simulated, result.ProviderMessageId, result.Error);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "WhatsApp bildirimi gönderilemedi: {Customer}", customerId);
+            return new MessagingTestResult(false, false, null, ex.Message);
+        }
+    }
+
     /// <inheritdoc cref="SendWaitlistOfferAsync" />
     public async Task<WhatsAppDispatchReport> SendKvkkConsentRequestAsync(Guid tenantId, Guid customerId, CancellationToken ct = default)
     {
@@ -469,7 +533,14 @@ public sealed class WhatsAppService : IWhatsAppService
                 settings => string.IsNullOrWhiteSpace(settings?.KvkkTemplateName)
                     ? null
                     : new TemplateFallback(settings.KvkkTemplateName!, settings.TemplateLanguageCode,
-                        new[] { firstName, salonName, link ?? string.Empty })));
+                        new[]
+                        {
+                            TemplateParam(firstName, "Değerli müşterimiz"),
+                            TemplateParam(salonName, "Salonumuz"),
+                            // Link boş kalabilir (App:PublicBaseUrl tanımsızsa); BOŞ parametre Meta'da
+                            // gönderimi reddettirir, o yüzden yer tutucu konur.
+                            TemplateParam(link, "-"),
+                        })));
         }
         catch (Exception ex)
         {
@@ -535,7 +606,17 @@ public sealed class WhatsAppService : IWhatsAppService
                 .Replace("{ad}", FirstName(appt.Customer.FullName))
                 .Replace("{salon}", salonName)
                 .Replace("{link}", link);
-            return Report(await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "rating-link", ct));
+            var ratingParams = new[]
+            {
+                TemplateParam(appt.Customer.FullName, "Değerli müşterimiz"),
+                TemplateParam(salonName, "Salonumuz"),
+                TemplateParam(link, "-"),
+            };
+            return Report(await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "rating-link", ct,
+                attachment: null,
+                templateFallback: s => string.IsNullOrWhiteSpace(s?.RatingTemplateName)
+                    ? null
+                    : new TemplateFallback(s.RatingTemplateName!, s.TemplateLanguageCode, ratingParams)));
         }
         catch (Exception ex)
         {
@@ -559,7 +640,13 @@ public sealed class WhatsAppService : IWhatsAppService
                 salonName = await _db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct);
             var body = RenderSlotTemplate(WaitlistActivatedTemplate, appt.Customer.FullName, appt.StartUtc,
                 appt.ServiceDefinition?.Name ?? string.Empty, salonName ?? string.Empty);
-            return Report(await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "waitlist-activated", ct));
+            var slotParams = SlotTemplateParams(appt.Customer.FullName, appt.StartUtc,
+                appt.ServiceDefinition?.Name, salonName);
+            return Report(await DispatchAsync(tenantId, appt.BranchId, appt.Id, appt.CustomerId, waitlistEntryId: null, appt.Customer.Phone!, body, WhatsAppMessageCategory.Utility, templateName: "waitlist-activated", ct,
+                attachment: null,
+                templateFallback: s => string.IsNullOrWhiteSpace(s?.WaitlistActivatedTemplateName)
+                    ? null
+                    : new TemplateFallback(s.WaitlistActivatedTemplateName!, s.TemplateLanguageCode, slotParams)));
         }
         catch (Exception ex)
         {
@@ -1191,12 +1278,13 @@ public sealed class WhatsAppService : IWhatsAppService
     {
         var webhookUrl = BuildWebhookUrl();
         if (s is null)
-            return new WhatsAppSettingsDto(false, null, null, WhatsAppConnectionStatus.NotConnected.ToString(), false, null, null, "Meta", webhookUrl, false, false, null, null, null, "tr");
+            return new WhatsAppSettingsDto(false, null, null, WhatsAppConnectionStatus.NotConnected.ToString(), false, null, null, "Meta", webhookUrl, false, false, null, null, null, "tr", null, null, null);
         return new WhatsAppSettingsDto(
             s.Enabled, s.PhoneNumberId, s.DisplayPhoneNumber, s.ConnectionStatus.ToString(), s.IsConnected,
             s.BusinessAccountId, s.ReminderTemplate, s.Provider, webhookUrl,
             s.MarketingEnabled, s.AllowWalletOverage, s.MonthlySpendCapTry,
-            s.KvkkTemplateName, s.ReminderTemplateName, s.TemplateLanguageCode);
+            s.KvkkTemplateName, s.ReminderTemplateName, s.TemplateLanguageCode,
+            s.WaitlistOfferTemplateName, s.WaitlistActivatedTemplateName, s.RatingTemplateName);
     }
 
     private string BuildWebhookUrl()
@@ -1213,6 +1301,37 @@ public sealed class WhatsAppService : IWhatsAppService
 
     private static string FirstName(string? fullName) =>
         string.IsNullOrWhiteSpace(fullName) ? "Değerli müşterimiz" : fullName.Trim().Split(' ')[0];
+
+    /// <summary>
+    /// Meta şablon parametresi için güvenli değer üretir.
+    ///
+    /// <para>Meta parametrede satır sonu/sekme ve 4'ten fazla ardışık boşluk KABUL ETMEZ; boş
+    /// parametre de gönderimi reddettirir. Bu yüzden tüm boşluklar teke indirilir ve değer boşsa
+    /// <paramref name="fallback"/> kullanılır — bir müşteri adındaki kopyala-yapıştır satır sonu
+    /// yüzünden hatırlatma kaybolmasın.</para>
+    /// </summary>
+    private static string TemplateParam(string? value, string fallback)
+    {
+        var raw = (value ?? string.Empty).Trim();
+        if (raw.Length == 0) return fallback;
+
+        var sb = new StringBuilder(raw.Length);
+        var lastWasSpace = false;
+        foreach (var ch in raw)
+        {
+            var c = char.IsWhiteSpace(ch) ? ' ' : ch;
+            if (c == ' ')
+            {
+                if (lastWasSpace) continue;
+                lastWasSpace = true;
+            }
+            else lastWasSpace = false;
+            sb.Append(c);
+        }
+
+        var cleaned = sb.ToString().Trim();
+        return cleaned.Length == 0 ? fallback : cleaned;
+    }
 
     /// <summary>
     /// Bekleme/slot mesajlarını yazar. Hizmet ya da salon adı boş olabildiğinden metin
@@ -1236,6 +1355,24 @@ public sealed class WhatsAppService : IWhatsAppService
             .Replace("{personel}", string.Empty)
             .Replace("{salonimza}", salon.Length > 0 ? $" — {salon}" : string.Empty)
             .Replace("{salon}", salon);
+    }
+
+    /// <summary>
+    /// Slot mesajlarının (bekleme teklifi / bekleme onayı) Meta şablon parametreleri.
+    /// Sıra hatırlatma şablonuyla AYNI tutulur — kurum tek bir mantıkla şablon onaylatsın:
+    /// {{1}}=ad, {{2}}=tarih, {{3}}=saat, {{4}}=hizmet, {{5}}=kurum.
+    /// </summary>
+    private static string[] SlotTemplateParams(string? name, DateTime startUtc, string? serviceName, string? salonName)
+    {
+        var local = startUtc.AddHours(3); // Türkiye UTC+3
+        return
+        [
+            TemplateParam(name, "Değerli müşterimiz"),
+            local.ToString("dd.MM.yyyy"),
+            local.ToString("HH:mm"),
+            TemplateParam(serviceName, "hizmet"),
+            TemplateParam(salonName, "Salonumuz"),
+        ];
     }
 
     private static string RenderTemplate(string template, Appointment appt)

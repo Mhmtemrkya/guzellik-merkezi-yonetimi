@@ -38,6 +38,11 @@
 >
 > Aşağıdaki migration listesi *ne değiştiğini* anlatır; hepsi bu tek komutla uygulanır.
 
+- [ ] **WhatsApp bekleme/değerlendirme şablon migration'ı:** `WhatsAppWaitlistRatingTemplates` (`20260831064756`).
+  - `whatsapp_settings` tablosuna `WaitlistOfferTemplateName`, `WaitlistActivatedTemplateName`,
+    `RatingTemplateName` (üçü de nullable `varchar(128)`) ekler. Mevcut veri değişmez.
+  - Uygulanmazsa: WhatsApp ayarları uçları (`/api/admin/whatsapp/settings`) eksik kolon nedeniyle **500** verir.
+  - Bağlam ve şablon parametre sözleşmesi: kökteki **`WHATSAPP_AKTIVASYON.md`**.
 - [ ] **Encryption kolon migration'ını uygula:** `WidenEncryptedColumns` (`20260621214008`).
   - Schema prod'da otomatik migrate OLMAZ (sadece Development'ta). Elle uygula:
     - `dotnet ef database update -p backend/src/GuzellikMerkezi.Infrastructure -s backend/src/GuzellikMerkezi.Api`

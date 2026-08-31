@@ -28,22 +28,30 @@ export default function AppointmentReminderControl({
 }) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
+  const [failed, setFailed] = useState(false)
   const allowed = useFeature('notifications.whatsapp')
   const meta = CONF_META[confirmation] ?? null
 
   if (!allowed) return null
 
   const send = async () => {
-    setBusy(true); setMsg('')
+    setBusy(true); setMsg(''); setFailed(false)
+    let hideAfterMs = 3000
     try {
       const res = await adminApi.sendWhatsappReminder<ApiWhatsAppReminderResult>(appointmentId, tenantId)
       if (isPendingApprovalResult(res)) setMsg('Onaya gönderildi')
       else { setMsg(res?.simulated ? 'Gönderildi (simülasyon)' : 'Gönderildi ✓'); onChanged?.() }
-    } catch {
-      setMsg('Gönderilemedi')
+    } catch (e) {
+      // SUNUCUNUN SEBEBİNİ GÖSTER. Buradaki mesaj kullanıcının çözebileceği tek bilgi:
+      // "24 saat penceresi kapalı, onaylı şablon tanımlı değil", "aylık kota doldu",
+      // "kontör yetersiz", "kampanya mesajları kapalı"… Genel "Gönderilemedi" yazmak bunu yutuyordu
+      // (mobilde zaten sebep gösteriliyordu — parite).
+      setFailed(true)
+      setMsg(e instanceof Error && e.message ? e.message : 'Gönderilemedi')
+      hideAfterMs = 9000 // hata metni okunacak kadar ekranda kalsın
     } finally {
       setBusy(false)
-      setTimeout(() => setMsg(''), 3000)
+      setTimeout(() => { setMsg(''); setFailed(false) }, hideAfterMs)
     }
   }
 
@@ -59,7 +67,14 @@ export default function AppointmentReminderControl({
       >
         {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageCircle className="h-3 w-3" />} Hatırlat
       </button>
-      {msg && <span className="text-[10px] font-medium text-[#5A4B53]">{msg}</span>}
+      {msg && (
+        <span
+          title={msg}
+          className={`max-w-[280px] text-[10px] font-medium leading-snug ${failed ? 'text-rose-600' : 'text-[#5A4B53]'}`}
+        >
+          {msg}
+        </span>
+      )}
     </div>
   )
 }

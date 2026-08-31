@@ -1,4 +1,5 @@
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.PlatformMessaging;
 
 namespace GuzellikMerkezi.Application.Features.WhatsApp;
 
@@ -75,6 +76,27 @@ public interface IWhatsAppService
     /// kuruma ait olduğunu doğrular ve gönderimi kendi kontör/kuyruk protokolünden geçirir.
     /// </summary>
     Task<Result<ReminderResultDto>> SendGiftCardAsync(Guid tenantId, SendGiftCardRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Bildirim şablonu metnini (kanalı WhatsApp olan otomatik/toplu bildirimler) müşteriye gönderir.
+    ///
+    /// <para>
+    /// SESSİZ BAŞARI YOK: bu yol eklenene kadar WhatsApp kanallı bildirimler gönderilmeden
+    /// "gönderildi" sayılıyordu. Sonuç <see cref="MessagingTestResult"/> olarak döner; simülasyon
+    /// da teslimat sayılmaz (SMS/e-posta ile aynı kural).
+    /// </para>
+    /// <para>
+    /// Serbest metindir — Meta'nın 24 saat penceresi kapalıysa iletilmez ve sebep hata olarak döner.
+    /// Randevu hatırlatması bu yoldan DEĞİL, onaylı şablonu kullanan
+    /// <see cref="SendReminderAsync"/> üzerinden gider.
+    /// </para>
+    /// </summary>
+    /// <param name="marketing">
+    /// Meta faturalama kategorisi. Kampanya niteliğindeki bildirimler (doğum günü, geri kazanım,
+    /// seans yenileme, elle kampanya) Marketing'tir: pahalıdır ve kurumun açıkça izin vermesini
+    /// gerektirir. Hatırlatma/ödeme bildirimi Utility'dir.
+    /// </param>
+    Task<MessagingTestResult> SendNotificationAsync(Guid tenantId, Guid customerId, string body, bool marketing, CancellationToken cancellationToken = default);
 
     /// <summary>Meta webhook doğrulaması (GET). Eşleşen verify token varsa challenge döner.</summary>
     Task<string?> VerifyWebhookAsync(string? mode, string? verifyToken, string? challenge, CancellationToken cancellationToken = default);

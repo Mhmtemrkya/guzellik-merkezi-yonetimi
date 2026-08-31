@@ -1527,6 +1527,9 @@ export interface ApiWhatsAppSettings {
   kvkkTemplateName?: string | null
   reminderTemplateName?: string | null
   templateLanguageCode?: string
+  waitlistOfferTemplateName?: string | null
+  waitlistActivatedTemplateName?: string | null
+  ratingTemplateName?: string | null
 }
 
 // --- WhatsApp kontör/faturalama ---

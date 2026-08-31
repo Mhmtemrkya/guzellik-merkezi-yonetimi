@@ -19,7 +19,10 @@ public sealed record WhatsAppSettingsDto(
     // Meta onaylı şablon adları — 24 saat penceresi kapalıyken serbest metin İLETİLMEZ.
     string? KvkkTemplateName = null,
     string? ReminderTemplateName = null,
-    string TemplateLanguageCode = "tr");
+    string TemplateLanguageCode = "tr",
+    string? WaitlistOfferTemplateName = null,
+    string? WaitlistActivatedTemplateName = null,
+    string? RatingTemplateName = null);
 
 /// <summary>Kurum yöneticisi yalnızca içeriği ve faturalama tercihlerini kaydeder (bağlantıyı platform yönetir).</summary>
 public sealed record SaveWhatsAppSettingsRequest(
@@ -29,7 +32,10 @@ public sealed record SaveWhatsAppSettingsRequest(
     decimal? MonthlySpendCapTry = null,
     string? KvkkTemplateName = null,
     string? ReminderTemplateName = null,
-    string? TemplateLanguageCode = null);
+    string? TemplateLanguageCode = null,
+    string? WaitlistOfferTemplateName = null,
+    string? WaitlistActivatedTemplateName = null,
+    string? RatingTemplateName = null);
 
 public sealed record ReminderResultDto(
     bool Sent,

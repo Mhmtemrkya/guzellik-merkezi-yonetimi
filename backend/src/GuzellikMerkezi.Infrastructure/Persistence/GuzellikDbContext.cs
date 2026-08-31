@@ -612,6 +612,17 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(x => x.Price).HasPrecision(18, 2);
         builder.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
+        // KATALOĞA GLOBAL ŞUBE SÜZGECİ KOYULMAZ — BİLİNÇLİ (pentest YÜKSEK-2 düzeltmesinin sınırı).
+        //
+        // Şube kapsamı katalog UÇLARINDA zorlanır (bkz. ServiceCatalogService: liste + tekil
+        // GET/PUT/DELETE + create'te BranchScopeGuard). Global süzgeç daha "temiz" görünür ama
+        // katalog kaydını KİMLİKLE okuyan iç yolları da vurur: randevu/adisyon/seans/rapor
+        // projeksiyonları hizmet adını ve süresini buradan okur.
+        //
+        // ÖLÇÜLDÜ (27 Ağu 2026, geliştirme veritabanı): 7 randevu, şubesi FARKLI bir hizmete işaret
+        // ediyor. Bu referanslar üretilebiliyor çünkü kurum sahibi şube değiştirebiliyor ve
+        // AppointmentService.PinnedBranchId ona kapsam koymuyor. Global süzgeçle o randevular kendi
+        // şubelerinde ADI BOŞ görünürdü — güvenlik kazancı olmadan görünür veri kaybı.
         builder.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
     }
 
@@ -629,6 +640,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         packageBuilder.HasIndex(x => new { x.TenantId, x.Name });
         packageBuilder.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
         packageBuilder.HasMany(x => x.Items).WithOne(x => x.Package!).HasForeignKey(x => x.ServicePackageId).OnDelete(DeleteBehavior.Cascade);
+        // Şube kapsamı paket UÇLARINDA zorlanır, global süzgeçle DEĞİL — gerekçe için
+        // ConfigureServiceDefinition'daki nota bakın (paket adı satış/seans projeksiyonlarında okunur).
         packageBuilder.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
 
         var itemBuilder = modelBuilder.Entity<ServicePackageItem>();
@@ -1009,6 +1022,9 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         // Meta onayli sablon adlari — kisa metin, longtext gereksiz.
         s.Property(x => x.KvkkTemplateName).HasMaxLength(128);
         s.Property(x => x.ReminderTemplateName).HasMaxLength(128);
+        s.Property(x => x.WaitlistOfferTemplateName).HasMaxLength(128);
+        s.Property(x => x.WaitlistActivatedTemplateName).HasMaxLength(128);
+        s.Property(x => x.RatingTemplateName).HasMaxLength(128);
         s.Property(x => x.TemplateLanguageCode).HasMaxLength(16).HasDefaultValue("tr");
         s.Property(x => x.DisplayPhoneNumber).HasMaxLength(32);
         s.Property(x => x.ConnectionStatus).HasConversion<string>().HasMaxLength(16).IsRequired()
@@ -1275,6 +1291,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         c.Property(x => x.StartDate).HasConversion(DateOnlyConverter).HasColumnType("date");
         c.Property(x => x.EndDate).HasConversion(DateOnlyConverter).HasColumnType("date");
         c.HasIndex(x => new { x.TenantId, x.IsActive });
+        // Kampanya kapsamı da uçta zorlanır (bkz. CampaignService) — gerekçe için
+        // ConfigureServiceDefinition'daki nota bakın.
         c.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
     }
 

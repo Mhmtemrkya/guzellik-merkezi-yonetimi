@@ -1,6 +1,7 @@
 using GuzellikMerkezi.Application.Features.AppNotifications;
 using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Application.Features.Notifications;
+using GuzellikMerkezi.Application.Features.WhatsApp;
 using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
@@ -20,6 +21,13 @@ public sealed class NotificationDispatchBackgroundService : BackgroundService
     private static readonly TimeSpan PollInterval = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(40);
     private const int AppointmentLeadHours = 24;
+
+    /// <summary>
+    /// Tek taramada gönderilecek WhatsApp hatırlatma üst sınırı. Sağlayıcıya ani yığın basmamak ve
+    /// yanlış yapılandırmada (ör. şablon hatası) zararı sınırlamak için; kalanlar 15 dk sonraki
+    /// taramada gider — 24 saatlik pencerede fazlasıyla yer var.
+    /// </summary>
+    private const int MaxWhatsAppRemindersPerSweep = 100;
 
     public NotificationDispatchBackgroundService(IServiceProvider services, ILogger<NotificationDispatchBackgroundService> logger)
     {
@@ -99,6 +107,21 @@ public sealed class NotificationDispatchBackgroundService : BackgroundService
 
             foreach (var template in templates)
             {
+                /*
+                 * WHATSAPP RANDEVU HATIRLATMASI KENDİ YOLUNDAN GİDER.
+                 *
+                 * Genel bildirim yolu serbest metin gönderir; Meta 24 saat penceresi kapalıyken bunu
+                 * İLETMEZ. Randevu hatırlatmasının kuruma bağlı ONAYLI ŞABLONU vardır ve o yol ayrıca
+                 * randevuyu "onay bekliyor" işaretleyip müşterinin EVET/İPTAL yanıtını randevuya
+                 * bağlar (2 yönlü akış). Bu yüzden burada müşteri değil RANDEVU üzerinden gidilir.
+                 */
+                if (template.Channel == NotificationChannel.WhatsApp && template.Trigger == NotificationTrigger.AppointmentReminder)
+                {
+                    try { totalSent += await SendWhatsAppRemindersAsync(db, scope.ServiceProvider, tenantId, now, ct); }
+                    catch (Exception ex) { _logger.LogWarning(ex, "WhatsApp randevu hatırlatmaları gönderilemedi ({TenantId}).", tenantId); }
+                    continue;
+                }
+
                 // Doğum günü: yılda bir; Win-back: ~ayda bir (pasif müşteri her gün spam edilmesin); diğerleri: günde bir.
                 var dedupeSince = template.Trigger switch
                 {
@@ -155,6 +178,68 @@ public sealed class NotificationDispatchBackgroundService : BackgroundService
 
         if (totalSent > 0)
             _logger.LogInformation("Otomatik bildirim: {Count} mesaj gönderildi.", totalSent);
+    }
+
+    /// <summary>
+    /// Yaklaşan randevular için WhatsApp hatırlatması gönderir (kanalı WhatsApp olan aktif
+    /// "randevu hatırlatma" şablonu varsa).
+    ///
+    /// <para><b>Tekilleştirme <c>LastReminderAtUtc</c> ile yapılır</b>: hatırlatma başarıyla gidince
+    /// randevuya damga vurulur (<c>MarkReminderSent</c>), bir daha seçilmez. Bildirim şablonu
+    /// tarafındaki müşteri-bazlı dedupe burada işe yaramaz — aynı müşterinin aynı gün iki randevusu
+    /// varsa İKİSİ de hatırlatılmalıdır.</para>
+    ///
+    /// <para>Gönderim kapıları (paket, kota/kontör, bağlantı, onaylı şablon) <c>SendReminderAsync</c>
+    /// içindedir; burada tekrarlanmaz. Engellenen gönderim damga bırakmaz, sonraki taramada
+    /// yeniden denenir — kota ertesi ay açıldığında kendiliğinden çalışır.</para>
+    /// </summary>
+    private async Task<int> SendWhatsAppRemindersAsync(GuzellikDbContext db, IServiceProvider services, Guid tenantId, DateTime now, CancellationToken ct)
+    {
+        var until = now.AddHours(AppointmentLeadHours);
+        var ids = await db.Appointments
+            .Where(a => a.TenantId == tenantId
+                     && a.StartUtc > now && a.StartUtc <= until
+                     && a.LastReminderAtUtc == null
+                     // Taslak (onay bekleyen) randevu için hatırlatma gönderilmez: henüz kesin değil.
+                     && (a.Status == AppointmentStatus.Scheduled || a.Status == AppointmentStatus.Confirmed))
+            .OrderBy(a => a.StartUtc)
+            .Select(a => a.Id)
+            .Take(MaxWhatsAppRemindersPerSweep)
+            .ToListAsync(ct);
+        if (ids.Count == 0) return 0;
+
+        var whatsApp = services.GetRequiredService<IWhatsAppService>();
+        var sent = 0;
+        foreach (var id in ids)
+        {
+            ct.ThrowIfCancellationRequested();
+            var res = await whatsApp.SendReminderAsync(tenantId, id, ct);
+            if (res.IsSuccess)
+            {
+                if (res.Value is { Sent: true }) sent++;
+                continue;
+            }
+
+            /*
+             * TEK BİR RANDEVUNUN DERDİ TÜM KURUMU DURDURMAZ.
+             *
+             * Telefonu olmayan müşteri (Validation) ya da bu arada silinmiş randevu (NotFound)
+             * O RANDEVUYA özgüdür — atlanır, sıradakine geçilir. Bunlar da durdurucu sayılsaydı
+             * telefonsuz tek bir müşteri, en yakın randevu olduğu için her taramada başa geçip
+             * kurumun BÜTÜN hatırlatmalarını kalıcı olarak susturabilirdi.
+             *
+             * `Conflict` ise kurum geneli bir kapıdır (paket, kota, kontör, eksik şablon,
+             * bağlantı yok): kalan randevularda da aynı duvara çarpılır, sebep bir kez loglanıp
+             * tarama bitirilir.
+             */
+            if (res.Error?.Code == "Conflict")
+            {
+                _logger.LogInformation("[WhatsApp] Otomatik hatırlatma durduruldu ({TenantId}): {Reason}", tenantId, res.Error.Message);
+                break;
+            }
+            _logger.LogDebug("[WhatsApp] Randevu atlandı ({AppointmentId}): {Reason}", id, res.Error?.Message);
+        }
+        return sent;
     }
 
     private static async Task<List<Guid>> AppointmentTargetsAsync(GuzellikDbContext db, Guid tenantId, DateTime now, CancellationToken ct)

@@ -29,6 +29,9 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
   const [spendCap, setSpendCap] = useState('')
   const [kvkkTemplateName, setKvkkTemplateName] = useState('')
   const [reminderTemplateName, setReminderTemplateName] = useState('')
+  const [waitlistOfferTemplateName, setWaitlistOfferTemplateName] = useState('')
+  const [waitlistActivatedTemplateName, setWaitlistActivatedTemplateName] = useState('')
+  const [ratingTemplateName, setRatingTemplateName] = useState('')
   const [templateLanguage, setTemplateLanguage] = useState('tr')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -42,6 +45,9 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
     setSpendCap(data.monthlySpendCapTry != null ? String(data.monthlySpendCapTry) : '')
     setKvkkTemplateName(data.kvkkTemplateName ?? '')
     setReminderTemplateName(data.reminderTemplateName ?? '')
+    setWaitlistOfferTemplateName(data.waitlistOfferTemplateName ?? '')
+    setWaitlistActivatedTemplateName(data.waitlistActivatedTemplateName ?? '')
+    setRatingTemplateName(data.ratingTemplateName ?? '')
     setTemplateLanguage(data.templateLanguageCode || 'tr')
   }, [data])
 
@@ -56,6 +62,9 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
         monthlySpendCapTry: cap != null && Number.isFinite(cap) ? cap : null,
         kvkkTemplateName: kvkkTemplateName.trim() || null,
         reminderTemplateName: reminderTemplateName.trim() || null,
+        waitlistOfferTemplateName: waitlistOfferTemplateName.trim() || null,
+        waitlistActivatedTemplateName: waitlistActivatedTemplateName.trim() || null,
+        ratingTemplateName: ratingTemplateName.trim() || null,
         templateLanguageCode: templateLanguage.trim() || 'tr',
       }
       const res = await adminApi.saveWhatsappSettings(body, tenantId)
@@ -190,15 +199,12 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
             </div>
 
             <div className="grid gap-2 sm:grid-cols-[1fr_110px]">
-              <div>
-                <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Hatırlatma şablon adı</label>
-                <input
-                  value={reminderTemplateName}
-                  onChange={(e) => setReminderTemplateName(e.target.value)}
-                  placeholder="örn. randevu_hatirlatma"
-                  className="w-full rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
-                />
-              </div>
+              <TemplateNameField
+                label="Hatırlatma şablon adı"
+                value={reminderTemplateName}
+                onChange={setReminderTemplateName}
+                placeholder="örn. randevu_hatirlatma"
+              />
               <div>
                 <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Dil kodu</label>
                 <input
@@ -209,6 +215,40 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
                 />
               </div>
             </div>
+
+            {/* Randevu odaklı üç şablon AYNI değişken sırasını paylaşır — kurum tek mantıkla onaylatsın. */}
+            <p className="rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[10px] leading-relaxed text-[#5A4B53]">
+              Hatırlatma, bekleme listesi teklifi ve bekleme onayı şablonlarının gövdesi <b>aynı 5 değişkeni</b> bu sırayla kullanmalı:
+              <span className="mt-0.5 block font-mono text-[10px] text-[#3E343A]">
+                &#123;&#123;1&#125;&#125; ad · &#123;&#123;2&#125;&#125; tarih · &#123;&#123;3&#125;&#125; saat · &#123;&#123;4&#125;&#125; hizmet · &#123;&#123;5&#125;&#125; kurum
+              </span>
+              <span className="mt-0.5 block">
+                Değerlendirme şablonu 3 değişkenlidir: &#123;&#123;1&#125;&#125; ad · &#123;&#123;2&#125;&#125; kurum · &#123;&#123;3&#125;&#125; link.
+                Şablonda <b>hızlı yanıt düğmesi kullanmayın</b> — müşterinin düğmeye bastığı yanıt sisteme ulaşmaz, yazdığı metin ulaşır.
+              </span>
+            </p>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <TemplateNameField
+                label="Bekleme listesi teklifi"
+                value={waitlistOfferTemplateName}
+                onChange={setWaitlistOfferTemplateName}
+                placeholder="örn. bekleme_teklif"
+              />
+              <TemplateNameField
+                label="Bekleme listesi onayı"
+                value={waitlistActivatedTemplateName}
+                onChange={setWaitlistActivatedTemplateName}
+                placeholder="örn. bekleme_onay"
+              />
+            </div>
+
+            <TemplateNameField
+              label="Değerlendirme (yıldız) linki"
+              value={ratingTemplateName}
+              onChange={setRatingTemplateName}
+              placeholder="örn. degerlendirme"
+            />
           </div>
 
           {pending && (
@@ -225,6 +265,21 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Meta'da onaylanmış şablonun adı. Boş = serbest metin denenir (yalnız 24 saat penceresi açıkken çalışır). */
+function TemplateNameField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
+  return (
+    <div>
+      <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#74616A]">{label}</label>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
+      />
     </div>
   )
 }

@@ -300,7 +300,9 @@ public sealed class AuditRoundSevenPhase4Tests
         async Task<int> SweepAsync()
         {
             await using var db = database.NewContext();
-            var service = new NotificationService(db, new AlwaysAllowUsageService(), new AllowAllFeatureService(), messaging);
+            // IServiceProvider yalnız WhatsApp kanalında kullanılır (IWhatsAppService çalışma anında
+            // çözülür); bu testler SMS kanalını sürdüğü için boş bir vekil yeterli.
+            var service = new NotificationService(db, new AlwaysAllowUsageService(), new AllowAllFeatureService(), messaging, Substitute.For<IServiceProvider>());
             var result = await service.SendAsync(tenantId,
                 new SendNotificationRequest(templateId, new[] { customerId }, null, bucket));
             return result.IsSuccess ? result.Value!.Sent : 0;
@@ -360,7 +362,9 @@ public sealed class AuditRoundSevenPhase4Tests
         async Task<int> SendAsync()
         {
             await using var db = database.NewContext();
-            var service = new NotificationService(db, new AlwaysAllowUsageService(), new AllowAllFeatureService(), messaging);
+            // IServiceProvider yalnız WhatsApp kanalında kullanılır (IWhatsAppService çalışma anında
+            // çözülür); bu testler SMS kanalını sürdüğü için boş bir vekil yeterli.
+            var service = new NotificationService(db, new AlwaysAllowUsageService(), new AllowAllFeatureService(), messaging, Substitute.For<IServiceProvider>());
             var result = await service.SendAsync(tenantId,
                 new SendNotificationRequest(templateId, new[] { customerId }, null));
             return result.IsSuccess ? result.Value!.Sent : 0;

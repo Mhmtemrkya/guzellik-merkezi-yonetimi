@@ -75,10 +75,27 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
             label: 'KVKK şablon adı (Meta onaylı)',
             hint: 'örn. kvkk_acik_riza · boş = serbest metin denenir',
           ),
+          // Aşağıdaki üç şablon AYNI değişken sırasını kullanır:
+          // {{1}} ad · {{2}} tarih · {{3}} saat · {{4}} hizmet · {{5}} kurum.
           CrudField(
             key: 'reminderTemplateName',
             label: 'Hatırlatma şablon adı (Meta onaylı)',
-            hint: 'örn. randevu_hatirlatma',
+            hint: 'örn. randevu_hatirlatma · {{1}} ad {{2}} tarih {{3}} saat {{4}} hizmet {{5}} kurum',
+          ),
+          CrudField(
+            key: 'waitlistOfferTemplateName',
+            label: 'Bekleme listesi teklifi şablonu',
+            hint: 'örn. bekleme_teklif · aynı 5 değişken',
+          ),
+          CrudField(
+            key: 'waitlistActivatedTemplateName',
+            label: 'Bekleme listesi onayı şablonu',
+            hint: 'örn. bekleme_onay · aynı 5 değişken',
+          ),
+          CrudField(
+            key: 'ratingTemplateName',
+            label: 'Değerlendirme (yıldız) şablonu',
+            hint: 'örn. degerlendirme · {{1}} ad {{2}} kurum {{3}} link',
           ),
           CrudField(key: 'templateLanguageCode', label: 'Şablon dil kodu', hint: 'tr', defaultValue: 'tr'),
         ],

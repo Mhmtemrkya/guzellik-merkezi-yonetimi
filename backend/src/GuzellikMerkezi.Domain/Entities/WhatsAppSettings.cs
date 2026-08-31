@@ -43,6 +43,12 @@ public sealed class WhatsAppSettings : Entity
     public string? KvkkTemplateName { get; private set; }
     /// <summary>Randevu hatırlatma şablonu. Gövde: {{1}}=ad, {{2}}=tarih, {{3}}=saat, {{4}}=hizmet, {{5}}=kurum.</summary>
     public string? ReminderTemplateName { get; private set; }
+    /// <summary>Bekleme listesi teklifi ("yer açıldı"). Gövde: {{1}}=ad, {{2}}=tarih, {{3}}=saat, {{4}}=hizmet, {{5}}=kurum.</summary>
+    public string? WaitlistOfferTemplateName { get; private set; }
+    /// <summary>Bekleme listesinden randevu oluştu. Gövde: {{1}}=ad, {{2}}=tarih, {{3}}=saat, {{4}}=hizmet, {{5}}=kurum.</summary>
+    public string? WaitlistActivatedTemplateName { get; private set; }
+    /// <summary>Değerlendirme (yıldız) linki. Gövde: {{1}}=ad, {{2}}=kurum, {{3}}=link.</summary>
+    public string? RatingTemplateName { get; private set; }
     /// <summary>Şablon dil kodu (Meta'da şablonun kayıtlı olduğu dil). Varsayılan "tr".</summary>
     public string TemplateLanguageCode { get; private set; } = "tr";
 
@@ -94,10 +100,19 @@ public sealed class WhatsAppSettings : Entity
     }
 
     /// <summary>KURUM: Meta'da onaylanmış şablon adları ve dil kodu (boş = serbest metin denenir).</summary>
-    public void UpdateTemplateBindings(string? kvkkTemplateName, string? reminderTemplateName, string? languageCode)
+    public void UpdateTemplateBindings(
+        string? kvkkTemplateName,
+        string? reminderTemplateName,
+        string? languageCode,
+        string? waitlistOfferTemplateName = null,
+        string? waitlistActivatedTemplateName = null,
+        string? ratingTemplateName = null)
     {
         KvkkTemplateName = Clean(kvkkTemplateName);
         ReminderTemplateName = Clean(reminderTemplateName);
+        WaitlistOfferTemplateName = Clean(waitlistOfferTemplateName);
+        WaitlistActivatedTemplateName = Clean(waitlistActivatedTemplateName);
+        RatingTemplateName = Clean(ratingTemplateName);
         TemplateLanguageCode = Clean(languageCode) ?? "tr";
         Touch();
     }
