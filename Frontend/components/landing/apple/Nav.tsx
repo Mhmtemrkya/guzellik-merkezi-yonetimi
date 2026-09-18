@@ -30,12 +30,21 @@ import { SPRING_MOVE, SPRING_SHEET } from './springs'
  * Kıvamı `SPRING_SHEET` — kullanıcı onu bir hareketle açtığı için hafif aşma doğru hissettirir.
  */
 
+/**
+ * Üst çubuk bağlantıları.
+ *
+ * KIRIK ÇAPA TUZAĞI: buradaki `#bir-gun` gibi çapalar YALNIZ tanıtım sayfasında vardır.
+ * Aynı çubuk /moduller ve /destek sayfalarında da kullanıldığı için çapa bağlantıları köke
+ * yazılır (`/#bir-gun`); `#bir-gun` yazılsaydı o sayfalarda hiçbir yere gitmeyen ölü
+ * bağlantılar olurdu.
+ */
 const LINKS = [
-  { href: '#bir-gun', label: 'Bir gün' },
-  { href: '#tur', label: 'Ürün turu' },
+  { href: '/#bir-gun', label: 'Bir gün' },
+  { href: '/#tur', label: 'Ürün turu' },
   { href: '/moduller', label: 'Modüller' },
-  { href: '#nasil', label: 'Nasıl çalışır' },
-  { href: '#fiyat', label: 'Fiyatlandırma' },
+  { href: '/#nasil', label: 'Nasıl çalışır' },
+  { href: '/#fiyat', label: 'Fiyatlandırma' },
+  { href: '/destek', label: 'Destek' },
 ]
 
 export default function Nav() {

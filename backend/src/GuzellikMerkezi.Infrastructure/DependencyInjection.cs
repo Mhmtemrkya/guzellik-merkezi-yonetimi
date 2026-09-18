@@ -139,6 +139,8 @@ public static class DependencyInjection
         services.AddScoped<Application.Features.TenantSignup.ITenantSignupService, TenantSignupService>();
         // "Hesabımı sil" — kurum (bekleme süreli) ve müşteri (anında anonimleştirme).
         services.AddScoped<Application.Features.AccountDeletion.IAccountDeletionService, AccountDeletionService>();
+        // Destek talepleri — tanıtım sayfası formu + panel + platform kuyruğu.
+        services.AddScoped<Application.Features.Support.ISupportService, SupportService>();
         services.AddScoped<IBranchService, BranchService>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IDataImportService, DataImportService>();

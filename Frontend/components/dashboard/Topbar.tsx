@@ -55,6 +55,7 @@ const searchRoutes: Record<SearchScope, SearchRoute[]> = {
     { label: 'Sağlık Uyarıları', path: '/platform/uyarilar', keywords: 'sağlık uyarı risk alarm sla health entegrasyon' },
     { label: 'MRR & Abonelik', path: '/platform/finans', keywords: 'mrr abonelik gelir churn plan finans' },
     { label: 'Faturalama', path: '/platform/fatura', keywords: 'fatura ödeme mutabakat tahsilat bakiye' },
+    { label: 'Destek Talepleri', path: '/platform/destek', keywords: 'destek talep ticket yardım soru şikayet kuyruk support' },
     { label: 'Sistem Ayarları', path: '/platform/sistem', keywords: 'sistem ayar health webhook bakım yedekleme güvenlik entegrasyon veri saklama' },
   ],
   admin: [

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import Sidebar, { type SidebarNavItem, type SidebarUser } from '@/components/dashboard/Sidebar'
 import RouteGuard from '@/components/dashboard/RouteGuard'
 import PanelBackdrop from '@/components/dashboard/PanelBackdrop'
-import { LayoutGrid, Building2, BarChart3, Receipt, AlertTriangle, Settings2, Package, FileUp, MessageCircle } from 'lucide-react'
+import { LayoutGrid, Building2, BarChart3, Receipt, AlertTriangle, Settings2, Package, FileUp, MessageCircle, LifeBuoy } from 'lucide-react'
 import { useAuth } from '@/components/dashboard/AuthContext'
 
 const items: SidebarNavItem[] = [
@@ -52,6 +52,18 @@ const items: SidebarNavItem[] = [
       { label: 'Bağlantılar', href: '/platform/whatsapp?tab=connections' },
       { label: 'Kontör Talepleri', href: '/platform/whatsapp?tab=purchases' },
       { label: 'Fiyatlandırma', href: '/platform/whatsapp?tab=pricing' },
+    ],
+  },
+  {
+    group: 'Sistem',
+    label: 'Destek Talepleri',
+    href: '/platform/destek',
+    icon: LifeBuoy,
+    children: [
+      { label: 'Açık kuyruk', href: '/platform/destek?scope=open' },
+      { label: 'Okunmamış', href: '/platform/destek?scope=unread' },
+      { label: 'Bana atanan', href: '/platform/destek?scope=mine' },
+      { label: 'Kapanmış', href: '/platform/destek?scope=closed' },
     ],
   },
   { group: 'Sistem', label: 'Veri Aktarımı', href: '/platform/aktarim', icon: FileUp },

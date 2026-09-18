@@ -57,6 +57,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantSignupReservation> TenantSignupReservations => Set<TenantSignupReservation>();
+    public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
+    public DbSet<SupportTicketMessage> SupportTicketMessages => Set<SupportTicketMessage>();
     public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<TenantUser> TenantUsers => Set<TenantUser>();
     public DbSet<Customer> Customers => Set<Customer>();
@@ -130,6 +132,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         base.OnModelCreating(modelBuilder);
         ConfigureTenant(modelBuilder);
         ConfigureTenantSignupReservation(modelBuilder);
+        ConfigureSupport(modelBuilder);
         ConfigureBranch(modelBuilder);
         ConfigureTenantUser(modelBuilder);
         ConfigureCustomer(modelBuilder);
@@ -515,6 +518,62 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.HasIndex(x => x.EmailKey).IsUnique();
         builder.HasIndex(x => x.PhoneKey).IsUnique();
         builder.HasQueryFilter(x => !x.IsDeleted);
+    }
+
+    /// <summary>
+    /// DESTEK TALEPLERİ.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>KİRACI FİLTRESİ YOKTUR — bilinçli.</b> Talep, henüz müşterisi olmayan bir ziyaretçiden
+    /// de gelebilir ve <c>TenantId</c> o durumda null'dır. Global filtre uygulansaydı oturumsuz
+    /// gelen talepler hiçbir listede görünmezdi. Kapsam her sorguda AÇIKÇA yazılır
+    /// (bkz. SupportService).
+    /// </para>
+    /// <para>
+    /// <b>TenantId bir FK DEĞİL, kapsam kolonudur</b> (audit_logs ile aynı tercih): kurum
+    /// silinince talep yetim ama OKUNABİLİR kalır — kurum adı TenantNameSnapshot'ta kopyalıdır.
+    /// FK olsaydı kurum silme ya FK ihlaliyle patlar ya da destek geçmişini sessizce yok ederdi.
+    /// </para>
+    /// <para>
+    /// <b>Alanlar ŞİFRELENMEZ.</b> Kod, konu, ad, e-posta ve mesaj gövdesi aranabilir olmalıdır
+    /// (destek kuyruğunun tamamı arama üzerine kuruludur) ve içerik kurumun müşteri verisi değil,
+    /// kullanıcının bize yazdığı destek yazışmasıdır.
+    /// </para>
+    /// </remarks>
+    private void ConfigureSupport(ModelBuilder modelBuilder)
+    {
+        var t = modelBuilder.Entity<SupportTicket>();
+        t.ToTable("support_tickets");
+        t.HasKey(x => x.Id);
+        t.Property(x => x.Code).HasMaxLength(SupportTicket.MaxCodeLength).IsRequired();
+        t.HasIndex(x => x.Code).IsUnique();
+        t.Property(x => x.AccessToken).HasMaxLength(SupportTicket.MaxTokenLength).IsRequired();
+        t.Property(x => x.Subject).HasMaxLength(SupportTicket.MaxSubjectLength).IsRequired();
+        t.Property(x => x.RequesterName).HasMaxLength(SupportTicket.MaxNameLength).IsRequired();
+        t.Property(x => x.RequesterEmail).HasMaxLength(SupportTicket.MaxEmailLength).IsRequired();
+        t.Property(x => x.RequesterPhone).HasMaxLength(SupportTicket.MaxPhoneLength);
+        t.Property(x => x.TenantNameSnapshot).HasMaxLength(SupportTicket.MaxNameLength);
+        // Enum'lar METİN saklanır (TenantStatus ile aynı tercih): veritabanına elle bakan biri
+        // 3'ün ne demek olduğunu aramak zorunda kalmasın ve araya değer eklemek eskiyi kaydırmasın.
+        t.Property(x => x.Status).HasConversion<string>().HasMaxLength(24).IsRequired();
+        t.Property(x => x.Priority).HasConversion<string>().HasMaxLength(16).IsRequired();
+        t.Property(x => x.Category).HasConversion<string>().HasMaxLength(24).IsRequired();
+        // Kuyruk sıralaması ve kurum filtresi bu indekslerden geçer.
+        t.HasIndex(x => new { x.Status, x.LastMessageAtUtc });
+        t.HasIndex(x => x.TenantId);
+        t.HasQueryFilter(x => !x.IsDeleted);
+        t.HasMany(x => x.Messages).WithOne(x => x.Ticket)
+            .HasForeignKey(x => x.SupportTicketId).OnDelete(DeleteBehavior.Cascade);
+
+        var m = modelBuilder.Entity<SupportTicketMessage>();
+        m.ToTable("support_ticket_messages");
+        m.HasKey(x => x.Id);
+        m.Property(x => x.Body).HasMaxLength(SupportTicketMessage.MaxBodyLength).IsRequired();
+        m.Property(x => x.AuthorName).HasMaxLength(SupportTicketMessage.MaxAuthorNameLength);
+        m.Property(x => x.Side).HasConversion<string>().HasMaxLength(16).IsRequired();
+        m.HasIndex(x => new { x.SupportTicketId, x.SentAtUtc });
+        m.HasQueryFilter(x => !x.IsDeleted);
     }
 
     private void ConfigureBranch(ModelBuilder modelBuilder)

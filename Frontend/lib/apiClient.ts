@@ -653,6 +653,42 @@ export const accountApi = {
     apiRequest<ApiTenantDeletionStatus>('/api/account/tenant/deletion', { method: 'DELETE' }),
 }
 
+/**
+ * DESTEK TALEPLERİ — oturumlu uçlar.
+ *
+ * Anonim uçlar `lib/supportApi.ts`dedir: onlar oturum başlığı TAŞIMAZ. Buradakiler jeton ve
+ * şube başlığıyla gider (apiRequest ekler) ve kapsamı sunucu belirler:
+ * · `supportApi`         → kurum kullanıcısı; YALNIZ kendi kurumunun talepleri.
+ * · `platformSupportApi` → platform yöneticisi; tüm kuyruk.
+ */
+export const supportApi = {
+  list: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>
+    apiRequest<PagedResult<T>>('/api/support/', { query: { page: 1, pageSize: 25, ...query } }),
+  get: <T = unknown>(id: string): Promise<T> => apiRequest<T>(`/api/support/${id}`),
+  reply: <T = unknown>(id: string, message: string): Promise<T> =>
+    apiRequest<T>(`/api/support/${id}/reply`, { method: 'POST', body: { message } }),
+}
+
+export const platformSupportApi = {
+  list: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>
+    apiRequest<PagedResult<T>>('/api/platform/support/', { query: { page: 1, pageSize: 25, ...query } }),
+  summary: <T = unknown>(): Promise<T> => apiRequest<T>('/api/platform/support/summary'),
+  get: <T = unknown>(id: string): Promise<T> => apiRequest<T>(`/api/platform/support/${id}`),
+  reply: <T = unknown>(id: string, message: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/support/${id}/reply`, { method: 'POST', body: { message } }),
+  /**
+   * Durum / öncelik / atama günceller.
+   *
+   * GÖNDERİLMEYEN ALANA DOKUNULMAZ (null = "bu alanı değiştirme"). Atamayı KALDIRMAK için
+   * `assignedToUserId` alanına boş GUID gönderilir — sunucu ikisini ayırt eder.
+   */
+  update: <T = unknown>(id: string, body: {
+    status?: number | null
+    priority?: number | null
+    assignedToUserId?: string | null
+  }): Promise<T> => apiRequest<T>(`/api/platform/support/${id}`, { method: 'PUT', body }),
+}
+
 // Platform tenant CRUD payload — UI form değerleri dinamik dolduruluyor; payload tipi gevşek tutulur.
 type PlatformPayload = Record<string, unknown>
 

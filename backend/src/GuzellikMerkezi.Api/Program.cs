@@ -203,6 +203,11 @@ builder.Services.AddRateLimiter(options =>
     // e-posta bazlı fren var (aynı adrese 30 dakikada en çok 3 kayıt denemesi).
     options.AddPolicy("tenant-signup", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 12, Window = TimeSpan.FromMinutes(15), QueueLimit = 0 }));
+    // DESTEK TALEBİ (anonim): her talep bir E-POSTA gönderiyor, yani PARA harcıyor — üstelik
+    // oturumsuz bir YAZMA ucu. "public-browse" kovasıyla paylaşmak, vitrin gezinmesiyle aynı
+    // bütçeyi tüketmek demekti. Takip ekranı da bu kovadadır (okuma ucu jeton ister).
+    options.AddPolicy("support-public", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(10), QueueLimit = 0 }));
     // HESAP SİLME: parola ve onay metni doğrulaması içerir; frensiz bırakılırsa parola deneme
     // yüzeyi olur. "auth-login" kovasıyla paylaşmak kullanıcının GİRİŞ bütçesini tüketirdi.
     options.AddPolicy("account-deletion", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
@@ -466,6 +471,7 @@ app.MapPublicSalonEndpoints();
 // Self-servis kurum kaydı (anonim, 14 gün deneme) — bkz. TenantSignupEndpoints.
 app.MapTenantSignupEndpoints();
 app.MapAccountDeletionEndpoints();
+app.MapSupportEndpoints();
 app.MapWhatsAppEndpoints();
 app.MapCustomerAccountEndpoints();
 app.MapAdisyonEndpoints();
