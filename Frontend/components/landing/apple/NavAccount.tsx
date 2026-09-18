@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { LayoutGrid, ShoppingBag } from 'lucide-react'
+import { CalendarHeart, LayoutGrid, ShoppingBag } from 'lucide-react'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { useCart } from '@/lib/cart'
 import PressButton from './PressButton'
@@ -58,7 +58,7 @@ export default function NavAccount() {
           <PressButton
             href="/panel"
             tone="glass-light"
-            className="border border-[#EEC9D7] bg-white px-3.5 py-1.5 text-[12.5px]"
+            className="border border-[#EEC9D7] bg-white px-3.5 py-2 text-[13px]"
           >
             <LayoutGrid className="h-4 w-4" />
             <span className="hidden sm:inline">Panel</span>
@@ -81,24 +81,29 @@ export default function NavAccount() {
         </>
       ) : (
         <>
+          {/* DANIŞAN YOLU — ziyaretçi merkez sahibi olmayabilir.
+              DÜZ BAĞLANTI OLARAK DURUR: eskiden "Ücretsiz dene" ile yan yana, aynı ölçüde iki
+              hap gibiydi. Çubukta birbiriyle yarışan iki dolu eylem, hangisinin asıl yol
+              olduğunu söylemez; ikisi de zayıflar. Dolu düğme TEKTİR, bu bağlantı onun
+              yanında ikincil okunur. Dar ekranda çekmecede tam boy durur. */}
+          <PressButton
+            href="/salonlar"
+            tone="plain"
+            className="hidden px-2.5 py-1.5 text-[13px] md:inline-flex"
+          >
+            <CalendarHeart className="h-4 w-4" /> Randevu al
+          </PressButton>
+
           <PressButton
             href="/login"
             tone="plain"
-            className="hidden px-3 py-1.5 text-[12.5px] sm:inline-flex"
+            className="hidden px-2.5 py-1.5 text-[13px] sm:inline-flex"
           >
             Giriş
           </PressButton>
 
-          {/* Danışan yolu: ziyaretçi merkez sahibi olmayabilir. */}
-          <PressButton
-            href="/salonlar"
-            tone="glass-light"
-            className="border border-[#EEC9D7] bg-white px-3.5 py-1.5 text-[12.5px]"
-          >
-            Randevu<span className="hidden sm:inline">&nbsp;al</span>
-          </PressButton>
-
-          <PressButton href="/kayit" tone="primary" className="px-4 py-1.5 text-[12.5px] font-medium">
+          {/* ÇUBUĞUN TEK DOLU DÜĞMESİ. */}
+          <PressButton href="/kayit" tone="primary" className="px-4 py-2 text-[13px] font-medium">
             Ücretsiz<span className="hidden sm:inline">&nbsp;dene</span>
           </PressButton>
         </>
