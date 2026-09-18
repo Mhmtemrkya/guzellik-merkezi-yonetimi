@@ -304,15 +304,25 @@ export default function SupportPage() {
         </main>
 
         <footer className="border-t border-[#F2DFE7] bg-white/70 px-5 py-10 sm:px-8">
-          <div className="mx-auto flex max-w-[1200px] flex-col gap-5">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="mx-auto flex max-w-[1200px] flex-col gap-6">
+            {/* İLETİŞİM + YASAL BAĞLANTILAR üstte, ÖDEME ŞERİDİ kendi satırında.
+                Şerit eskiden üstteki satırın içindeydi ve yanındaki SSL cümlesi ~1000px'lik
+                TEK satıra açılıyordu: satır taşıyor, `justify-between` telefonu kendi
+                satırında yalnız bırakıyor, şerit de altta savruk duruyordu. */}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <span className="inline-flex items-center gap-2 text-[13px] text-[#5A4752]">
-                <MessageCircle className="h-4 w-4 text-[#EF6F94]" strokeWidth={1.8} />
+                <MessageCircle className="h-4 w-4 shrink-0 text-[#EF6F94]" strokeWidth={1.8} />
                 Destek: <a href={`tel:${company.phone.replace(/\s/g, '')}`} className="font-semibold text-[#C85776] hover:underline">{company.phone}</a>
               </span>
-              <PaymentBadges />
+              {/* RENK AÇIKÇA VERİLİR: bileşen kendi metin rengini taşımaz. Verilmeyince kök
+                  sarmalayıcıdan koyu #352432 miras alınıyor ve bağlantılar, soluk tonda olan
+                  footer'ın geri kalanının yanında siyah bir blok gibi duruyordu (diğer iki
+                  kullanım da rengi açıkça veriyor). */}
+              <LegalLinkRow className="text-[#705A66]" />
             </div>
-            <LegalLinkRow />
+            {/* Genişlik sınırı, SSL cümlesinin 1200px'e yayılmak yerine iki satıra
+                sarmasını sağlar; bant zaten 429px ve `max-w-full` ile küçülür. */}
+            <PaymentBadges className="max-w-[620px]" />
           </div>
         </footer>
       </div>
