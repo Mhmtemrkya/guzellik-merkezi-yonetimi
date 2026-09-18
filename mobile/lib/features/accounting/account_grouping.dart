@@ -111,7 +111,17 @@ String? _dayKeyOf(String? iso) {
 
 /// Cari listesini müşteriye göre gruplar. `customerId` boş olan kayıt (veri bozukluğu) kendi
 /// grubunda kalır — sessizce yutmak yerine görünür olsun.
-List<CustomerAccountGroup> groupAccountsByCustomer(List<Map<String, dynamic>> accounts) {
+///
+/// [todayIso] GECİKME İÇİNDİR. `hasOverdue`/`overdueAmount` burada, taksitler yeniden
+/// ayrıştırılarak üretilir; web'de aynı bayrak `normalizeAccount(raw, todayIso)` içinde BİR KEZ
+/// hesaplanıp taşınır. Tarih düştüğünde bu iki alan cihazın gününü kullanıyor, aynı ekrandaki
+/// taksit takvimi ise çağıranın gününü kullanıyordu — tek ekranda iki farklı "bugün".
+/// Verilmezse cihazın günü kullanılır: üretimde istenen budur, testte ise tarih AÇIKÇA verilir
+/// (yoksa beklenti takvim ilerledikçe kendiliğinden kırılır).
+List<CustomerAccountGroup> groupAccountsByCustomer(
+  List<Map<String, dynamic>> accounts, [
+  String? todayIso,
+]) {
   final map = <String, CustomerAccountGroup>{};
 
   for (final a in accounts) {
@@ -133,7 +143,7 @@ List<CustomerAccountGroup> groupAccountsByCustomer(List<Map<String, dynamic>> ac
     g.sessionsTotal += numberOf(a, const ['sessionsTotal']).toInt();
     g.sessionsRemaining += numberOf(a, const ['sessionsRemaining']).toInt();
 
-    final insts = parseInstallments(a).where((i) => !i.cancelled).toList();
+    final insts = parseInstallments(a, todayIso).where((i) => !i.cancelled).toList();
     if (insts.length > 1) g.hasInstallmentPlan = true;
     for (final i in insts) {
       if (i.overdue && i.remaining > 0.005) {

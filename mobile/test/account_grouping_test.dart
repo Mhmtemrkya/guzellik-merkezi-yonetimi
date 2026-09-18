@@ -83,12 +83,15 @@ void main() {
     });
 
     test('İPTAL edilen taksit borç/gecikme doğurmaz', () {
+      // GÜN AÇIKÇA VERİLİR: iptal kuralını ölçen bu testin sonucu takvime göre değişmemeli.
+      // Tarih verilmediğinde 08-10 vadeli AKTİF taksit, toleransı (09-10) geçen her gerçek
+      // günde "gecikmiş" sayılıyor ve test kendi ölçtüğü kuraldan bağımsız olarak kırılıyordu.
       final g = groupAccountsByCustomer([
         acc(id: 'a1', customerId: 'c1', installments: [
           inst(dueDate: '2026-07-10', amount: 500, overdue: true, status: 'Cancelled'),
           inst(dueDate: '2026-08-10', amount: 500),
         ]),
-      ]);
+      ], '2026-08-01');
       expect(g.first.hasOverdue, isFalse);
       expect(g.first.overdueAmount, 0);
       // Tek AKTİF taksit kaldı → taksitli sayılmaz.
@@ -213,21 +216,22 @@ void main() {
       // gecikme tutarından büyük çıkardı — aynı ekranda iki resmi rakam.
       //
       // 06-10 penceresi 07-10'da doldu (gecikmiş); 07-10'unki 08-10'a kadar açık (tolerans).
-      // NOT: `group.overdueAmount` ile karşılaştırılmaz — o alan `parseInstallments`ı todayIso
-      // VERMEDEN çağırır, yani gerçek sistem gününü kullanır; sabit tarihli bir beklentiye
-      // bağlanırsa test takvim ilerledikçe kendiliğinden kırılır.
       final g = groupAccountsByCustomer([
         acc(id: 'a1', customerId: 'c1', installments: [
           inst(dueDate: '2026-06-10', amount: 500),
           inst(dueDate: '2026-07-10', amount: 300),
           inst(dueDate: '2026-08-10', amount: 200),
         ]),
-      ]);
+      ], '2026-08-01');
       final rows = buildDueDateSchedule(g.first, '2026-08-01');
       double totalFor(String s) =>
           rows.where((r) => r.status == s).fold<double>(0, (a, r) => a + r.remaining);
       expect(totalFor('overdue'), 500); // 300'lük tolerans satırı KARIŞMAZ
       expect(totalFor('grace'), 300);
+      // AYNI EKRAN, AYNI RAKAM: kart özetindeki gecikme ile takvimin "gecikmiş" toplamı
+      // artık aynı günden hesaplanır. Bu beklenti eskiden yazılamıyordu — özet alanı cihaz
+      // gününü, takvim ise verilen günü kullandığı için ikisi gerçekten ayrışabiliyordu.
+      expect(g.first.overdueAmount, 500);
     });
 
     test('taksiti olmayan müşteride takvim boştur (peşin satış)', () {

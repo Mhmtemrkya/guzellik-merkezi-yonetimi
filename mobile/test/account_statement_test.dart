@@ -95,7 +95,7 @@ Map<String, dynamic> cancelledSale({
 const today = '2026-08-11';
 
 CustomerAccountGroup groupOf(List<Map<String, dynamic>> accounts) =>
-    groupAccountsByCustomer(accounts).first;
+    groupAccountsByCustomer(accounts, today).first;
 
 void main() {
   group('buildStatementRows', () {

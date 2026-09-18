@@ -141,7 +141,24 @@ public sealed class AccountDeletionService : IAccountDeletionService
             return Result<TenantDeletionStatusDto>.Success(ToStatus(tenant));
 
         tenant.CancelDeletion(_currentUser.UserId);
-        await _db.SaveChangesAsync(ct);
+
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // YARIŞIN KAYBEDEN TARAFI. Tarayıcı (TenantDeletionBackgroundService) tam bu sırada
+            // kurumu silmiş olabilir: satır artık yok, UPDATE sıfır satır etkiliyor ve EF bunu
+            // eşzamanlılık hatası olarak fırlatıyor. Kullanıcının gördüğü şey 500 olmamalı —
+            // yapılacak bir şey kalmadığını SÖYLEYEN bir yanıt olmalı. (Tarayıcı tarafında da
+            // simetrik koruma var: satır kilit altında yeniden doğrulanır, vazgeçme önce
+            // işlendiyse silme hiç yapılmaz. İki taraftan biri mutlaka kaybeder; kaybeden
+            // tarafın düzgün konuşması gerekir.)
+            _db.ChangeTracker.Clear();
+            return Result<TenantDeletionStatusDto>.Failure(Error.Conflict(
+                "Bekleme süresi dolduğu için kurum silme işlemi çoktan tamamlandı; geri alınamaz."));
+        }
 
         var user = await _db.TenantUsers.IgnoreQueryFilters().AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == _currentUser.UserId!.Value, ct);
