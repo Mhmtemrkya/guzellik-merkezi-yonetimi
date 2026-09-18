@@ -69,6 +69,21 @@ public sealed class NotificationLog : Entity
     /// </summary>
     public string? DedupeKey { get; private set; }
 
+    /// <summary>
+    /// SAĞLAYICI ÇAĞRISI BAŞLIYOR — dış etkiden ÖNCE bırakılan iz.
+    /// </summary>
+    /// <remarks>
+    /// Durum <c>Queued</c> KALIR; değişen tek şey <see cref="Entity.UpdatedAtUtc"/> damgasıdır ve
+    /// anlamı tektir: <b>bu satır için sağlayıcıya gidildi.</b>
+    /// <para>
+    /// Damga olmadan, bayatlamış bir <c>Queued</c> satır BİRBİRİNE ZIT iki durumu aynı anda
+    /// anlatıyordu: "sağlayıcıya hiç gidilmedi" (tekrar göndermek DOĞRU — mesaj hiç ulaşmadı) ve
+    /// "sağlayıcı mesajı aldı ama sonuç yazılamadan süreç çöktü" (tekrar göndermek müşteriye
+    /// İKİNCİ mesaj demek). Kurtarma ikisini ayırt edemediği için körlemesine tekrar gönderiyordu.
+    /// </para>
+    /// </remarks>
+    public void MarkDispatching() => Touch();
+
     public void MarkSent()
     {
         Status = NotificationLogStatus.Sent;

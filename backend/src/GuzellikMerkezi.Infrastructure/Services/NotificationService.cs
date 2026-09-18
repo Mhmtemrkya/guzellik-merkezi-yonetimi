@@ -222,6 +222,32 @@ public sealed class NotificationService : INotificationService
             }
             // Bayat rezervasyon devralınmış olabilir; sonuç DEVRALINAN satıra yazılır.
             log = reserved;
+
+            // DIŞ ETKİDEN ÖNCE İZ BIRAK.
+            //
+            // Anahtarlı (otomatik) gönderimde sağlayıcıya gitmeden hemen önce "gidiliyor" damgası
+            // COMMIT edilir. Çökme bundan SONRA olursa kurtarma satırı tekrar göndermez, "sonucu
+            // bilinmiyor" diye kapatır; ÖNCE olursa damga yoktur ve satır güvenle devralınıp
+            // gönderilir. Damganın tek işi bu iki hâli ayırt edilebilir kılmaktır
+            // (bkz. NotificationLog.MarkDispatching ve TryReserveAsync).
+            if (log.DedupeKey is not null)
+            {
+                log.MarkDispatching();
+                try
+                {
+                    await _db.SaveChangesAsync(ct);
+                }
+                catch (DbUpdateException)
+                {
+                    // DAMGASIZ GÖNDERİM YAPILMAZ. Gönderseydik ve hemen ardından çökseydik, satır
+                    // damgasız "Queued" kalır ve kurtarma onu "hiç gidilmemiş" sayıp mesajı ikinci
+                    // kez yollardı. Satır Queued kalıyor: bayatlayınca güvenle devralınacak.
+                    _db.Entry(log).State = EntityState.Unchanged;
+                    skipped++;
+                    continue;
+                }
+            }
+
             logsCreated.Add(log);
 
             // GERÇEK gönderim: SMS/E-posta platform mesajlaşma servisinden gider (sağlayıcı yapılandırılmamışsa
@@ -359,9 +385,68 @@ public sealed class NotificationService : INotificationService
             var staleBefore = DateTime.UtcNow - StaleReservationTimeout;
             if ((existing.UpdatedAtUtc ?? existing.CreatedAtUtc) > staleBefore) return null;
 
+            // SONUCU BİLİNMEYEN GÖNDERİM KÖRLEMESİNE TEKRARLANMAZ.
+            //
+            // Damgalı (UpdatedAtUtc dolu) bayat bir Queued satır, sağlayıcıya GİDİLDİĞİNİ söyler.
+            // Sağlayıcı mesajı kabul etmiş ama sonuç yazılamadan süreç çökmüş olabilir; tekrar
+            // göndermek müşteriye İKİNCİ mesajı yollamaktır. Bu, hatırlatma/ödeme bildirimi gibi
+            // kanallarda doğrudan kuruma şikâyet olarak döner ve WhatsApp'ta kontör de yakar.
+            //
+            // Satır burada TERMİNAL hâle getirilir: geçmişte görünür olur, kota "Sent" saydığı
+            // için şişmez ve tekilleştirme anahtarı bir daha gönderim açmaz. Sessizce Queued
+            // bırakmak, aynı belirsizliği her turda yeniden yaşatırdı.
+            //
+            // Damgasız satır ise sağlayıcıya HİÇ gidilmemiş demektir; onu devralıp göndermek
+            // DOĞRUDUR — çökmüş bir rezervasyonun mesajının hiç gitmemesi, önceki denetim turunun
+            // kapattığı hatanın ta kendisiydi.
+            //
+            // BİLİNEN DAR PENCERE: devralma (TryTakeOverStaleAsync) da damga yazar. Devralma
+            // commit edildikten sonra, gönderim damgası commit edilmeden ÖNCE süreç çökerse ortada
+            // "gidilmemiş ama damgalı" bir satır kalır ve burada "sonucu bilinmiyor" sayılır —
+            // mesaj bir daha gönderilmez. Pencere milisaniyelerdir ve yönü BİLEREK böyledir:
+            // şüphede kalındığında ikinci mesajı YOLLAMAMAK yollamaktan iyidir. Sonuç sessiz de
+            // değildir; satır gerekçesiyle birlikte bildirim geçmişinde görünür.
+            if (existing.UpdatedAtUtc is not null)
+            {
+                await ResolveUnknownOutcomeAsync(existing, staleBefore, ct);
+                return null;
+            }
+
             // Devralma ATOMİK olmalı; sonuç BU satıra yazılır (çağıranın elindeki detached nesneye değil).
             return await TryTakeOverStaleAsync(existing, staleBefore, ct) ? existing : null;
         }
+    }
+
+    /// <summary>
+    /// SONUCU DOĞRULANAMAYAN bayat rezervasyonu ATOMİK olarak terminal hâle getirir.
+    /// </summary>
+    /// <remarks>
+    /// Koşul UPDATE'in WHERE'indedir: iki tarama (ya da iki backend örneği) aynı satırı aynı anda
+    /// görse bile yalnız biri yazar.
+    /// <para>
+    /// Durum <c>Failed</c> seçilir çünkü <c>Sent</c> YALNIZ DOĞRULANMIŞ teslimat demektir; aylık
+    /// kota da (<c>Status == Sent</c>) bu satırı saymamalıdır. Mesaj gerçekten ulaşmış olabilir —
+    /// hata metni bunu açıkça söyler, böylece geçmişi okuyan kişi "gitmedi" ile "doğrulanamadı"yı
+    /// karıştırmaz.
+    /// </para>
+    /// </remarks>
+    private async Task ResolveUnknownOutcomeAsync(NotificationLog existing, DateTime staleBefore, CancellationToken ct)
+    {
+        const string reason =
+            "Sağlayıcıya iletildi ancak sonuç doğrulanamadı (gönderim sırasında kesinti). " +
+            "Mükerrer mesaj riskine karşı TEKRAR GÖNDERİLMEDİ.";
+
+        if (!_db.Database.IsRelational())
+        {
+            existing.MarkFailed(reason);
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
+        await _db.Database.ExecuteSqlRawAsync(
+            "UPDATE `notification_logs` SET `Status` = 'Failed', `ErrorMessage` = {0}, `UpdatedAtUtc` = {1} " +
+            "WHERE `Id` = {2} AND `Status` = 'Queued' AND COALESCE(`UpdatedAtUtc`, `CreatedAtUtc`) <= {3}",
+            new object[] { reason, DateTime.UtcNow, existing.Id.ToString(), staleBefore }, ct);
     }
 
     /// <summary>

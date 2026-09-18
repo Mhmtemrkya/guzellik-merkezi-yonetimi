@@ -192,6 +192,36 @@ public sealed class TenantDeletionRaceMySqlTests : IClassFixture<TenantDeletionS
     }
 
     /// <summary>
+    /// DENETİM KAYDI YAZILAMAZSA KURUM SİLİNMEZ (fail-closed).
+    /// </summary>
+    /// <remarks>
+    /// <see cref="IAuditLogger"/> hatayı YUTAR; bu yüzden "çağrı döndü" ile "satır yazıldı"
+    /// aynı şey değildir. Burada hiçbir şey yazmayan bir logger takılarak tam olarak o durum
+    /// kurulur: kurum silinmeye HAZIR, silme koşulu geçerli, ama kanıt üretilemiyor. Beklenen
+    /// davranış silmeyi geri almaktır — kurumun tüm verisi yok edilmişken hiçbir kaydın
+    /// kalmaması, KVKK ve iç denetim açısından açıklanamaz bir sonuçtur.
+    /// </remarks>
+    [MySqlFact]
+    public async Task DenetimKaydiYazilamazsa_KurumSilinmez()
+    {
+        var tenantId = await SeedTenantAsync(requestedDaysAgo: 40);
+
+        // Hiçbir satır yazmayan logger = sessizce başarısız olmuş audit yazımı.
+        await using var provider = new ServiceCollection()
+            .AddLogging()
+            .AddScoped(_ => Db.NewContext())
+            .AddScoped<ICurrentUser>(_ => new TestCurrentUser())
+            .AddScoped<IAuditLogger, NoopAuditLogger>()
+            .BuildServiceProvider();
+
+        await NewSweeper(provider).SweepAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.True(await TenantExistsAsync(tenantId),
+            "Denetim kaydı olmadan silme yapıldı: geri dönülemez silme kanıtsız kaldı.");
+        Assert.Equal(0, await ExecutedAuditCountAsync(tenantId));
+    }
+
+    /// <summary>
     /// Bekleme süresi DOLMAMIŞ kuruma dokunulmaz (kuyruk ölçütünün kendisi).
     /// </summary>
     [MySqlFact]

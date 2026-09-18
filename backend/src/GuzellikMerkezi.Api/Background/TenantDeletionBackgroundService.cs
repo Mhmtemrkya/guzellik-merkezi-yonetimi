@@ -34,6 +34,15 @@ namespace GuzellikMerkezi.Api.Background;
 /// </para>
 ///
 /// <para>
+/// <b>DENETİM KAYDI YOKSA SİLME DE YOK (fail-closed).</b> <see cref="IAuditLogger"/> hatayı
+/// YUTAR: çağrının dönmüş olması satırın yazıldığı anlamına gelmez. Geri dönülemez bir silme
+/// için "kanıtsız silme" kabul edilemez — kurumun verisi yok edilmişken KVKK'nın ve iç
+/// denetimin dayanacağı tek kayıt da yoksa, yapılan şey açıklanamaz hâle gelir. Bu yüzden
+/// kayıt, commit'ten önce aynı transaction içinde OKUNARAK doğrulanır; yoksa silme geri alınır
+/// ve kurum kuyrukta kalıp bir sonraki turda yeniden denenir.
+/// </para>
+///
+/// <para>
 /// <b>Denetim kaydı silmeyle AYNI transaction'da yazılır.</b> Önce yazılsaydı — eski hâli
 /// buydu — vazgeçme yüzünden iptal edilen bir silme için "kalıcı olarak silindi" diyen bir
 /// kayıt kalırdı: denetim izinin YALAN söylemesi, hiç kayıt olmamasından kötüdür.
@@ -52,6 +61,13 @@ public sealed class TenantDeletionBackgroundService : BackgroundService
     private static readonly TimeSpan PollInterval = TimeSpan.FromHours(1);
 
     private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(45);
+
+    /// <summary>
+    /// Silme denetim kaydının eylem adı. Yazan ve DOĞRULAYAN aynı sabiti kullanmalı: ikisi
+    /// ayrı yazılsaydı, adı değiştiren biri doğrulamayı sessizce her zaman "yok" hâline
+    /// getirir ve hiçbir kurum silinemez olurdu.
+    /// </summary>
+    private const string DeletionAuditAction = "TenantDeletionExecuted";
 
     private readonly IServiceProvider _services;
     private readonly ILogger<TenantDeletionBackgroundService> _logger;
@@ -145,8 +161,20 @@ public sealed class TenantDeletionBackgroundService : BackgroundService
                     .FirstOrDefaultAsync(t => t.Id == tenantId, ct);
                 if (!StillDue(memory, now)) return;
 
-                await TenantPurge.PurgeAsync(db, tenantId, _logger, ct);
+                // SIRA BURADA TERS: transaction olmadığı için "yaz, doğrula, gerekirse geri al"
+                // yapılamaz; fail-closed'ın tek aracı SIRADIR. Önce kanıt yazılır ve doğrulanır,
+                // silme ancak ondan sonra yapılır.
                 await WriteDeletedAuditAsync(audit, memory!, now, ct);
+                if (!await DeletionAuditExistsAsync(db, tenantId, ct))
+                {
+                    db.ChangeTracker.Clear();
+                    _logger.LogError(
+                        "Kurum silinmedi: denetim kaydı yazılamadı. Kurum: {TenantId}. Sonraki turda yeniden denenecek.",
+                        tenantId);
+                    return;
+                }
+
+                await TenantPurge.PurgeAsync(db, tenantId, _logger, ct);
                 _logger.LogWarning("Kurum silindi: {Name} ({Code}).", memory!.Name, memory.Code ?? "kodsuz");
                 return;
             }
@@ -193,6 +221,25 @@ public sealed class TenantDeletionBackgroundService : BackgroundService
             // olması şart: "silindi" kaydıyla silmenin kaderi ayrılamaz.
             await WriteDeletedAuditAsync(audit, tenant, now, ct);
 
+            // KANIT ARANIR — commit'ten ÖNCE, aynı transaction içinde.
+            //
+            // AuditLogger kendi içinde hata yutar (her yerde böyle: denetim yazımı iş akışını
+            // bloklamasın diye). O davranış sıradan bir işlem için doğru, GERİ DÖNÜLEMEZ bir
+            // silme için değil: yutulmuş tek bir hata, kurumun tüm verisi silinmişken hiçbir
+            // kaydın kalmaması demekti. Bu yüzden satır okunarak doğrulanır; yoksa silme de
+            // geri alınır. Kurum kuyrukta kalır ve bir sonraki turda yeniden denenir.
+            if (!await DeletionAuditExistsAsync(db, tenantId, ct))
+            {
+                await tx.RollbackAsync(ct);
+                // Yazılamayan audit satırı hâlâ Added durumunda takılı olabilir; temizlenmezse
+                // döngüdeki BİR SONRAKİ kurumun kaydıyla birlikte yeniden yazılmaya çalışılır.
+                db.ChangeTracker.Clear();
+                _logger.LogError(
+                    "Kurum silinmedi: denetim kaydı yazılamadı, silme geri alındı. Kurum: {TenantId}. Sonraki turda yeniden denenecek.",
+                    tenantId);
+                return;
+            }
+
             await tx.CommitAsync(ct);
 
             _logger.LogWarning(
@@ -210,6 +257,19 @@ public sealed class TenantDeletionBackgroundService : BackgroundService
     }
 
     /// <summary>
+    /// Silme denetim kaydı GERÇEKTEN yazıldı mı? (Veritabanından okunur, ChangeTracker'dan değil.)
+    /// </summary>
+    /// <remarks>
+    /// Sorgu açık transaction içinde çalıştığı için henüz commit edilmemiş kendi satırımızı
+    /// görür — aradığımız da tam olarak budur: "bu transaction commit edilirse ortada bir kanıt
+    /// kalacak mı?" Takip edilen varlığa bakmak yanıltıcı olurdu; <c>Added</c> durumda takılı
+    /// kalmış bir nesne, veritabanına hiç yazılmamışken "yazıldı" gibi görünürdü.
+    /// </remarks>
+    private static Task<bool> DeletionAuditExistsAsync(GuzellikDbContext db, Guid tenantId, CancellationToken ct) =>
+        db.AuditLogs.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(a => a.TenantId == tenantId && a.Action == DeletionAuditAction, ct);
+
+    /// <summary>
     /// "Kurum silindi" denetim kaydı. YALNIZ silme gerçekten yapıldıktan sonra çağrılır.
     /// </summary>
     /// <remarks>
@@ -219,7 +279,7 @@ public sealed class TenantDeletionBackgroundService : BackgroundService
     /// <c>LogWarning</c> satırı işletme kaydının ikinci kopyasıdır.
     /// </remarks>
     private static Task WriteDeletedAuditAsync(IAuditLogger audit, Tenant tenant, DateTime now, CancellationToken ct) =>
-        audit.LogAsync(tenant.Id, null, "TenantDeletionExecuted", "Tenant", tenant.Id,
+        audit.LogAsync(tenant.Id, null, DeletionAuditAction, "Tenant", tenant.Id,
             $"Bekleme süresi doldu; kurum ve tüm verisi kalıcı olarak silindi. Kurum: {tenant.Name} ({tenant.Code ?? "kodsuz"}).",
             new
             {
