@@ -148,6 +148,16 @@ public static class VerificationEmailTemplate
     /// şişirip metni aranamaz hâle getiriyordu. Kodlamayı MIME katmanı taşır
     /// (PlatformMessagingService'te <c>BodyEncoding = UTF8</c>).
     /// </remarks>
+    /// <summary>
+    /// E-posta gövdesine kullanıcı girdisi basan HER YER buradan geçmelidir.
+    /// </summary>
+    /// <remarks>
+    /// <c>public</c> olmasının sebebi paylaşım değil TEKİLLİK: yukarıdaki gerekçe (neden
+    /// <see cref="WebUtility.HtmlEncode"/> değil) tek bir yerde durmalı. İkinci bir kopya,
+    /// aynı e-postada iki farklı yazım demekti.
+    /// </remarks>
+    public static string HtmlEscape(string? value) => E(value);
+
     private static string E(string? value)
     {
         if (string.IsNullOrEmpty(value)) return string.Empty;

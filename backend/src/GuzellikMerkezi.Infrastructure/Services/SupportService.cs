@@ -627,7 +627,14 @@ public sealed class SupportService : ISupportService
     /// HTML KAÇIŞI ZORUNLUDUR: konu ve mesaj KULLANICI GİRDİSİDİR ve doğrudan gövdeye
     /// yazılırsa e-posta istemcisinde HTML enjeksiyonuna açık olur.
     /// </summary>
-    private static string Esc(string? value) => System.Net.WebUtility.HtmlEncode(value ?? string.Empty);
+    /// <remarks>
+    /// <b><see cref="System.Net.WebUtility.HtmlEncode"/> KULLANILMAZ:</b> o, ASCII dışındaki HER
+    /// karakteri sayısal varlığa çevirir ve "Seans düşmüyor" gövdeye "Seans d&amp;#252;şm&amp;#252;yor"
+    /// olarak girer — Türkçe bir destek yazışmasının neredeyse tamamı. Ortak kaçış yalnız
+    /// tehlikeli beş karakteri değiştirir; kodlamayı MIME katmanı taşır
+    /// (bkz. VerificationEmailTemplate.HtmlEscape).
+    /// </remarks>
+    private static string Esc(string? value) => VerificationEmailTemplate.HtmlEscape(value);
 
     public static string StatusLabel(SupportTicketStatus status) => status switch
     {
