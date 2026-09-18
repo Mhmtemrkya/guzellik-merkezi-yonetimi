@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import PaymentBadges, { LegalLinkRow } from '@/components/legal/PaymentBadges'
+// Kurumsal e-posta TEK KAYNAKTAN gelir: adres burada sabit yazılıydı ve `beautyasist.app`
+// (yanlış alan adı) kalmıştı — künye güncellenince bu düğme sessizce eski adrese yazmaya
+// devam ediyordu.
+import { company } from '@/lib/legal/company'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
@@ -602,7 +606,7 @@ function PlanCard({
             <CheckCircle2 className="h-4 w-4" /> Mevcut paketiniz
           </button>
         ) : isCustom ? (
-          <a href="mailto:destek@beautyasist.app?subject=Enterprise%20paket%20talebi"
+          <a href={`mailto:${company.email}?subject=${encodeURIComponent('Enterprise paket talebi')}`}
             className="inline-flex w-full items-center justify-center gap-2 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-2.5 text-[11px] font-medium text-[#3E343A] transition-colors hover:border-[#BE7690] hover:text-[#A5556E]">
             <MailPlus className="h-4 w-4" /> İletişime geç
           </a>

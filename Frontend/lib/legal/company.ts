@@ -43,7 +43,7 @@ export const company = {
    * alan adıyla eşleşen bir adres beklenir, kişisel e-posta ret gerekçesi olabilir.
    * Eski kayıt (gizlilik sayfasındaki adres): oguzhan.mindivanli@gmail.com
    */
-  email: '[DOLDURULACAK: kurumsal e-posta — ör. destek@beautyasist.com]',
+  email: 'info@maydanozasist.com',
   taxOffice: '[DOLDURULACAK: vergi dairesi]',
   /** Vergi kimlik numarası. */
   taxNumber: '[DOLDURULACAK: vergi kimlik no]',
