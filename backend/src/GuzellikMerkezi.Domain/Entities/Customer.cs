@@ -107,4 +107,54 @@ public sealed class Customer : Entity
         LastLoginUtc = utcNow;
         Touch(utcNow);
     }
+
+    /// <summary>Kimlik bilgileri silindiği an. <c>null</c> ise kayıt normaldir.</summary>
+    public DateTime? AnonymizedAtUtc { get; private set; }
+
+    /// <summary>Kaydı anonimleştirdikten sonra gösterilecek ad.</summary>
+    public const string AnonymizedName = "Silinmiş müşteri";
+
+    /// <summary>
+    /// KİŞİSEL VERİYİ SİLER, KAYDI BIRAKIR.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Neden satır silinmiyor?</b> Müşteri satırı randevu, adisyon, cari hesap, tahsilat ve
+    /// paket seansının bağlandığı düğümdür. Satırı silmek, kapanmış bir kasanın toplamını ve
+    /// tahsilat defterini dayanaksız bırakır — muhasebe bütünlüğü bozulur ve yasal saklama
+    /// süresi dolmadan finansal kayıt yok edilmiş olur.
+    /// </para>
+    /// <para>
+    /// Bu yüzden silinen şey KİŞİYE AİT OLANDIR: ad, telefon, e-posta, doğum tarihi, cinsiyet,
+    /// notlar, fotoğraf ve arama indeksi. Geriye kimseye bağlanamayan bir işlem kaydı kalır.
+    /// Telefon ve e-posta BOŞALTILIR: ikisi de giriş kimliğidir ve boş değer kimlik aramasının
+    /// alt sınırını geçemez, yani bu kayıtla bir daha giriş yapılamaz.
+    /// </para>
+    /// <para>
+    /// KVKK onayı da düşürülür: onay belirli bir kişinin beyanıdır, kimliği silinmiş bir satırda
+    /// "onay var" demek anlamsızdır.
+    /// </para>
+    /// </remarks>
+    public void Anonymize(DateTime utcNow)
+    {
+        if (AnonymizedAtUtc.HasValue) return; // idempotent: ikinci çağrı bir şey değiştirmez
+
+        FullName = AnonymizedName;
+        Phone = string.Empty;
+        Email = null;
+        BirthDate = null;
+        Gender = Gender.Unspecified;
+        KvkkConsent = false;
+        Notes = null;
+        PhotoUrl = null;
+        SearchIndex = null;
+        AnonymizedAtUtc = utcNow;
+
+        // Kayıt artık giriş yapamaz; kara liste bayrağının da anlamı kalmaz.
+        IsBlacklisted = false;
+        BlacklistReason = null;
+        BlacklistedAtUtc = null;
+
+        Touch(utcNow);
+    }
 }

@@ -73,6 +73,8 @@ builder.Services.AddScoped<GuzellikMerkezi.Api.Services.PanelLoginOtpService>();
 // "Şifremi unuttum" — e-posta kodu ile parola sıfırlama (bkz. PasswordResetService).
 builder.Services.AddScoped<GuzellikMerkezi.Api.Services.PasswordResetService>();
 builder.Services.AddHostedService<TrialExpirationBackgroundService>();
+// Bekleme süresi dolan kurum silme taleplerini GERÇEKTEN uygular (bkz. TenantDeletionBackgroundService).
+builder.Services.AddHostedService<TenantDeletionBackgroundService>();
 builder.Services.AddHostedService<NotificationDispatchBackgroundService>();
 builder.Services.AddHostedService<MonthlyReportBackgroundService>();
 builder.Services.AddHostedService<WhatsAppReservationSweepBackgroundService>();
@@ -201,6 +203,10 @@ builder.Services.AddRateLimiter(options =>
     // e-posta bazlı fren var (aynı adrese 30 dakikada en çok 3 kayıt denemesi).
     options.AddPolicy("tenant-signup", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 12, Window = TimeSpan.FromMinutes(15), QueueLimit = 0 }));
+    // HESAP SİLME: parola ve onay metni doğrulaması içerir; frensiz bırakılırsa parola deneme
+    // yüzeyi olur. "auth-login" kovasıyla paylaşmak kullanıcının GİRİŞ bütçesini tüketirdi.
+    options.AddPolicy("account-deletion", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(10), QueueLimit = 0 }));
     // PAROLA SIFIRLAMA (anonim): her istek E-POSTA gönderebiliyor, yani PARA harcıyor. Kendi
     // kovasında durur — "auth-login" ile paylaşsaydı, parolasını unutan kullanıcı kendi GİRİŞ
     // deneme bütçesini tüketip sıfırlamadan sonra giriş yapamaz hâle gelirdi. Servis tarafında
@@ -459,6 +465,7 @@ app.MapRatingEndpoints();
 app.MapPublicSalonEndpoints();
 // Self-servis kurum kaydı (anonim, 14 gün deneme) — bkz. TenantSignupEndpoints.
 app.MapTenantSignupEndpoints();
+app.MapAccountDeletionEndpoints();
 app.MapWhatsAppEndpoints();
 app.MapCustomerAccountEndpoints();
 app.MapAdisyonEndpoints();

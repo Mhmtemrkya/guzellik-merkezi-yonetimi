@@ -8,6 +8,7 @@ import WhatsAppSettingsCard from '@/components/dashboard/WhatsAppSettingsCard'
 import WhatsAppWalletCard from '@/components/dashboard/WhatsAppWalletCard'
 import SecuritySettingsCard from '@/components/dashboard/SecuritySettingsCard'
 import KvkkSettingsCard from '@/components/dashboard/KvkkSettingsCard'
+import TenantDeletionCard from '@/components/account/TenantDeletionCard'
 import ConsentTemplatesCard from '@/components/dashboard/ConsentTemplatesCard'
 import { UsageBar } from '@/components/dashboard/UsageBar'
 import { useBranch } from '@/components/dashboard/BranchContext'
@@ -533,6 +534,14 @@ export default function AyarlarPage() {
             ))}
             {!branches.length && !loading && <div className="px-5 py-8 text-center text-sm text-[#74616A]">Henüz şube tanımlanmadı. Sağ üstten "Şube Ekle" ile başla.</div>}
           </div>
+        </motion.section>
+
+        {/* HESABIMI SİL — sayfanın EN ALTINDA ve kendi kırmızı çerçevesinde.
+            Geri alınamaz bir işlem, sıradan ayarların arasında kaydet refleksiyle basılabilecek
+            bir düğme olmamalı (bkz. components/account/DangerZone.tsx). Kart yalnız kurum
+            yöneticisine görünür: uç diğer rollerde 403 döner ve kart kendini gizler. */}
+        <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.34 }}>
+          <TenantDeletionCard />
         </motion.section>
       </div>
     </>

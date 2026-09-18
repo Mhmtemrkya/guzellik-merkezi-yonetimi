@@ -137,6 +137,8 @@ public static class DependencyInjection
         // Self-servis kurum kaydı (14 gün deneme). Taslakları IMemoryCache'te tutar — tek örnek
         // kurulum varsayımı CustomerOtpService ile aynı (bkz. servisin sınıf notu).
         services.AddScoped<Application.Features.TenantSignup.ITenantSignupService, TenantSignupService>();
+        // "Hesabımı sil" — kurum (bekleme süreli) ve müşteri (anında anonimleştirme).
+        services.AddScoped<Application.Features.AccountDeletion.IAccountDeletionService, AccountDeletionService>();
         services.AddScoped<IBranchService, BranchService>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IDataImportService, DataImportService>();

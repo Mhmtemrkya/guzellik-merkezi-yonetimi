@@ -484,6 +484,13 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.HasIndex(x => x.Code).IsUnique();
         builder.Property(x => x.PhoneIndex).HasMaxLength(64);
         builder.HasIndex(x => x.PhoneIndex);
+        // HESAP SİLME TALEBİ — gerekçe ŞİFRELENMEZ: kurum kimliği değil, operasyonel bir nottur
+        // (şifrelemek onu longtext'e çevirir ve hiçbir arama/rapor faydası sağlamaz).
+        // Genişlik Tenant.MaxDeletionReasonLength ile AYNI olmalı; domain fazlasını kırpar.
+        builder.Property(x => x.DeletionReason).HasMaxLength(Tenant.MaxDeletionReasonLength);
+        // Arka plan tarayıcısı "vadesi gelmiş talepler"i bu kolondan süzer (bkz.
+        // TenantDeletionBackgroundService); indekssiz tarama her saat tüm kurum tablosunu okurdu.
+        builder.HasIndex(x => x.DeletionScheduledAtUtc);
         builder.HasQueryFilter(x => !x.IsDeleted);
         builder.HasMany(x => x.Branches).WithOne(x => x.Tenant).HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         builder.HasMany(x => x.Users).WithOne(x => x.Tenant).HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);

@@ -5,6 +5,7 @@ import '../../core/auth/auth_controller.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/responsive.dart';
+import '../account/account_deletion.dart';
 
 /// Online randevu müşteri portalı — alt sekmeli kabuk (Ana Sayfa / Randevularım / Profil).
 class CustomerShell extends StatelessWidget {
@@ -647,6 +648,12 @@ class CustomerProfileScreen extends StatelessWidget {
                 onTap: () => auth.signOut(),
               ),
             ),
+            const SizedBox(height: 20),
+            // HESABIMI SİL — App Store 5.1.1(v): hesap açmaya izin veren uygulama, hesabın
+            // silinmesine de uygulama İÇİNDEN izin vermek zorundadır. Kart "Çıkış yap"ın
+            // ALTINDA ve kendi kırmızı çerçevesinde durur; yanlışlıkla basılmasın diye ayrıca
+            // elle onay metni ister (bkz. features/account/account_deletion.dart).
+            CustomerDeletionCard(auth: auth),
           ],
         ),
       ),

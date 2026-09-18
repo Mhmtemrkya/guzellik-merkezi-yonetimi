@@ -9,6 +9,7 @@ import '../../shared/kvkk/kvkk_view_sheet.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
+import '../account/account_deletion.dart';
 import '../appointments/calendar_theme.dart';
 
 /// Ayarlar — web "ayarlar" sayfasının mobil paritesi: Kurum Profili, Ödeme &
@@ -443,6 +444,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _branchesCard(d.branches),
       const SizedBox(height: 12),
       _linksCard(),
+      const SizedBox(height: 16),
+      // HESABIMI SİL — sayfanın EN ALTINDA, kendi kırmızı çerçevesinde. Geri alınamaz bir
+      // işlem, sıradan ayarların arasında kaydet refleksiyle basılabilecek bir düğme olmamalı.
+      // Kart yalnız kurum yöneticisine görünür: uç diğer rollerde 403 döner ve kart kendini
+      // gizler (yetki kararı SUNUCUDA, bkz. AccountDeletionService.LoadOwnTenantAsync).
+      TenantDeletionCard(auth: widget.auth),
     ];
   }
 

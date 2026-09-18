@@ -621,6 +621,38 @@ export interface ApiPasswordResetChallenge {
   devCode?: string | null
 }
 
+/**
+ * KURUM HESABI SİLME — bekleme süreli, geri alınabilir.
+ *
+ * Talep anında silmez: `scheduledAtUtc` gelene kadar panel çalışmaya devam eder ve talep
+ * geri alınabilir. Bekleme süresi SUNUCUDAN gelir (`graceDays`); ekrana sabit yazılsaydı
+ * sunucudaki ayar değiştiğinde kullanıcıya yanlış tarih vaat edilirdi.
+ */
+export interface ApiTenantDeletionStatus {
+  pending: boolean
+  requestedAtUtc: string | null
+  scheduledAtUtc: string | null
+  reason: string | null
+  graceDays: number
+  /** Onay kutusuna yazılması gereken metin (kurum kodu). */
+  confirmationPhrase: string
+}
+
+export const accountApi = {
+  tenantDeletionStatus: (): Promise<ApiTenantDeletionStatus> =>
+    apiRequest<ApiTenantDeletionStatus>('/api/account/tenant/deletion'),
+
+  /** Parola ZORUNLU: açık kalmış bir oturumda tek tıkla tüm kurum silinememeli. */
+  requestTenantDeletion: (password: string, confirmation: string, reason?: string | null): Promise<ApiTenantDeletionStatus> =>
+    apiRequest<ApiTenantDeletionStatus>('/api/account/tenant/deletion', {
+      method: 'POST',
+      body: { password, confirmation, reason: reason ?? null },
+    }),
+
+  cancelTenantDeletion: (): Promise<ApiTenantDeletionStatus> =>
+    apiRequest<ApiTenantDeletionStatus>('/api/account/tenant/deletion', { method: 'DELETE' }),
+}
+
 // Platform tenant CRUD payload — UI form değerleri dinamik dolduruluyor; payload tipi gevşek tutulur.
 type PlatformPayload = Record<string, unknown>
 

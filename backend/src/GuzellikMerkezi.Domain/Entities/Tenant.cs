@@ -348,6 +348,91 @@ public sealed class Tenant : Entity
         Touch();
     }
 
+    // ------------------------------------------------------------------ hesap silme talebi
+
+    /// <summary>Kurum sahibinin silme talebini verdiği an. <c>null</c> ise talep yok.</summary>
+    public DateTime? DeletionRequestedAtUtc { get; private set; }
+
+    /// <summary>
+    /// Verinin GERÇEKTEN silineceği an (talep + bekleme süresi).
+    /// </summary>
+    /// <remarks>
+    /// <b>NEDEN ANINDA SİLİNMİYOR?</b> Silme geri alınamaz ve 50'den fazla tabloyu kapsar
+    /// (bkz. TenantPurge). Yanlışlıkla ya da öfkeyle basılan bir düğme, kurumun tüm müşteri,
+    /// randevu ve tahsilat geçmişini bir daha getirilemeyecek şekilde yok ederdi. Bekleme
+    /// süresi kullanıcıya geri dönme fırsatı verir; süre AÇIKÇA ekranda yazar ve süre dolunca
+    /// silme insan müdahalesi olmadan gerçekleşir.
+    /// </remarks>
+    public DateTime? DeletionScheduledAtUtc { get; private set; }
+
+    /// <summary>Talebi veren kurum kullanıcısı (denetim izi).</summary>
+    public Guid? DeletionRequestedBy { get; private set; }
+
+    /// <summary>
+    /// Kullanıcının yazdığı gerekçe (isteğe bağlı).
+    /// </summary>
+    /// <remarks>
+    /// Uzunluk <see cref="MaxDeletionReasonLength"/> ile SINIRLANIR ve fazlası kırpılır. Sınırsız
+    /// bırakılsaydı, MySQL'in strict modunda uzun bir metin "Data too long" hatası verir ve
+    /// silme talebi — kullanıcının açıkça istediği işlem — bir metin alanı yüzünden başarısız
+    /// olurdu. Gerekçe yardımcı bilgidir; işlemi engellemesi kabul edilemez.
+    /// </remarks>
+    public string? DeletionReason { get; private set; }
+
+    /// <summary>Silme gerekçesinin en fazla uzunluğu (kolon genişliğiyle aynı).</summary>
+    public const int MaxDeletionReasonLength = 500;
+
+    /// <summary>Silme talebi var mı? (Bekleme süresi sürüyor ya da dolmuş.)</summary>
+    public bool IsDeletionPending => DeletionRequestedAtUtc.HasValue;
+
+    /// <summary>
+    /// Silme talebini kaydeder. Kurum ANINDA SİLİNMEZ; <paramref name="graceDays"/> sonra silinir.
+    /// </summary>
+    /// <remarks>
+    /// Durum DEĞİŞTİRİLMEZ (askıya alınmaz): kullanıcı bekleme süresi boyunca panelini
+    /// kullanmaya, verisini dışa aktarmaya ve kararından dönmeye devam edebilmeli. Erişimi
+    /// hemen kesmek, "fikrimi değiştirdim" diyen kullanıcıyı vazgeçemez hâle getirirdi.
+    /// </remarks>
+    public void RequestDeletion(DateTime nowUtc, int graceDays, Guid? requestedBy, string? reason)
+    {
+        if (graceDays < 0) throw new DomainException("Bekleme süresi negatif olamaz.");
+        var now = nowUtc.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc)
+            : nowUtc.ToUniversalTime();
+
+        // TEKRAR TALEP TARİHİ İLERİ ALMAZ. Aksi hâlde düğmeye her basış silme gününü öteler
+        // ve talep hiç olgunlaşmazdı.
+        if (DeletionRequestedAtUtc.HasValue) return;
+
+        DeletionRequestedAtUtc = now;
+        DeletionScheduledAtUtc = now.AddDays(graceDays);
+        DeletionRequestedBy = requestedBy;
+        DeletionReason = Truncate(reason, MaxDeletionReasonLength);
+        Touch(now, requestedBy);
+    }
+
+    /// <summary>Silme talebini geri alır (bekleme süresi dolmadan).</summary>
+    public void CancelDeletion(Guid? actorId = null)
+    {
+        DeletionRequestedAtUtc = null;
+        DeletionScheduledAtUtc = null;
+        DeletionRequestedBy = null;
+        DeletionReason = null;
+        Touch(null, actorId);
+    }
+
+    /// <summary>Bekleme süresi doldu mu? (Arka plan tarayıcısı buna bakar.)</summary>
+    public bool IsDeletionDue(DateTime nowUtc)
+        => DeletionScheduledAtUtc.HasValue && DeletionScheduledAtUtc.Value <= nowUtc;
+
+    /// <summary>Boşsa null, uzunsa kırpar.</summary>
+    private static string? Truncate(string? value, int max)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var trimmed = value.Trim();
+        return trimmed.Length <= max ? trimmed : trimmed[..max];
+    }
+
     public void ExtendTrial(int additionalDays)
     {
         if (additionalDays <= 0) throw new DomainException("Gün sayısı pozitif olmalı.");

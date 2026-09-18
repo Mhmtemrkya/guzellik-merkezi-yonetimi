@@ -355,3 +355,22 @@ export function cancelMyPortalAppointment(appointmentId: string): Promise<void> 
 export function rescheduleMyPortalAppointment(appointmentId: string, startUtc: string): Promise<void> {
   return portalRequest<void>(`/api/customer/appointments/${appointmentId}/reschedule`, { method: 'POST', body: { startUtc } })
 }
+
+/** Müşterinin onay kutusuna yazması gereken metin (sunucudaki sabitle AYNI). */
+export const CUSTOMER_DELETE_PHRASE = 'SİL'
+
+/**
+ * HESABIMI SİL — kişisel veriyi ANINDA siler, geri alınamaz.
+ *
+ * Müşteri kaydı VERİTABANINDAN SİLİNMEZ, anonimleştirilir: ad, telefon, e-posta, doğum tarihi,
+ * not ve fotoğraf temizlenir. Satırın kendisi randevu/adisyon/cari kaydının bağlandığı düğümdür;
+ * silinmesi salonun kapanmış kasalarını ve tahsilat defterini dayanaksız bırakırdı.
+ *
+ * Başarıdan sonra oturum sunucuda kapatılmıştır — istemci de yerel oturumu temizlemelidir.
+ */
+export function deleteMyCustomerAccount(confirmation: string, reason?: string | null): Promise<{ anonymizedAtUtc: string }> {
+  return portalRequest<{ anonymizedAtUtc: string }>('/api/account/customer/deletion', {
+    method: 'POST',
+    body: { confirmation, reason: reason ?? null },
+  })
+}

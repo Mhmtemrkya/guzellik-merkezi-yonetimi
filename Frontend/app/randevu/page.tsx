@@ -33,6 +33,7 @@ import {
   listPortalStaff,
   portalStatusMeta,
   rescheduleMyPortalAppointment,
+  storeCustomerSession,
   PortalApiError,
   type PortalAppointment,
   type PortalAvailability,
@@ -41,6 +42,7 @@ import {
   type PortalService,
   type PortalStaff,
 } from '@/lib/customerPortalApi'
+import CustomerDeletionCard from '@/components/account/CustomerDeletionCard'
 
 type Step = 1 | 2 | 3 | 4 | 5
 
@@ -918,6 +920,19 @@ export default function CustomerPortalPage() {
                 )
               })}
             </div>
+          </div>
+
+          {/* HESAP — portal tek sayfa olduğu için hesap işlemleri de burada durur.
+              "Hesabımı sil" App Store 5.1.1(v) gereği uygulamanın İÇİNDEN yapılabilmeli;
+              mobilde de aynı kart Profil sekmesinde bulunur (web-mobil paritesi). */}
+          <div className="mt-6">
+            <CustomerDeletionCard
+              onDeleted={() => {
+                // Sunucu oturumu zaten kapattı; yerel depoyu da temizleyip girişe dön.
+                storeCustomerSession(null)
+                router.replace('/randevu/giris')
+              }}
+            />
           </div>
         </aside>
       </div>
