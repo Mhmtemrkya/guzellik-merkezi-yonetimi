@@ -102,9 +102,20 @@ export default function NavAccount() {
             Giriş
           </PressButton>
 
-          {/* ÇUBUĞUN TEK DOLU DÜĞMESİ. */}
-          <PressButton href="/kayit" tone="primary" className="px-4 py-2 text-[13px] font-medium">
-            Ücretsiz<span className="hidden sm:inline">&nbsp;dene</span>
+          {/* ÇUBUĞUN TEK DOLU DÜĞMESİ.
+              METİN DAR EKRANDA DA TAM BİR EYLEMDİR: eskiden "Ücretsiz dene"nin ikinci
+              kelimesi `sm` altında gizleniyordu ve düğmede yalnız "Ücretsiz" kalıyordu —
+              bu bir çağrı değil, sıfattır ("Ücretsiz" ne?). Artık kısalan sürüm de kendi
+              başına okunan bir fiil: "Başla".
+              "dene" yerine "başla": kayıt akışının kendi dili de böyle ("14 günlük ücretsiz
+              denemeniz başladı") ve başlamak, denemekten daha net bir davet. */}
+          <PressButton
+            href="/kayit"
+            tone="primary-bar"
+            className="h-9 px-4 text-[13px] font-semibold tracking-[-0.01em]"
+          >
+            <span className="hidden sm:inline">Ücretsiz&nbsp;başla</span>
+            <span className="sm:hidden">Başla</span>
           </PressButton>
         </>
       )}

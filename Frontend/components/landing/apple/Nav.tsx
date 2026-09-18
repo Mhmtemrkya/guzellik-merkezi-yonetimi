@@ -191,7 +191,7 @@ export default function Nav() {
               </PressButton>
 
               {isAuthenticated ? (
-                <PressButton href="/panel" tone="primary" className="w-full justify-center py-2.5 text-[14px] font-medium">
+                <PressButton href="/panel" tone="primary-bar" className="w-full justify-center py-2.5 text-[14px] font-semibold">
                   Panele git
                 </PressButton>
               ) : (
@@ -203,8 +203,8 @@ export default function Nav() {
                   >
                     Giriş
                   </PressButton>
-                  <PressButton href="/kayit" tone="primary" className="w-full justify-center py-2.5 text-[14px] font-medium">
-                    Ücretsiz dene
+                  <PressButton href="/kayit" tone="primary-bar" className="w-full justify-center py-2.5 text-[14px] font-semibold">
+                    Ücretsiz başla
                   </PressButton>
                 </div>
               )}

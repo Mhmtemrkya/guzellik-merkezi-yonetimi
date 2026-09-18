@@ -27,11 +27,27 @@ const MotionLink = motion.create(Link)
  * kendisi momentum verdiği hareketlere aittir (bkz. springs.ts).
  */
 
-type Tone = 'primary' | 'glass-dark' | 'glass-light' | 'plain'
+type Tone = 'primary' | 'primary-bar' | 'glass-dark' | 'glass-light' | 'plain'
 
 const TONE: Record<Tone, string> = {
   primary:
     'bg-[#EF6F94] text-white shadow-[0_20px_44px_-18px_rgba(239,111,148,0.95)] hover:shadow-[0_28px_56px_-16px_rgba(239,111,148,1)]',
+  /**
+   * ÜST ÇUBUĞUN DOLU DÜĞMESİ — `primary`nin küçük ölçekte çalışan hâli.
+   *
+   * `primary` 44px bulanıklıkta ve 20px aşağı kaymış bir PARILTI taşır. Kahraman
+   * bölümündeki büyük düğmenin altında bu doğrudur; 36px'lik bir çubuk düğmesinin altında
+   * ise gölge düğmeden daha geniş kalır, çubuğun kenarından taşar ve altındaki videoya
+   * pembe bir leke olarak yayılır — asıl kusur buydu.
+   *
+   * Burada gölge KISA ve İKİ KATMANLIDIR: yakın katman kenarı yere oturtur, uzak katman
+   * yalnız bir tık derinlik verir. İçe çizilen beyaz halka üst kenarda ışık yakalar ve
+   * düğmeyi düz bir renk lekesi olmaktan çıkarır. Marka rengi DEĞİŞMEZ.
+   */
+  'primary-bar':
+    'bg-[#EF6F94] text-white ring-1 ring-inset ring-white/30 ' +
+    'shadow-[0_1px_2px_rgba(141,40,74,0.24),0_6px_14px_-8px_rgba(141,40,74,0.55)] ' +
+    'hover:bg-[#E85D86] hover:shadow-[0_2px_4px_rgba(141,40,74,0.28),0_10px_20px_-10px_rgba(141,40,74,0.6)]',
   'glass-dark': 'material-dark on-material text-white',
   'glass-light': 'material-light on-material text-[#4A3A44]',
   plain: 'text-[#4A3A44] hover:text-[#EF6F94]',
