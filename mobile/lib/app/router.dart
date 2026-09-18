@@ -10,6 +10,7 @@ import '../features/appointments/appointments_screen.dart';
 import '../features/approvals/approvals_screen.dart';
 import '../features/auth/change_password_screen.dart';
 import '../features/auth/forgot_password_screen.dart';
+import '../features/support/support_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/register_screen.dart';
 import '../features/branches/branches_screen.dart';
@@ -215,6 +216,9 @@ class AppRouter {
         _page('/signature-station', SignatureStationScreen(api: api)),
         _page('/consent-templates', ConsentTemplatesScreen(api: api)),
         _page('/gift-cards', GiftCardsScreen(api: api)),
+        // DESTEK — kurum kullanicisinin kendi talepleri (web /destek paritesi).
+        // Kapsam SUNUCUDA: /api/support yalniz oturumdaki kurumun taleplerini doner.
+        _page('/support', SupportScreen(api: api)),
         _page('/waitlist', WaitlistScreen(api: api)),
         // Müşteri-bağlamlı klinik ekranlar: bağlam state.extra ile gelir
         // (müşteri kartından), yoksa ekran müşteri seçtirir (menüden).
