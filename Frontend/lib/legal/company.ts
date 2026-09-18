@@ -27,15 +27,15 @@ export const company = {
   /** Ürün / marka adı. */
   brand: 'BeautyAsist',
   /** Satıcının tam ticaret unvanı (fatura ve sözleşmede geçen ad). */
-  legalName: '[DOLDURULACAK: tam ticaret unvanı — ör. Maydanoz Yazılım Ltd. Şti.]',
+  legalName: 'MAYDANOZ REKLAM ORGANİZASYON DANIŞMANLIK YAZILIM BASIN YAYIN TİCARET LİMİTED ŞİRKETİ',
   /** Kısa ad — metin içinde tekrar eden kullanımlar için. */
-  shortName: 'Maydanoz Yazılım',
+  shortName: 'Maydanoz Ltd. Şti.',
   /** Şirket türü — kullanıcı 15 Ağu 2026'da limited şirket olarak bildirdi. */
   companyType: 'Limited şirket',
   /** Açık adres (mahalle, cadde, no, ilçe/il). */
-  address: '[DOLDURULACAK: açık adres]',
+  address: 'Tatlısu Mah. Şenol Güneş Blv. Mira A Blok No: 2 A İç Kapı No: 8 Ümraniye / İstanbul',
   /** Müşteri hizmetleri telefonu. */
-  phone: '[DOLDURULACAK: telefon]',
+  phone: '+90 850 242 84 25',
   /**
    * Destek ve bildirim e-postası.
    *
@@ -57,7 +57,7 @@ export const company = {
 } as const
 
 /** Yasal sayfaların ortak "son güncelleme" tarihi. */
-export const LEGAL_LAST_UPDATED = '15 Ağustos 2026'
+export const LEGAL_LAST_UPDATED = '18 Eylül 2026'
 
 /**
  * Footer ve ödeme adımlarında kullanılan yasal sayfa listesi.
@@ -71,4 +71,5 @@ export const legalLinks: { href: string; label: string }[] = [
   { href: '/mesafeli-satis-sozlesmesi', label: 'Mesafeli Satış Sözleşmesi' },
   { href: '/teslimat-ve-iade', label: 'Teslimat ve İade Şartları' },
   { href: '/gizlilik', label: 'Gizlilik Politikası' },
+  { href: '/destek', label: 'Destek' },
 ]

@@ -70,6 +70,8 @@ builder.Services.AddMemoryCache();
 builder.Services.AddScoped<GuzellikMerkezi.Api.Services.CustomerOtpService>();
 // Panel girişinde ikinci faktör (parola + e-posta kodu) — bkz. PanelLoginOtpService.
 builder.Services.AddScoped<GuzellikMerkezi.Api.Services.PanelLoginOtpService>();
+// "Şifremi unuttum" — e-posta kodu ile parola sıfırlama (bkz. PasswordResetService).
+builder.Services.AddScoped<GuzellikMerkezi.Api.Services.PasswordResetService>();
 builder.Services.AddHostedService<TrialExpirationBackgroundService>();
 builder.Services.AddHostedService<NotificationDispatchBackgroundService>();
 builder.Services.AddHostedService<MonthlyReportBackgroundService>();
@@ -199,6 +201,12 @@ builder.Services.AddRateLimiter(options =>
     // e-posta bazlı fren var (aynı adrese 30 dakikada en çok 3 kayıt denemesi).
     options.AddPolicy("tenant-signup", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 12, Window = TimeSpan.FromMinutes(15), QueueLimit = 0 }));
+    // PAROLA SIFIRLAMA (anonim): her istek E-POSTA gönderebiliyor, yani PARA harcıyor. Kendi
+    // kovasında durur — "auth-login" ile paylaşsaydı, parolasını unutan kullanıcı kendi GİRİŞ
+    // deneme bütçesini tüketip sıfırlamadan sonra giriş yapamaz hâle gelirdi. Servis tarafında
+    // ayrıca e-posta bazlı fren var (aynı adrese 15 dakikada en çok 3 istek).
+    options.AddPolicy("password-reset", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(15), QueueLimit = 0 }));
     // ÖDEME DÖNÜŞÜ (anonim): sağlayıcı ya da kullanıcı tarayıcısı çağırır, oturum taşımaz. Her
     // istek sağlayıcıya bir SORGU (dış çağrı) tetikler; sınırsız bırakıldığında uydurma
     // anahtarlarla hem sağlayıcı kotası tüketilir hem sonuç deneme-yanılması yapılırdı. Meşru

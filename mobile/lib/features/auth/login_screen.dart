@@ -632,6 +632,27 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ] else ...[
+                              // ŞİFREMİ UNUTTUM — yalnız PANEL tarafında. Müşterinin parolası
+                              // yoktur; girişi zaten e-posta koduyla yapılır, sıfırlanacak bir
+                              // şey yok. Kod adımındayken de gizlenir: o noktada parola zaten
+                              // doğrulanmıştır, kullanıcının aradığı şey kod.
+                              if (panelChallenge == null) ...[
+                                const SizedBox(height: 2),
+                                Center(
+                                  child: TextButton.icon(
+                                    onPressed: loading
+                                        ? null
+                                        : () {
+                                            final mail = emailController.text.trim();
+                                            context.push(mail.isEmpty
+                                                ? '/forgot-password'
+                                                : '/forgot-password?email=${Uri.encodeQueryComponent(mail)}');
+                                          },
+                                    icon: const Icon(Icons.lock_reset_rounded, size: 18),
+                                    label: const Text('Şifremi unuttum'),
+                                  ),
+                                ),
+                              ],
                               // KURUMSAL KAYIT WEB'DE YAPILIR (bkz. _openTenantSignup).
                               const SizedBox(height: 6),
                               Center(

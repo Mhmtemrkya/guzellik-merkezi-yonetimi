@@ -3,10 +3,17 @@ import type { ApiEnvelope } from './types'
 /**
  * SELF-SERVİS KURUM KAYDI istemcisi (`/api/public/signup`) — oturum gerektirmez.
  *
- * Akış üç adımdır ve her adım bir sonrakinin ön koşuludur:
+ * Akış İKİ ya da ÜÇ adımdır — kararı SUNUCU verir (`readiness.phoneVerification`):
  * 1. `startSignup` — bilgiler alınır, e-postaya kod gider
- * 2. `verifySignupEmail` — e-posta kodu doğrulanır, telefona kod gider
+ * 2. `verifySignupEmail` — e-posta kodu doğrulanır. Yanıttaki `nextStep`:
+ *      · `'done'`  → KURUM OLUŞTU (telefon adımı kapalı); `completed` alanı doludur
+ *      · `'phone'` → telefona kod gitti, 3. adım gerekli
  * 3. `verifySignupPhone` — telefon kodu doğrulanır, KURUM OLUŞUR + oturum döner
+ *
+ * TELEFON ADIMI NEDEN KAPALI OLABİLİR? SMS sağlayıcısı canlıya alınmadan telefon sahipliği
+ * kanıtlanamıyor; adım açık bırakılsaydı hiçbir kayıt tamamlanamazdı. Sağlayıcı kurulunca
+ * sunucuda `TenantSignup:RequirePhoneVerification` açılır ve akış kendiliğinden üç adıma döner —
+ * bu istemcide DEĞİŞİKLİK GEREKMEZ. Adım sayısını istemci VARSAYMAZ, yanıttan okur.
  *
  * Kurum yalnızca son adımda oluşur: yarım kalan denemeler veritabanına hiç yazılmaz.
  */
@@ -60,11 +67,19 @@ export type SignupPhoneChannel = 'sms' | 'whatsapp'
 export interface SignupReadiness {
   email: boolean
   phone: boolean
-  /** İkisi de kurulu değilse kayıt akışı tamamlanamaz — form gösterilmez. */
+  /** Kayıt akışı tamamlanabilir mi? Değilse form gösterilmez. */
   canSignup: boolean
   /** Telefon kanalları ayrı ayrı: yalnız kurulu olan seçenek gösterilsin. */
   sms: boolean
   whatsApp: boolean
+  /**
+   * Telefon doğrulama adımı AÇIK MI?
+   *
+   * Kapalıyken form telefon adımını ve kanal seçimini HİÇ göstermez; kayıt e-posta kodundan
+   * sonra biter. Bu bir istemci tercihi değil sunucu kararıdır — istemci yalnız ekranı buna
+   * göre kurar, kuralı sunucu zorlar.
+   */
+  phoneVerification: boolean
 }
 
 export interface SignupStarted {
@@ -73,11 +88,22 @@ export interface SignupStarted {
   devCode?: string | null
 }
 
+/**
+ * 2. adımın yanıtı — AYRIK BİRLEŞİM (discriminated union).
+ *
+ * `nextStep` kararı AÇIKÇA söyler. Hangi alanların dolu geldiğine bakarak çıkarmak kırılgandır:
+ * bir alan ileride isteğe bağlı olduğunda akış sessizce yanlış dalı seçerdi.
+ */
 export interface SignupEmailVerified {
-  maskedPhone: string
+  /** `'phone'` → telefon adımı gerekli · `'done'` → kurum açıldı. */
+  nextStep: 'phone' | 'done'
+  /** Yalnız `nextStep === 'phone'` iken dolu. */
+  maskedPhone?: string | null
   /** 'whatsapp' | 'sms' — ikinci faktör telefon sahipliğidir, WhatsApp zorunlu değildir. */
-  channel: string
+  channel?: string | null
   devCode?: string | null
+  /** Yalnız `nextStep === 'done'` iken dolu: kurum, geçici parola ve oturum. */
+  completed?: SignupCompleted | null
 }
 
 export interface SignupCredentials {

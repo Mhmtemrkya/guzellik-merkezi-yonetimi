@@ -299,18 +299,9 @@ public sealed class CustomerOtpService
         CustomerOtpChannel channel,
         CancellationToken ct)
     {
-        // AKIŞ KANALI SABİTTİR (kullanıcı isteği):
-        //   KAYIT  → telefon (SMS). Amaç numaranın gerçekten kişiye ait olduğunu kanıtlamak;
-        //            hesap bu numarayla açılıyor ve randevu bildirimleri oraya gidiyor.
-        //   GİRİŞ  → e-posta. Kayıtlı kullanıcı her girişte SMS harcamaz (maliyet), üstelik
-        //            e-posta kutusu telefon hattından daha kalıcı bir kimlik.
-        //
-        // Bu yüzden istemciden gelen kanal seçimi burada EZİLİR. Seçim istemciye bırakılsaydı
-        // eski bir sürüm ya da elle kurulmuş bir istek akışın kuralını atlayabilirdi.
-        channel = purpose == CustomerOtpPurpose.Register
-            ? CustomerOtpChannel.Sms
-            : CustomerOtpChannel.Email;
-
+        // AKIŞ KANALINA SUNUCU KARAR VERİR (kullanıcı isteği); istemciden gelen seçim EZİLİR.
+        // Seçim istemciye bırakılsaydı eski bir sürüm ya da elle kurulmuş bir istek akışın
+        // kuralını atlayabilirdi. Karar kanal DURUMU bilindikten sonra veriliyor (aşağıda).
         var key = PhoneMask.LoginKey(request.Phone);
         var name = CustomerIdentityLookup.NormalizeName(request.FullName);
         if (key.Length < 10 || name.Length == 0)
@@ -337,6 +328,27 @@ public sealed class CustomerOtpService
                 "Doğrulama kodu şu anda gönderilemiyor. Lütfen daha sonra tekrar deneyin ya da kurumunuzla iletişime geçin."));
         }
 
+        // ═══ KANAL KARARI ════════════════════════════════════════════════════════════════
+        //   KAYIT  → telefon (SMS/WhatsApp). Amaç numaranın gerçekten kişiye ait olduğunu
+        //            kanıtlamak; hesap bu numarayla açılıyor ve randevu bildirimleri oraya gider.
+        //   GİRİŞ  → e-posta. Kayıtlı kullanıcı her girişte SMS harcamaz (maliyet), üstelik
+        //            e-posta kutusu telefon hattından daha kalıcı bir kimliktir.
+        //
+        // TELEFON KANALI HİÇ YOKSA KAYIT E-POSTAYA DÜŞER. SMS sağlayıcısı hazır değilken ve
+        // WhatsApp platformda bağlı değilken telefon adımı ASLA tamamlanamaz — kayıt tümüyle
+        // kapanırdı. Böyle bir durumda kod doğrudan kullanıcının yazdığı adrese gider ve telefon
+        // KANITLANMAMIŞ sayılır (PhoneProven = false).
+        //
+        // BU BİR GÜVENLİK GEVŞEMESİ DEĞİLDİR: AuthService.CustomerRegisterAsync telefonu
+        // kanıtlanmamış kaydı ayrı ele alır — o numaraya ait BAŞKA bir hesap varsa kayıt
+        // reddedilir ve kullanıcıdan telefon kodu istenir. Yani e-posta yolu yalnızca YENİ hesap
+        // açabilir, var olan bir hesabı asla devralamaz.
+        var phoneChannelsReady = availability.Sms || availability.WhatsApp;
+        var registerViaEmailOnly = purpose == CustomerOtpPurpose.Register && !phoneChannelsReady;
+        channel = purpose == CustomerOtpPurpose.Register && phoneChannelsReady
+            ? CustomerOtpChannel.Sms
+            : CustomerOtpChannel.Email;
+
         // MAĞAZA İNCELEME HESABI kimlik bloğundan ÖNCE belirlenir: e-posta eşleşmesi şartı bu
         // hesaba uygulanamaz (denetçinin kurum kayıtlarındaki adresi bilmesi beklenemez ve zaten
         // hiçbir kanaldan kod almaz). Kayıt VARLIĞI şartı yine de korunur — aşağıya bakın.
@@ -345,6 +357,15 @@ public sealed class CustomerOtpService
         // Kimlik eşleşmesi: girişte zorunlu, kayıtta aranmaz (kanal sahipliği kanıtlanacak).
         string? emailTarget = CustomerIdentityLookup.NormalizeEmail(email);
         if (emailTarget.Length == 0) emailTarget = null;
+
+        // Telefonsuz kayıt yolunda e-posta TEK kanıttır; boşsa kullanıcı hiçbir kod alamaz ve
+        // "kod gönderildi" diyen genel yanıt onu sessizce çıkmaza sokardı. KAYIT akışında adres
+        // zaten kullanıcının kendi yazdığı değerdir — söylemek bir hesabı ele vermez.
+        if (registerViaEmailOnly && emailTarget is null)
+        {
+            return Result<object>.Failure(Error.Validation(
+                "E-posta adresi zorunludur; doğrulama kodu bu adrese gönderilecek."));
+        }
         // E-posta şablonunun başlığındaki kurum adı — ancak kimlik EŞLEŞTİĞİNDE bilinir.
         // Eşleşmeyen istekte null kalır; zaten o durumda kod hiç üretilmez.
         string? tenantName = null;
@@ -403,6 +424,19 @@ public sealed class CustomerOtpService
                 Channel = CustomerOtpChannel.Sms,
                 Target = null,
             };
+
+            // TELEFONSUZ KAYIT: akış e-posta aşamasında BAŞLAR ve orada biter. İki aşamalı
+            // doğrulamanın (telefon → e-posta) birinci ayağı yapılandırma gereği yok; ikinci
+            // ayağı tek başına yürütülür. PhoneProven bilinçli olarak FALSE kalır — telefon
+            // sahipliği gerçekten kanıtlanmadı ve kayıt bunu bilerek açılmalı.
+            if (registerViaEmailOnly)
+            {
+                entry.Channel = CustomerOtpChannel.Email;
+                entry.Target = emailTarget;
+                entry.AwaitingEmailStage = true;
+                entry.PendingEmail = emailTarget;
+                entry.PhoneProven = false;
+            }
 
             var delivered = true;
             if (!isReview)
@@ -586,6 +620,16 @@ public sealed class CustomerOtpService
         }
     }
 
+    /// <summary>
+    /// İstenen kanal ve yedekleri.
+    /// </summary>
+    /// <remarks>
+    /// <b>E-posta, telefon kanallarının YEDEĞİ DEĞİLDİR.</b> Telefon istendiğinde yalnız SMS ve
+    /// WhatsApp denenir; sessizce e-postaya düşmek, telefon sahipliğini kanıtlaması gereken bir
+    /// akışı kanıtlamayan bir akışa çevirirdi — üstelik çağıran taraf bunu fark etmeden
+    /// <c>PhoneProven</c> yazardı. E-postaya geçiş kararı, sonuçlarını bilen tek yerde
+    /// (<see cref="RequestAsync"/>, <c>registerViaEmailOnly</c>) AÇIKÇA verilir.
+    /// </remarks>
     private static IEnumerable<CustomerOtpChannel> OrderChannels(CustomerOtpChannel requested) =>
         requested switch
         {

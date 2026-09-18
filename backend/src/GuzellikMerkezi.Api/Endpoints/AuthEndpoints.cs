@@ -114,6 +114,23 @@ public static class AuthEndpoints
             return (await otp.VerifyAsync(identity, request.Code, request.Purpose, registration, ct)).ToHttpResult(http);
         }).RequireRateLimiting("customer-auth");
 
+        // --- PAROLA SIFIRLAMA ("şifremi unuttum") -------------------------------------------
+        //
+        // İKİ ADIM: e-posta → koda + yeni parola. Kanal E-POSTADIR (SMS değil): e-posta hesabın
+        // giriş kimliğinin ta kendisidir ve panel girişinin ikinci faktörü de zaten odur.
+        //
+        // ENUMERASYON FRENİ: adres kayıtlı olsun olmasın 1. adım AYNI yanıtı döner. Kayıtsız
+        // adrese sahte bir meydan okuma üretilir (bkz. PasswordResetService.PendingReset.Exists);
+        // 404 dönmek anonim bir uçtan "bu e-posta sistemde var mı?" sorusunu cevaplardı.
+        //
+        // KAPSAM: yalnız panel kullanıcıları (yönetici/personel/platform). Müşterinin parolası
+        // yoktur — girişi zaten e-posta koduyla yapılır (bkz. CustomerOtpService).
+        group.MapPost("/password-reset/request", async (Services.PasswordResetRequestBody request, Services.PasswordResetService reset, HttpContext http, CancellationToken ct) =>
+            (await reset.RequestAsync(request.Email, ct)).ToHttpResult(http)).RequireRateLimiting("password-reset");
+
+        group.MapPost("/password-reset/complete", async (Services.PasswordResetCompleteBody request, Services.PasswordResetService reset, HttpContext http, CancellationToken ct) =>
+            (await reset.CompleteAsync(request.ChallengeId, request.Code, request.NewPassword, ct)).ToHttpResult(http)).RequireRateLimiting("password-reset");
+
         group.MapPost("/refresh", async (RefreshTokenRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
             (await service.RefreshAsync(request, ct)).ToHttpResult(http));
 

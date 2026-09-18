@@ -49,17 +49,41 @@ public sealed record TenantSignupStartResponse(
 public sealed record TenantSignupVerifyEmailRequest(string SignupId, string Code);
 
 /// <summary>
-/// Adım 2 yanıtı — telefon kodunun gittiği kanal ve maskeli numara.
+/// Adım 2 yanıtı — <b>akış burada bitebilir ya da telefon adımına geçebilir</b>.
 /// </summary>
 /// <remarks>
+/// <para>
+/// <b>Neden ayrık birleşim (discriminated union)?</b> Telefon doğrulaması yapılandırmayla
+/// açılıp kapanabildiği için (bkz. <c>TenantSignup:RequirePhoneVerification</c>) bu uç iki
+/// FARKLI şey döndürebilir: ya "sıradaki adım telefon" ya da doğrudan "kurum açıldı".
+/// İstemcinin bunu hangi alanların dolu geldiğine BAKARAK çıkarması kırılgandır — bir alan
+/// ileride isteğe bağlı olduğunda akış sessizce yanlış dalı seçerdi. <paramref name="NextStep"/>
+/// kararı AÇIKÇA söyler: <c>"phone"</c> ya da <c>"done"</c>.
+/// </para>
+/// <para>
 /// <paramref name="Channel"/> "whatsapp" ya da "sms" olur. İkinci faktör "WhatsApp" değil
 /// <b>telefon sahipliğidir</b>: WhatsApp kuruluysa oradan, değilse SMS'ten gider. WhatsApp'a
 /// mahkûm etmek App Store 3.2.2(v) reddinin ta kendisiydi.
+/// </para>
 /// </remarks>
 public sealed record TenantSignupVerifyEmailResponse(
-    string MaskedPhone,
-    string Channel,
-    string? DevCode = null);
+    /// <summary><c>"phone"</c> (telefon kodu gönderildi) ya da <c>"done"</c> (kurum açıldı).</summary>
+    string NextStep,
+    string? MaskedPhone = null,
+    string? Channel = null,
+    string? DevCode = null,
+    /// <summary>Yalnız <c>NextStep == "done"</c> iken dolu: kurum, geçici parola ve oturum.</summary>
+    TenantSignupCompletedResponse? Completed = null)
+{
+    public const string StepPhone = "phone";
+    public const string StepDone = "done";
+
+    public static TenantSignupVerifyEmailResponse Phone(string maskedPhone, string channel, string? devCode) =>
+        new(StepPhone, maskedPhone, channel, devCode);
+
+    public static TenantSignupVerifyEmailResponse Done(TenantSignupCompletedResponse completed) =>
+        new(StepDone, Completed: completed);
+}
 
 public sealed record TenantSignupVerifyPhoneRequest(string SignupId, string Code);
 
@@ -82,8 +106,17 @@ public sealed record TenantSignupCompletedResponse(
 /// <paramref name="Sms"/> ve <paramref name="WhatsApp"/> ayrı ayrı döner ki 2. adımda yalnız
 /// GERÇEKTEN kurulu kanallar seçenek olarak gösterilsin.
 /// </summary>
+/// <param name="PhoneVerification">
+/// Telefon doğrulama adımı AÇIK MI? (<c>TenantSignup:RequirePhoneVerification</c>)
+/// <para>
+/// Kapalıyken kayıt TEK faktörle (e-posta) tamamlanır: form telefon adımını ve kanal seçimini
+/// hiç göstermez. Bu bir istemci tercihi DEĞİL sunucu kararıdır — istemci yalnız ekranı buna
+/// göre kurar; kuralı sunucu zorlar (bkz. TenantSignupService.VerifyEmailAsync).
+/// </para>
+/// </param>
 public sealed record TenantSignupReadinessDto(
-    bool Email, bool Phone, bool CanSignup, bool Sms = false, bool WhatsApp = false);
+    bool Email, bool Phone, bool CanSignup, bool Sms = false, bool WhatsApp = false,
+    bool PhoneVerification = true);
 
 public interface ITenantSignupService
 {

@@ -587,6 +587,38 @@ export const authApi = {
   me: (): Promise<ApiUser> => apiRequest<ApiUser>('/api/auth/me'),
   changePassword: <T = unknown>(currentPassword: string, newPassword: string): Promise<T> =>
     apiRequest<T>('/api/auth/change-password', { method: 'POST', body: { currentPassword, newPassword } }),
+
+  /**
+   * "ŞİFREMİ UNUTTUM" ADIM 1 — e-postaya 6 haneli kod gönderir.
+   *
+   * YANIT HER DURUMDA AYNIDIR: adres kayıtlı olmasa bile bir meydan okuma kimliği ve maskeli
+   * adres döner. Sunucu kayıtsız adrese sahte bir meydan okuma üretir; "bu e-posta sistemde
+   * var mı?" sorusu buradan cevaplanamaz. İstemci bu yüzden yanıtı "hesap bulundu" diye
+   * YORUMLAMAMALIDIR — yalnız kod ekranına geçer.
+   */
+  passwordResetRequest: (email: string): Promise<ApiPasswordResetChallenge> =>
+    apiRequest<ApiPasswordResetChallenge>('/api/auth/password-reset/request', {
+      method: 'POST',
+      body: { email },
+      token: null,
+      scope: false,
+    }),
+
+  /** "ŞİFREMİ UNUTTUM" ADIM 2 — kod doğruysa parola değişir ve TÜM oturumlar kapanır. */
+  passwordResetComplete: (challengeId: string, code: string, newPassword: string): Promise<{ message?: string; accounts?: number }> =>
+    apiRequest<{ message?: string; accounts?: number }>('/api/auth/password-reset/complete', {
+      method: 'POST',
+      body: { challengeId, code, newPassword },
+      token: null,
+      scope: false,
+    }),
+}
+
+/** Parola sıfırlama 1. adım yanıtı. `devCode` yalnız geliştirme ortamında dolar. */
+export interface ApiPasswordResetChallenge {
+  challengeId: string
+  maskedEmail: string
+  devCode?: string | null
 }
 
 // Platform tenant CRUD payload — UI form değerleri dinamik dolduruluyor; payload tipi gevşek tutulur.

@@ -9,6 +9,7 @@ import '../features/accounting/on_muhasebe_screen.dart';
 import '../features/appointments/appointments_screen.dart';
 import '../features/approvals/approvals_screen.dart';
 import '../features/auth/change_password_screen.dart';
+import '../features/auth/forgot_password_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/register_screen.dart';
 import '../features/branches/branches_screen.dart';
@@ -63,9 +64,11 @@ class AppRouter {
           return location == '/splash' ? null : '/splash';
         }
         if (auth.status == AuthStatus.signedOut) {
-          return (location == '/login' || location == '/register')
-              ? null
-              : '/login';
+          // '/forgot-password' oturumsuz erişilebilir OLMALIDIR: parolasını unutan kullanıcı
+          // tanım gereği giriş yapamaz. Listeye eklenmezse yönlendirme onu anında /login'e
+          // geri atar ve sıfırlama ekranı hiç açılmaz.
+          const anonymous = {'/login', '/register', '/forgot-password'};
+          return anonymous.contains(location) ? null : '/login';
         }
         // Müşteri rolü: yalnızca /customer/ alanı.
         // NOT: prefix '/customer/' (sondaki / ile) — aksi halde personel '/customers' sayfasını da yakalardı.
@@ -108,6 +111,16 @@ class AppRouter {
         GoRoute(
           path: '/change-password',
           builder: (_, _) => ChangePasswordScreen(auth: auth),
+        ),
+        // "Şifremi unuttum" — oturumsuz erişilir (yukarıdaki anonim liste).
+        // Giriş ekranındaki adres sorgu parametresiyle taşınır: kullanıcı aynı şeyi
+        // ikinci kez yazmasın.
+        GoRoute(
+          path: '/forgot-password',
+          builder: (_, state) => ForgotPasswordScreen(
+            auth: auth,
+            initialEmail: state.uri.queryParameters['email'],
+          ),
         ),
         // ---- Online randevu müşteri portalı ----
         GoRoute(

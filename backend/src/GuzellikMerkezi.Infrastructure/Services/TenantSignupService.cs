@@ -81,6 +81,24 @@ public sealed class TenantSignupService : ITenantSignupService
     /// <summary>Denemede atanacak paket anahtarı (<c>TenantSignup:TrialPlanKey</c>).</summary>
     private readonly string? _trialPlanKey;
 
+    /// <summary>
+    /// TELEFON DOĞRULAMA ADIMI AÇIK MI? (<c>TenantSignup:RequirePhoneVerification</c>, varsayılan <c>false</c>)
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Neden bayrak, neden silme?</b> SMS sağlayıcısı (Verimor) henüz canlıda çalışmıyor;
+    /// telefon adımı açık kaldığı sürece HİÇBİR kayıt tamamlanamaz. Adımı koddan sökmek yerine
+    /// bayrağa bağlamak, sağlayıcı kurulduğunda tek bir ayarla geri açılmasını sağlar — akışın
+    /// kendisi, kilitleri ve idempotens kapısı hiç değişmeden yerinde durur.
+    /// </para>
+    /// <para>
+    /// Kapalıyken kayıt e-posta kodu doğrulanır doğrulanmaz TAMAMLANIR: telefon yine ALINIR
+    /// (kurum iletişim bilgisidir ve rezervasyon anahtarı ondan türer) ama SAHİPLİĞİ kanıtlanmaz.
+    /// </para>
+    /// <para>Açmak için: <c>TenantSignup__RequirePhoneVerification=true</c>.</para>
+    /// </remarks>
+    private readonly bool _requirePhoneVerification;
+
     /// <summary>Doğrulama e-postasındaki "Doğrulama Bağlantısı" satırının taban adresi için.</summary>
     private readonly Microsoft.Extensions.Configuration.IConfiguration _config;
 
@@ -98,6 +116,9 @@ public sealed class TenantSignupService : ITenantSignupService
         ILogger<TenantSignupService> logger)
     {
         _trialPlanKey = configuration["TenantSignup:TrialPlanKey"];
+        // Varsayılan KAPALI: sağlayıcı kurulana kadar açık bırakmak her kaydı bloke ederdi.
+        _requirePhoneVerification =
+            bool.TryParse(configuration["TenantSignup:RequirePhoneVerification"], out var requirePhone) && requirePhone;
         _config = configuration;
         _db = db;
         _store = store;
@@ -186,10 +207,16 @@ public sealed class TenantSignupService : ITenantSignupService
     {
         var (email, phone) = await GetChannelsAsync(ct);
         var (sms, whatsApp) = await GetPhoneChannelsAsync(ct);
-        // Kayıt İKİ faktör ister: e-posta + telefon. Biri yoksa akış tamamlanamaz, o yüzden
-        // formu hiç göstermemek "kod gelmedi" diye bekleyen kullanıcıdan iyidir.
+
+        // HANGİ KANAL ZORUNLU? E-posta HER ZAMAN; telefon yalnız adım AÇIKKEN.
+        //
+        // Telefon doğrulaması kapalıyken telefon kanalının kurulu olmasını şart koşmak, kaydı
+        // HİÇ KULLANILMAYACAK bir sağlayıcıya bağlar: form "kayıt alınamıyor" der ve kimse
+        // kaydolamaz — bayrağı kapatmanın tek amacı tam olarak bunu önlemekti.
+        var canSignup = email && (!_requirePhoneVerification || phone);
+
         return Result<TenantSignupReadinessDto>.Success(
-            new TenantSignupReadinessDto(email, phone, email && phone, sms, whatsApp));
+            new TenantSignupReadinessDto(email, phone, canSignup, sms, whatsApp, _requirePhoneVerification));
     }
 
     /// <summary>Telefon kanalları ayrı ayrı — istemci yalnız kurulu olanı seçenek göstersin.</summary>
@@ -238,13 +265,14 @@ public sealed class TenantSignupService : ITenantSignupService
         var missing = Validate(form);
         if (missing is not null) return Result<TenantSignupStartResponse>.Failure(Error.Validation(missing));
 
+        // Telefon kanalı yalnız doğrulama adımı AÇIKKEN zorunludur (bkz. _requirePhoneVerification).
         var (emailReady, phoneReady) = await GetChannelsAsync(ct);
-        if (!emailReady || !phoneReady)
+        if (!emailReady || (_requirePhoneVerification && !phoneReady))
         {
             _logger.LogError(
-                "Kurum kaydı denendi ama kanallar eksik (e-posta:{Email}, telefon:{Phone}). " +
+                "Kurum kaydı denendi ama kanallar eksik (e-posta:{Email}, telefon:{Phone}, telefon adımı:{Required}). " +
                 "Platform → Sistem Ayarları → Mesajlaşma'dan SMTP ve SMS/WhatsApp kurun.",
-                emailReady, phoneReady);
+                emailReady, phoneReady, _requirePhoneVerification);
             return Result<TenantSignupStartResponse>.Failure(Error.Unauthorized(
                 "Kayıt şu anda alınamıyor. Lütfen daha sonra tekrar deneyin ya da bizimle iletişime geçin."));
         }
@@ -426,6 +454,24 @@ public sealed class TenantSignupService : ITenantSignupService
                 "Bu e-posta adresiyle zaten bir hesabınız var. Giriş yapın ya da parolanızı sıfırlayın."));
         }
 
+        // ═══ TELEFON ADIMI KAPALI → KAYIT BURADA BİTER ═══════════════════════════════════
+        //
+        // SMS sağlayıcısı canlıda hazır olmadığı için telefon sahipliği kanıtlanmıyor (bkz.
+        // _requirePhoneVerification). Tek faktör e-postadır ve o az önce doğrulandı; akışı
+        // kanıtlanamayacak bir adımda bekletmek kaydı tamamen imkânsız kılardı.
+        //
+        // Kurum oluşturma YOLU AYNI: iki dal da CompleteSignupAsync'e girer — kilit, idempotens
+        // kapısı, rezervasyon ve kod ayırma tek yerde kalır. İkinci bir kopya, sistemin en
+        // hassas yazma işleminde iki ayrı davranış demek olurdu.
+        if (!_requirePhoneVerification)
+        {
+            var completed = await CompleteSignupAsync(draft, request.SignupId, ct);
+            return completed.IsSuccess
+                ? Result<TenantSignupVerifyEmailResponse>.Success(
+                    TenantSignupVerifyEmailResponse.Done(completed.Value!))
+                : Result<TenantSignupVerifyEmailResponse>.Failure(completed.Error);
+        }
+
         // E-posta doğrulandı → telefon adımına geç ve yeni kod üret.
         var code = NewCode();
         var (channel, sent) = await SendPhoneCodeAsync(draft!.Form, code, draft.PreferredPhoneChannel, ct);
@@ -442,7 +488,7 @@ public sealed class TenantSignupService : ITenantSignupService
         // Süreyi tazele: 2. adım için baştan 30 dakika.
         await _store.SetAsync(DraftKey(request.SignupId), draft, DraftLifetime, ct);
 
-        return Result<TenantSignupVerifyEmailResponse>.Success(new TenantSignupVerifyEmailResponse(
+        return Result<TenantSignupVerifyEmailResponse>.Success(TenantSignupVerifyEmailResponse.Phone(
             PhoneMask.Mask(draft.Form.Phone),
             channel,
             _env.IsDevelopment ? code : null));
@@ -458,9 +504,31 @@ public sealed class TenantSignupService : ITenantSignupService
         var check = await CheckCodeAsync(request.Code, request.SignupId, ct);
         if (check is not null) return Result<TenantSignupCompletedResponse>.Failure(check);
 
+        return await CompleteSignupAsync(draft!, request.SignupId, ct);
+    }
+
+    /// <summary>
+    /// SON ADIM — kurumu açar. <b>Kayıt akışının TEK tamamlanma kapısı.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Buraya İKİ yoldan gelinir: telefon kodu doğrulandığında (telefon adımı açıkken) ya da
+    /// e-posta kodu doğrulandığında (kapalıyken). İkisi de AYNI kapıdan geçer — tek kullanım
+    /// kilidi, idempotens yanıtı, hata hâlinde kilidi açma ve taslağı saklama burada, tek
+    /// nüshada durur. Çağıran taraf kodu DOĞRULAMIŞ olarak gelir; burada kod kontrolü yoktur.
+    /// </para>
+    /// <para>
+    /// Ayrım bilinçlidir: kurum oluşturma sistemdeki en hassas yazma işlemidir (kurum kodu
+    /// tüketilir, rezervasyon satırı yazılır, geçici parola üretilir). İki çağıranın kendi
+    /// kopyasını taşıması, ikisinin zamanla ayrışması demekti.
+    /// </para>
+    /// </remarks>
+    private async Task<Result<TenantSignupCompletedResponse>> CompleteSignupAsync(
+        SignupDraft draft, string signupId, CancellationToken ct)
+    {
         // TEK KULLANIM: aynı taslakla ikinci kurum açılamaz. Kod doğrulandıktan sonra kilitle;
         // eşzamanlı iki istek aynı taslağı görüp İKİ kurum oluşturabilirdi.
-        lock (draft!)
+        lock (draft)
         {
             if (draft.Completed)
             {
@@ -481,19 +549,19 @@ public sealed class TenantSignupService : ITenantSignupService
             {
                 // Oluşturma başarısızsa kilidi aç: kullanıcı düzeltip tekrar deneyebilsin.
                 draft.Completed = false;
-                await _store.SetAsync(DraftKey(request.SignupId), draft, DraftLifetime, ct);
+                await _store.SetAsync(DraftKey(signupId), draft, DraftLifetime, ct);
                 return result;
             }
             // Taslak SİLİNMEZ: tamamlanmış sonucu taşır (bkz. SignupDraft.Result). Aynı istek
             // tekrar gelirse yukarıdaki idempotens kapısı bu sonucu döndürür.
             draft.Result = result.Value;
-            await _store.SetAsync(DraftKey(request.SignupId), draft, DraftLifetime, ct);
+            await _store.SetAsync(DraftKey(signupId), draft, DraftLifetime, ct);
             return result;
         }
         catch
         {
             draft.Completed = false;
-            await _store.SetAsync(DraftKey(request.SignupId), draft, DraftLifetime, ct);
+            await _store.SetAsync(DraftKey(signupId), draft, DraftLifetime, ct);
             throw;
         }
     }
@@ -762,10 +830,14 @@ public sealed class TenantSignupService : ITenantSignupService
             : await _store.GetAsync<SignupDraft>(DraftKey(signupId), ct);
         if (draft is null)
             return (null, Error.Unauthorized("Kayıt oturumunuz sona ermiş. Lütfen baştan başlayın."));
-        // Completed taslak BURADA elenmez: VerifyPhoneAsync onu idempotens için kullanıyor.
-        // (Diğer adımlar aşağıdaki aşama kontrolüne takılır.)
-        if (draft.Completed && expected != SignupStage.AwaitingPhone)
-            return (null, Error.Conflict("Bu kayıt zaten tamamlandı. Giriş yapabilirsiniz."));
+        // TAMAMLANMIŞ TASLAK BURADA ELENMEZ — idempotens kapısı CompleteSignupAsync'tedir.
+        //
+        // Kaydın hangi adımda bittiği artık SABİT DEĞİL: telefon doğrulaması açıkken
+        // AwaitingPhone'da, kapalıyken AwaitingEmail'de biter (bkz. _requirePhoneVerification).
+        // Buradaki eleme eskiden "yalnız AwaitingPhone" diye sabitlenmişti; bayrak kapalıyken
+        // aynı kural, yanıtı yolda kaybolan kullanıcının tekrar denemesini "zaten tamamlandı"
+        // hatasına çevirir ve geçici parolasını ASLA öğrenemezdi. Sıralama zaten aşağıdaki
+        // aşama kontrolüyle korunur: yanlış adıma gelen tamamlanmış taslak oraya takılır.
         if (draft.Stage != expected)
             return (null, Error.Validation("Kayıt adımları sırayla tamamlanmalı. Sayfayı yenileyip tekrar deneyin."));
         return (draft, null);

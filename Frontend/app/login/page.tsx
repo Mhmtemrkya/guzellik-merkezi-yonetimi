@@ -23,6 +23,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import ForgotPasswordDialog from '@/components/auth/ForgotPasswordDialog'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import type { AuthSession, Branch, Institution, UserRole } from '@/lib/types'
@@ -1182,62 +1183,14 @@ export default function LoginPage() {
         onConfirm={(choice) => finishSelection(choice)}
       />
 
-      {/* Şifremi unuttum — sıfırlama yönetici üzerinden yapılır */}
-      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
-        <DialogContent
-          className="overflow-hidden rounded-[28px] border border-[#ead8df]/[0.90] bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] p-0 text-[#352432] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl"
-          style={{ width: 'min(94vw, 520px)', maxWidth: 'min(94vw, 520px)' }}
-        >
-          <div className="relative p-6 sm:p-7">
-            <span aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-[#f0aac2]/[0.22] blur-3xl" />
-            <div className="relative flex items-start gap-3.5">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#efbfd0]/[0.80] bg-white text-[#c85776] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]">
-                <KeyRound className="h-4 w-4" strokeWidth={1.6} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <DialogTitle className="font-display text-2xl tracking-tight">Şifreni mi unuttun?</DialogTitle>
-                <DialogDescription className="mt-1.5 text-[12px] leading-relaxed text-[#352432]/[0.60]">
-                  Güvenlik nedeniyle şifre sıfırlama yöneticin üzerinden yapılır.
-                </DialogDescription>
-              </div>
-            </div>
-
-            <div className="relative mt-5 space-y-3 text-[12.5px] leading-relaxed">
-              <div className="rounded-2xl border border-[#ead8df]/[0.80] bg-white/[0.80] p-3.5">
-                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-[#c85776]/80">
-                  <Users2 className="h-3.5 w-3.5" /> Personelsen
-                </div>
-                <p className="mt-1.5 text-[#352432]/[0.70]">
-                  Kurum yöneticine başvur — Personel sayfasından şifreni sıfırlayıp sana yeni geçici şifre iletir.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-[#ead8df]/[0.80] bg-white/[0.80] p-3.5">
-                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-[#c85776]/80">
-                  <Building2 className="h-3.5 w-3.5" /> Kurum yöneticisiysen
-                </div>
-                <p className="mt-1.5 text-[#352432]/[0.70]">
-                  BeautyAsist destek ekibine ulaş — Platform Admin şifreni sıfırlayıp yeni geçici şifreni iletir.
-                </p>
-              </div>
-              <div className="flex items-start gap-2 rounded-2xl border border-amber-200/[0.90] bg-amber-50/[0.86] px-3.5 py-3 text-[11.5px] text-amber-800">
-                <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>
-                  Sıfırlama sonrası geçici şifreyle giriş yapar yapmaz yeni şifreni belirlemen istenir; eski oturumların
-                  güvenlik için kapatılır.
-                </span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setForgotOpen(false)}
-              className="relative mt-5 w-full rounded-2xl bg-gradient-to-r from-[#e798b4] via-[#d4789a] to-[#b75a7e] py-3 text-[12px] font-semibold text-white shadow-[0_16px_36px_-16px_rgba(183,90,126,0.75)] transition-opacity hover:opacity-90"
-            >
-              Anladım
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ŞİFREMİ UNUTTUM — artık BİLGİ KUTUSU değil, çalışan bir sıfırlama akışı.
+          E-postaya kod → yeni parola → tüm oturumlar kapanır (bkz. ForgotPasswordDialog). */}
+      <ForgotPasswordDialog
+        open={forgotOpen}
+        onOpenChange={setForgotOpen}
+        defaultEmail={email}
+        onDone={(resetEmail) => setEmail(resetEmail)}
+      />
     </main>
   )
 }

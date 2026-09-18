@@ -208,6 +208,44 @@ class AuthController extends ChangeNotifier {
     unawaited(refreshProfile());
   }
 
+  /// "ŞİFREMİ UNUTTUM" ADIM 1 — e-postaya 6 haneli kod gönderir.
+  ///
+  /// YANIT HER DURUMDA AYNIDIR: adres kayıtlı olmasa bile meydan okuma kimliği ve maskeli adres
+  /// döner. Sunucu kayıtsız adrese sahte bir meydan okuma üretir, böylece "bu e-posta sistemde
+  /// var mı?" sorusu anonim bir uçtan cevaplanamaz. Bu yüzden yanıt "hesap bulundu" diye
+  /// YORUMLANMAMALIDIR — ekran yalnızca kod adımına geçer.
+  ///
+  /// KANAL E-POSTADIR, SMS değil: e-posta zaten giriş kimliğinin kendisidir ve panel girişinin
+  /// ikinci faktörü de odur. SMS sağlayıcısı canlıya alındığında bile bu akış değişmez.
+  Future<PanelLoginChallenge> passwordResetRequest(String email) async {
+    final data = await api.postPublic('/api/auth/password-reset/request', {
+      'email': email.trim().toLowerCase(),
+    });
+    final map = (data as Map).cast<String, dynamic>();
+    return PanelLoginChallenge(
+      challengeId: '${map['challengeId'] ?? ''}',
+      maskedEmail: '${map['maskedEmail'] ?? ''}',
+      devCode: map['devCode']?.toString(),
+    );
+  }
+
+  /// "ŞİFREMİ UNUTTUM" ADIM 2 — kod doğruysa parola değişir ve TÜM oturumlar kapanır.
+  ///
+  /// Oturum DÖNMEZ: kullanıcı yeni parolasıyla normal giriş akışından geçer (o akış kendi
+  /// e-posta kodunu ister). Sıfırlamanın oturum vermesi, giriş zincirindeki kurum/şube kapsamı
+  /// seçimini ve cihaz kontrolünü atlamak olurdu.
+  Future<void> passwordResetComplete({
+    required String challengeId,
+    required String code,
+    required String newPassword,
+  }) async {
+    await api.postPublic('/api/auth/password-reset/complete', {
+      'challengeId': challengeId,
+      'code': code.trim(),
+      'newPassword': newPassword,
+    });
+  }
+
   /// "Daha Sonra": bu oturum için zorunlu ekranı atlar; bayrak sunucuda kaldığı
   /// için bir sonraki girişte tekrar sorulur.
   void skipPasswordChange() {

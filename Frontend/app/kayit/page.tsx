@@ -44,20 +44,27 @@ import {
 /*
  * SELF-SERVİS KURUM KAYDI — 14 gün ücretsiz deneme.
  *
- * Akış üç adım + sonuç ekranıdır. Adımlar bilinçli olarak AYRI ekranlar: tek uzun formda
- * doğrulama kodu alanları da görünür olurdu ve kullanıcı hangi kodun nereye geldiğini karıştırırdı.
+ * Akış İKİ ya da ÜÇ adım + sonuç ekranıdır. Adımlar bilinçli olarak AYRI ekranlar: tek uzun
+ * formda doğrulama kodu alanları da görünür olurdu ve kullanıcı hangi kodun nereye geldiğini
+ * karıştırırdı.
+ *
+ * TELEFON ADIMI SUNUCUNUN KARARIDIR (readiness.phoneVerification). SMS sağlayıcısı canlıya
+ * alınmadığı için şu anda KAPALI: kayıt e-posta kodundan sonra biter. Sağlayıcı kurulunca
+ * sunucuda açılır ve adım kendiliğinden geri gelir — BU DOSYADA DEĞİŞİKLİK GEREKMEZ.
+ * Bu yüzden adım listesi sabit dizi değil, readiness'tan TÜRETİLİR ve akışın nereye gideceğine
+ * sunucunun yanıtı (nextStep) karar verir; istemci adım sayısını hiçbir yerde varsaymaz.
  *
  * Kurum SON adımda oluşur (backend kararı): yarım bırakılan kayıt veritabanına hiç yazılmaz.
  */
 
-const steps = [
+const ALL_STEPS = [
   { key: 'form', label: 'İşletme bilgileri', icon: Building2 },
   { key: 'email', label: 'E-posta doğrulama', icon: Mail },
   { key: 'phone', label: 'Telefon doğrulama', icon: Phone },
   { key: 'done', label: 'Hesabınız hazır', icon: CheckCircle2 },
 ] as const
 
-type StepKey = (typeof steps)[number]['key']
+type StepKey = (typeof ALL_STEPS)[number]['key']
 
 const fade: Variants = {
   hidden: { opacity: 0, y: 14 },
@@ -225,7 +232,11 @@ export default function TenantSignupPage() {
         setPhoneChannelPref(r.whatsApp ? 'whatsapp' : 'sms')
       })
       // Uç okunamazsa formu göster: sunucu zaten son sözü söyleyecek.
-      .catch(() => !cancelled && setReadiness({ email: true, phone: true, canSignup: true, sms: true, whatsApp: true }))
+      //
+      // phoneVerification VARSAYILANI FALSE: telefon adımını "var" sayıp göstermek, sunucuda
+      // kapalıyken kullanıcıya hiç gelmeyecek bir adım vaat etmek olurdu. Adım gerçekten
+      // gerekliyse sunucu 2. adımda nextStep='phone' der ve ekran oraya geçer.
+      .catch(() => !cancelled && setReadiness({ email: true, phone: true, canSignup: true, sms: true, whatsApp: true, phoneVerification: false }))
     return () => {
       cancelled = true
     }
@@ -240,6 +251,16 @@ export default function TenantSignupPage() {
       prevStep.current = step
     }
   }, [step])
+
+  /**
+   * TELEFON ADIMI AÇIK MI? Sunucu söyler; readiness henüz gelmediyse KAPALI varsayılır
+   * (olmayan bir adımı göstermek, olan bir adımı göstermemekten daha kötü bir yanlıştır —
+   * ikincisi 2. adımın yanıtıyla kendiliğinden düzelir).
+   */
+  const phoneStepEnabled = readiness?.phoneVerification ?? false
+
+  /** Ekranda gösterilecek adımlar — telefon adımı kapalıyken listede hiç yer almaz. */
+  const steps = phoneStepEnabled ? ALL_STEPS : ALL_STEPS.filter((s) => s.key !== 'phone')
 
   const stepIndex = steps.findIndex((s) => s.key === step)
 
@@ -277,13 +298,18 @@ export default function TenantSignupPage() {
   /** Hata YALNIZ alana dokunulduktan sonra görünür — yazarken kırmızı yanmaz. */
   const shownError = (key: keyof SignupForm): string | null => (touched[key] ? fieldError(key) : null)
 
-  /** Yalnız KURULU telefon kanalları seçenek olur. */
-  const phoneChannelOptions = (
-    [
-      { key: 'whatsapp' as const, label: 'WhatsApp', icon: MessageCircle, hint: 'Kod WhatsApp mesajı olarak gelir.', on: readiness?.whatsApp ?? true },
-      { key: 'sms' as const, label: 'SMS', icon: MessageSquare, hint: 'Kod telefonunuza SMS ile gelir.', on: readiness?.sms ?? true },
-    ]
-  ).filter((o) => o.on)
+  /**
+   * Yalnız KURULU telefon kanalları seçenek olur — telefon adımı KAPALIYKEN hiçbiri.
+   * Kapalı bir adımın kanalını sormak, kullanıcıdan hiç kullanılmayacak bir karar istemektir.
+   */
+  const phoneChannelOptions = !phoneStepEnabled
+    ? []
+    : (
+        [
+          { key: 'whatsapp' as const, label: 'WhatsApp', icon: MessageCircle, hint: 'Kod WhatsApp mesajı olarak gelir.', on: readiness?.whatsApp ?? true },
+          { key: 'sms' as const, label: 'SMS', icon: MessageSquare, hint: 'Kod telefonunuza SMS ile gelir.', on: readiness?.sms ?? true },
+        ]
+      ).filter((o) => o.on)
 
   const handleStart = async (e: FormEvent): Promise<void> => {
     e.preventDefault()
@@ -323,8 +349,17 @@ export default function TenantSignupPage() {
     setLoading(true)
     try {
       const res = await verifySignupEmail(signupId, code)
-      setMaskedPhone(res.maskedPhone)
-      setPhoneChannel(res.channel)
+
+      // AKIŞ BURADA BİTEBİLİR. Telefon doğrulaması sunucuda kapalıysa kurum e-posta kodu
+      // doğrulanır doğrulanmaz açılır ve yanıt tamamlanmış kaydı taşır. Karar sunucunundur;
+      // istemci onu nextStep'ten OKUR (alanların dolu olup olmamasından çıkarmaz).
+      if (res.nextStep === 'done' && res.completed) {
+        finishSignup(res.completed)
+        return
+      }
+
+      setMaskedPhone(res.maskedPhone ?? '')
+      setPhoneChannel(res.channel ?? 'sms')
       setDevHint(res.devCode ? `Test ortamı kodu: ${res.devCode}` : '')
       setCooldown(60)
       setStep('phone')
@@ -344,6 +379,34 @@ export default function TenantSignupPage() {
     }
   }
 
+  /**
+   * KAYIT TAMAMLANDI — sonuç ekranına geç ve oturumu benimse.
+   *
+   * İKİ yoldan çağrılır: telefon kodu doğrulandığında ya da (telefon adımı kapalıyken)
+   * e-posta kodu doğrulandığında. Tek nüsha olması şart: iki kopya, birinde oturum benimsenip
+   * diğerinde unutulduğunda kullanıcıyı geçici parolasını elle yazmaya zorlardı.
+   */
+  const finishSignup = (res: SignupCompleted): void => {
+    setResult(res)
+    setStep('done')
+    // Oturumu hemen benimse: kullanıcı yeni öğrendiği geçici parolayı elle yazmak zorunda kalmasın.
+    adoptSession({
+      accessToken: res.session.accessToken,
+      refreshToken: res.session.refreshToken,
+      expiresAtUtc: res.session.expiresAtUtc,
+      user: {
+        userId: res.session.user.userId,
+        email: res.session.user.email,
+        fullName: res.session.user.fullName,
+        role: res.session.user.role,
+        tenantId: res.session.user.tenantId,
+        branchId: res.session.user.branchId,
+        permissions: [],
+        mustChangePassword: res.session.user.mustChangePassword,
+      },
+    } as Parameters<typeof adoptSession>[0])
+  }
+
   const handleVerifyPhone = async (submitted?: string): Promise<void> => {
     const code = submitted ?? codeRef.current
     if (code.length !== 6) {
@@ -353,25 +416,7 @@ export default function TenantSignupPage() {
     setError('')
     setLoading(true)
     try {
-      const res = await verifySignupPhone(signupId, code)
-      setResult(res)
-      setStep('done')
-      // Oturumu hemen benimse: kullanıcı yeni öğrendiği geçici parolayı elle yazmak zorunda kalmasın.
-      adoptSession({
-        accessToken: res.session.accessToken,
-        refreshToken: res.session.refreshToken,
-        expiresAtUtc: res.session.expiresAtUtc,
-        user: {
-          userId: res.session.user.userId,
-          email: res.session.user.email,
-          fullName: res.session.user.fullName,
-          role: res.session.user.role,
-          tenantId: res.session.user.tenantId,
-          branchId: res.session.user.branchId,
-          permissions: [],
-          mustChangePassword: res.session.user.mustChangePassword,
-        },
-      } as Parameters<typeof adoptSession>[0])
+      finishSignup(await verifySignupPhone(signupId, code))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Kod doğrulanamadı.')
     } finally {
@@ -646,7 +691,9 @@ export default function TenantSignupPage() {
                     <SubmitButton loading={loading} label="Devam Et" loadingLabel="Kontrol ediliyor" />
 
                     <p className="mt-4 text-center text-[11px] leading-relaxed text-[#352432]/[0.45]">
-                      Devam ederek e-postanıza ve telefonunuza birer doğrulama kodu göndereceğiz.
+                      {phoneStepEnabled
+                        ? 'Devam ederek e-postanıza ve telefonunuza birer doğrulama kodu göndereceğiz.'
+                        : 'Devam ederek e-posta adresinize bir doğrulama kodu göndereceğiz.'}{' '}
                       Kredi kartı istemiyoruz.
                     </p>
                     <p className="mt-3 text-center text-[12px] text-[#352432]/[0.55]">
@@ -678,7 +725,14 @@ export default function TenantSignupPage() {
                     </div>
                     {devHint && <p className="mt-2 text-center text-[11px] text-[#9d7386]">{devHint}</p>}
                     {error && <ErrorBox message={error} />}
-                    <SubmitButton loading={loading} label="Doğrula ve Devam Et" loadingLabel="Doğrulanıyor" onClick={() => handleVerifyEmail()} />
+                    {/* Telefon adımı kapalıyken bu buton kaydı BİTİRİR — "Devam Et" demek,
+                        arkasından gelmeyecek bir adım vaat etmek olurdu. */}
+                    <SubmitButton
+                      loading={loading}
+                      label={phoneStepEnabled ? 'Doğrula ve Devam Et' : 'Doğrula ve Hesabımı Oluştur'}
+                      loadingLabel={phoneStepEnabled ? 'Doğrulanıyor' : 'Hesabınız açılıyor'}
+                      onClick={() => handleVerifyEmail()}
+                    />
                     <StepFooter onBack={() => setStep('form')} backLabel="Bilgileri düzenle" onResend={handleResend} loading={loading} cooldown={cooldown} />
                   </motion.div>
                 )}

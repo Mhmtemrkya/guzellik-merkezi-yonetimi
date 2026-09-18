@@ -38,6 +38,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// Kayıt iki kanalı da doğrular — telefon hesabın kimliği, e-posta bir sonraki GİRİŞİN kodu.
   String? emailStage;
 
+  /// Platformda hangi kanallar KURULU? Yalnızca ekrandaki VAADİ doğru tutmak için okunur;
+  /// kararı sunucu verir.
+  ///
+  /// SMS ve WhatsApp'ın ikisi de kapalıyken sunucu telefon adımını atlar ve kodu doğrudan
+  /// e-postaya gönderir. Ekranda yine de "önce telefonunuza SMS göndereceğiz" yazsaydı,
+  /// kullanıcı gelmeyecek bir SMS'i bekler ve e-posta kutusuna hiç bakmazdı.
+  CustomerOtpChannels? channels;
+
+  /// Telefon adımı gerçekten olacak mı? Kanal bilgisi okunamadıysa (null) VAR sayılır:
+  /// sunucu zaten SMS/WhatsApp kuruluysa oradan gönderir, değilse e-postaya düşer ve
+  /// aşağıdaki metin tek cümlelik bir fazlalık olarak kalır — tersi (hiç söylememek)
+  /// kullanıcıyı kodun nereye geldiğini bilmeden bırakırdı.
+  bool get phoneStageLikely => channels == null || channels!.sms || channels!.whatsApp;
+
+  @override
+  void initState() {
+    super.initState();
+    // Sessiz ve BEST-EFFORT: okunamazsa ekran telefon adımı varmış gibi davranır (bkz.
+    // phoneStageLikely). Kayıt akışı bu isteğe hiçbir şekilde BAĞLI DEĞİLDİR.
+    widget.auth.customerOtpChannels().then((value) {
+      if (mounted) setState(() => channels = value);
+    });
+  }
+
   @override
   void dispose() {
     nameController.dispose();
@@ -165,11 +189,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  /// KAYITTA KANAL SABİT: kod telefona SMS ile gider.
+  /// KAYITTA KANALA SUNUCU KARAR VERİR; burada yalnızca ANLATILIR.
   ///
-  /// Amaç numaranın gerçekten kişiye ait olduğunu kanıtlamak — hesap bu numarayla açılıyor ve
-  /// randevu bildirimleri oraya gidiyor. Girişte ise kod e-postaya gider (her girişte SMS
-  /// harcanmaz). Kural sunucuda da zorlanır; burada yalnızca anlatılır.
+  /// Normalde kod önce telefona (SMS/WhatsApp) gider — amaç numaranın gerçekten kişiye ait
+  /// olduğunu kanıtlamaktır; hesap bu numarayla açılıyor ve randevu bildirimleri oraya gidiyor.
+  /// Girişte ise kod e-postaya gider (her girişte SMS harcanmaz).
+  ///
+  /// TELEFON KANALI HİÇ KURULU DEĞİLSE sunucu o adımı atlar ve kodu doğrudan e-postaya gönderir.
+  /// Metin buna göre değişir: gelmeyecek bir SMS'i vaat etmek, kullanıcıyı yanlış kutuya
+  /// baktırıp kaydı yarıda bıraktırır.
   List<Widget> _channelNotice() => [
         const SizedBox(height: 14),
         Container(
@@ -179,15 +207,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: AppColors.border),
           ),
-          child: const Row(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.sms_outlined, size: 18, color: AppColors.primaryDark),
-              SizedBox(width: 10),
+              Icon(
+                phoneStageLikely ? Icons.sms_outlined : Icons.mark_email_unread_outlined,
+                size: 18,
+                color: AppColors.primaryDark,
+              ),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Önce telefonunuza SMS ile kod göndereceğiz, ardından e-postanızı doğrulayacağız.',
-                  style: TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35),
+                  phoneStageLikely
+                      ? 'Önce telefonunuza SMS ile kod göndereceğiz, ardından e-postanızı doğrulayacağız.'
+                      : 'Doğrulama kodunu e-posta adresinize göndereceğiz. Girişte de kod bu adrese gelir.',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 12, height: 1.35),
                 ),
               ),
             ],
