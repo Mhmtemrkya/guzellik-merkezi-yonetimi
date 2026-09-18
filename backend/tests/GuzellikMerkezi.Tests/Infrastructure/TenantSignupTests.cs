@@ -58,9 +58,21 @@ public sealed class TenantSignupTests
         return m;
     }
 
+    /// <param name="requirePhoneVerification">
+    /// Telefon doğrulama adımı açık mı? <b>Testlerde varsayılan TRUE, canlıda FALSE</b> —
+    /// bilinçli bir fark.
+    /// <para>
+    /// Canlıda adım kapalıdır çünkü SMS sağlayıcısı henüz yok (bkz.
+    /// <c>TenantSignup:RequirePhoneVerification</c>). Ama adım KOD OLARAK DURUYOR ve sağlayıcı
+    /// kurulunca tek ayarla geri açılacak; o gün çalışmazsa kayıt tümüyle kırılır. Bu yüzden
+    /// testlerin çoğu üç adımlı akışı sürmeye devam eder: kapalı bayrağa göre yazılmış bir test
+    /// takımı, açılan adımı hiç denemeden canlıya bırakırdı.
+    /// </para>
+    /// Kapalı yol ayrıca test edilir (bkz. <c>PhoneVerificationKapali_*</c>).
+    /// </param>
     private static TenantSignupService NewService(
         GuzellikDbContext db, IPlatformMessagingService messaging, IOtpStateStore? store = null,
-        string? trialPlanKey = null) =>
+        string? trialPlanKey = null, bool requirePhoneVerification = true) =>
         new(db,
             store ?? new GuzellikMerkezi.Infrastructure.Services.MemoryOtpStateStore(new MemoryCache(new MemoryCacheOptions())),
             messaging,
@@ -73,6 +85,7 @@ public sealed class TenantSignupTests
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TenantSignup:TrialPlanKey"] = trialPlanKey,
+                ["TenantSignup:RequirePhoneVerification"] = requirePhoneVerification ? "true" : "false",
             }).Build(),
             NullLogger<TenantSignupService>.Instance);
 
@@ -182,6 +195,138 @@ public sealed class TenantSignupTests
         Assert.Single(tenant.Branches);
         Assert.Single(tenant.Users);
         Assert.Equal(UserRole.InstitutionOwner, tenant.Users.First().Role);
+    }
+
+    // ------------------------------------------------ telefon adımı KAPALI (canlı varsayılan)
+
+    /// <summary>
+    /// TELEFON ADIMI KAPALIYKEN kayıt E-POSTA KODUYLA BİTER.
+    /// </summary>
+    /// <remarks>
+    /// Canlının bugünkü hâli budur: SMS sağlayıcısı yok, telefon sahipliği kanıtlanamıyor
+    /// (bkz. <c>TenantSignup:RequirePhoneVerification</c>). Akış telefon adımında bekleseydi
+    /// HİÇBİR kayıt tamamlanamazdı.
+    /// </remarks>
+    [Fact]
+    public async Task PhoneVerificationKapali_KayitEpostaKoduylaBiter()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        // Telefon kanalı KURULU DEĞİL: bayrağın gerçekten gereksiz kıldığını göstermek için.
+        var messaging = NewMessaging(whatsApp: false, sms: false);
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, requirePhoneVerification: false);
+
+        var start = await service.StartAsync(Form());
+        Assert.True(start.IsSuccess);
+
+        var step2 = await service.VerifyEmailAsync(
+            new TenantSignupVerifyEmailRequest(start.Value!.SignupId, CodeFromEmail(messaging)));
+        Assert.True(step2.IsSuccess);
+
+        // AYRIK BİRLEŞİM: karar nextStep'ten OKUNUR, alanların doluluğundan çıkarılmaz.
+        Assert.Equal(TenantSignupVerifyEmailResponse.StepDone, step2.Value!.NextStep);
+        Assert.NotNull(step2.Value.Completed);
+        Assert.Null(step2.Value.Channel);
+
+        var done = step2.Value.Completed!;
+        Assert.Equal("BA-01", done.TenantCode);
+        Assert.Equal(TenantStatus.Trial, done.Tenant.Status);
+        Assert.False(string.IsNullOrWhiteSpace(done.Session.AccessToken));
+
+        // Telefon kodu GÖNDERİLMEDİ: kapalı adım için para harcanmaz.
+        Assert.DoesNotContain(messaging.ReceivedCalls(), c =>
+            c.GetMethodInfo().Name == nameof(IPlatformMessagingService.SendSmsAsync) ||
+            c.GetMethodInfo().Name == nameof(IPlatformMessagingService.SendWhatsAppAsync));
+
+        await using var verify = NewDb(options);
+        var tenant = await verify.Tenants.IgnoreQueryFilters().SingleAsync();
+        Assert.True(tenant.IsSelfSignup);
+        Assert.NotNull(tenant.TrialEndsAtUtc);
+    }
+
+    /// <summary>
+    /// TELEFON ADIMI KAPALIYKEN de idempotens korunur: aynı istek tekrar gelirse AYNI yanıt döner.
+    /// </summary>
+    /// <remarks>
+    /// Yanıtı yolda kaybolan kullanıcı (ağ koptu, sekme kapandı) geçici parolasını ve oturumunu
+    /// ancak böyle geri alabilir. Eski kod "tamamlandı" elemesini sabit biçimde telefon adımına
+    /// bağlamıştı; bayrak kapalıyken aynı kural kullanıcıyı parolasını ASLA öğrenemeyeceği bir
+    /// hataya düşürürdü — bu test tam olarak o gerilemeyi kapatır.
+    /// </remarks>
+    [Fact]
+    public async Task PhoneVerificationKapali_AyniIstekAyniYanitiDoner()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        var messaging = NewMessaging(whatsApp: false, sms: false);
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, requirePhoneVerification: false);
+
+        var start = await service.StartAsync(Form());
+        var code = CodeFromEmail(messaging);
+        var first = await service.VerifyEmailAsync(new TenantSignupVerifyEmailRequest(start.Value!.SignupId, code));
+        Assert.True(first.IsSuccess);
+
+        var second = await service.VerifyEmailAsync(new TenantSignupVerifyEmailRequest(start.Value.SignupId, code));
+        Assert.True(second.IsSuccess);
+        Assert.Equal(TenantSignupVerifyEmailResponse.StepDone, second.Value!.NextStep);
+        Assert.Equal(first.Value!.Completed!.TenantCode, second.Value.Completed!.TenantCode);
+
+        // TEK kurum açıldı — ikinci istek yenisini üretmedi.
+        await using var verify = NewDb(options);
+        Assert.Equal(1, await verify.Tenants.IgnoreQueryFilters().CountAsync());
+    }
+
+    /// <summary>
+    /// Telefon adımı kapalıyken TELEFON KANALI ŞARTI ARANMAZ: kayıt yine alınabilir.
+    /// </summary>
+    /// <remarks>
+    /// Şart korunsaydı, hiç kullanılmayacak bir sağlayıcı yüzünden form "kayıt alınamıyor" der
+    /// ve kimse kaydolamazdı — bayrağı kapatmanın tek amacı tam olarak bunu önlemekti.
+    /// </remarks>
+    [Fact]
+    public async Task PhoneVerificationKapali_TelefonKanaliOlmadanDaKayitAlinir()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        var messaging = NewMessaging(whatsApp: false, sms: false);
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, requirePhoneVerification: false);
+
+        var readiness = await service.GetReadinessAsync();
+        Assert.True(readiness.Value!.CanSignup);
+        Assert.False(readiness.Value.PhoneVerification); // istemci telefon adımını hiç göstermez
+        Assert.False(readiness.Value.Phone);
+
+        Assert.True((await service.StartAsync(Form())).IsSuccess);
+    }
+
+    /// <summary>
+    /// Telefon adımı AÇIKKEN telefon kanalı yoksa kayıt HİÇ BAŞLAMAZ.
+    /// </summary>
+    /// <remarks>
+    /// Kullanıcıyı üç adım doldurup son adımda duvara çarptırmak yerine formu hiç göstermemek
+    /// daha dürüsttür (bkz. GetReadinessAsync).
+    /// </remarks>
+    [Fact]
+    public async Task PhoneVerificationAcik_TelefonKanaliYoksaKayitAlinmaz()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        var messaging = NewMessaging(whatsApp: false, sms: false);
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, requirePhoneVerification: true);
+
+        var readiness = await service.GetReadinessAsync();
+        Assert.False(readiness.Value!.CanSignup);
+        Assert.True(readiness.Value.PhoneVerification);
+
+        Assert.True((await service.StartAsync(Form())).IsFailure);
     }
 
     /// <summary>Kodlar sırayla verilir: ikinci kurum BA-02 olur.</summary>
