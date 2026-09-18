@@ -215,11 +215,11 @@ public sealed class TenantDeletionBackgroundService : BackgroundService
     /// <remarks>
     /// <see cref="IAuditLogger"/> kendi <c>SaveChangesAsync</c>'ini çağırır ve scope'taki
     /// DbContext'i paylaşır; dolayısıyla açık bir transaction varsa kayıt ONUN içine düşer —
-    /// istenen de budur. Not: audit yazımı kendi içinde hata yutar, bu yüzden çağıran taraftaki
-    /// <c>LogWarning</c> satırı işletme kaydının ikinci kopyasıdır.
+    /// istenen de budur. Zorunlu audit API'si yazma hatasını yukarı taşır; böylece transaction
+    /// dispose edilirken purge de geri alınır ve audit kanıtı olmadan silme commit edilemez.
     /// </remarks>
     private static Task WriteDeletedAuditAsync(IAuditLogger audit, Tenant tenant, DateTime now, CancellationToken ct) =>
-        audit.LogAsync(tenant.Id, null, "TenantDeletionExecuted", "Tenant", tenant.Id,
+        audit.LogRequiredAsync(tenant.Id, null, "TenantDeletionExecuted", "Tenant", tenant.Id,
             $"Bekleme süresi doldu; kurum ve tüm verisi kalıcı olarak silindi. Kurum: {tenant.Name} ({tenant.Code ?? "kodsuz"}).",
             new
             {

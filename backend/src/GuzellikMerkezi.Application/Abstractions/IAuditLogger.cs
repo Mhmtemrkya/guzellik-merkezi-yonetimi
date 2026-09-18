@@ -7,7 +7,24 @@ namespace GuzellikMerkezi.Application.Abstractions;
 /// </summary>
 public interface IAuditLogger
 {
+    /// <summary>
+    /// Best-effort audit kaydı. Yazma hatası loglanır ve çağırana taşınmaz.
+    /// </summary>
     Task LogAsync(
+        Guid? tenantId,
+        Guid? branchId,
+        string action,
+        string entityName,
+        Guid? entityId,
+        string? summary = null,
+        object? data = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// İşlemin audit kaydı olmadan tamamlanmasının kabul edilemediği akışlar için kayıt yazar.
+    /// Yazma hatası çağırana taşınır; çağıran aynı transaction'ı geri almalıdır.
+    /// </summary>
+    Task LogRequiredAsync(
         Guid? tenantId,
         Guid? branchId,
         string action,

@@ -80,13 +80,43 @@ public sealed class TenantDeletionRaceMySqlTests : IClassFixture<TenantDeletionS
     /// yarısı "hangi durumda denetim satırı YAZILMAZ" sorusudur ve hiçbir şey yazmayan bir
     /// sahte, o soruyu sormadan cevaplamış olurdu.
     /// </remarks>
-    private ServiceProvider NewProvider() =>
-        new ServiceCollection()
+    private ServiceProvider NewProvider(IAuditLogger? audit = null)
+    {
+        var services = new ServiceCollection()
             .AddLogging()
             .AddScoped(_ => Db.NewContext())
-            .AddScoped<ICurrentUser>(_ => new TestCurrentUser())
-            .AddScoped<IAuditLogger, AuditLogger>()
-            .BuildServiceProvider();
+            .AddScoped<ICurrentUser>(_ => new TestCurrentUser());
+
+        if (audit is null)
+            services.AddScoped<IAuditLogger, AuditLogger>();
+        else
+            services.AddSingleton(audit);
+
+        return services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// Üretimdeki best-effort audit davranışını taklit eder: normal çağrı yazma hatasını yutar.
+    /// Zorunlu çağrı ise hatayı yukarı taşıyarak silme transaction'ını düşürmelidir.
+    /// </summary>
+    private sealed class FailingAuditLogger : IAuditLogger
+    {
+        public Task LogAsync(
+            Guid? tenantId, Guid? branchId, string action, string entityName, Guid? entityId,
+            string? summary = null, object? data = null, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
+        public Task LogRequiredAsync(
+            Guid? tenantId, Guid? branchId, string action, string entityName, Guid? entityId,
+            string? summary = null, object? data = null, CancellationToken ct = default) =>
+            Task.FromException(new InvalidOperationException("Injected audit write failure."));
+
+        public Task LogActorAsync(
+            Guid? tenantId, Guid? branchId, Guid? actorUserId, string? actorName, string? actorRole,
+            string action, string entityName, Guid? entityId, string? summary = null,
+            object? data = null, string? ipAddress = null, CancellationToken ct = default) =>
+            Task.CompletedTask;
+    }
 
     private static TenantDeletionBackgroundService NewSweeper(ServiceProvider provider) =>
         new(provider, NullLogger<TenantDeletionBackgroundService>.Instance);
@@ -189,6 +219,23 @@ public sealed class TenantDeletionRaceMySqlTests : IClassFixture<TenantDeletionS
 
         Assert.False(await TenantExistsAsync(tenantId));
         Assert.Equal(1, await ExecutedAuditCountAsync(tenantId));
+    }
+
+    /// <summary>
+    /// Audit satırı kalıcılaştırılamazsa kurum silme de commit edilemez. Normal audit API'sinin
+    /// hatayı yutması bu kritik akışta kabul edilemez; transaction kurumu ve tüm verisini korur.
+    /// </summary>
+    [MySqlFact]
+    public async Task DenetimKaydiYazilamazsa_KurumSilmeGeriAlinir()
+    {
+        var tenantId = await SeedTenantAsync(requestedDaysAgo: 40);
+
+        await using var provider = NewProvider(new FailingAuditLogger());
+        await NewSweeper(provider).SweepAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.True(await TenantExistsAsync(tenantId),
+            "Denetim kaydı yazılamadığı hâlde geri alınamaz kurum silme commit edildi.");
+        Assert.Equal(0, await ExecutedAuditCountAsync(tenantId));
     }
 
     /// <summary>

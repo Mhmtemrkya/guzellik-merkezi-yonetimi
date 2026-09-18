@@ -53,7 +53,34 @@ public sealed class AuditLogger : IAuditLogger
             summary,
             data,
             _currentUser.IpAddress,
-            ct);
+            ct,
+            suppressFailures: true);
+    }
+
+    public async Task LogRequiredAsync(
+        Guid? tenantId,
+        Guid? branchId,
+        string action,
+        string entityName,
+        Guid? entityId,
+        string? summary = null,
+        object? data = null,
+        CancellationToken ct = default)
+    {
+        await LogCoreAsync(
+            tenantId,
+            branchId,
+            _currentUser.UserId,
+            _currentUser.Email,
+            _currentUser.Role?.ToString(),
+            action,
+            entityName,
+            entityId,
+            summary,
+            data,
+            _currentUser.IpAddress,
+            ct,
+            suppressFailures: false);
     }
 
     public async Task LogActorAsync(
@@ -82,7 +109,8 @@ public sealed class AuditLogger : IAuditLogger
             summary,
             data,
             ipAddress,
-            ct);
+            ct,
+            suppressFailures: true);
     }
 
     private async Task LogCoreAsync(
@@ -97,7 +125,8 @@ public sealed class AuditLogger : IAuditLogger
         string? summary,
         object? data,
         string? ipAddress,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool suppressFailures)
     {
         try
         {
@@ -133,8 +162,8 @@ public sealed class AuditLogger : IAuditLogger
         }
         catch (Exception ex)
         {
-            // Audit log akışı asla iş akışını bloklamasın.
             _logger.LogWarning(ex, "AuditLog yazılamadı (action={Action}, entity={Entity}).", action, entityName);
+            if (!suppressFailures) throw;
         }
     }
 }

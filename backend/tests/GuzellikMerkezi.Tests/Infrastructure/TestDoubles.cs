@@ -62,6 +62,16 @@ internal sealed class NoopAuditLogger : IAuditLogger
         object? data = null,
         CancellationToken ct = default) => Task.CompletedTask;
 
+    public Task LogRequiredAsync(
+        Guid? tenantId,
+        Guid? branchId,
+        string action,
+        string entityName,
+        Guid? entityId,
+        string? summary = null,
+        object? data = null,
+        CancellationToken ct = default) => Task.CompletedTask;
+
     public Task LogActorAsync(
         Guid? tenantId,
         Guid? branchId,
