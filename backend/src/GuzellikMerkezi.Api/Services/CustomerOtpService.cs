@@ -72,8 +72,30 @@ public sealed record CustomerOtpChannelAvailability(bool WhatsApp, bool Sms, boo
 /// </summary>
 public sealed class CustomerOtpService
 {
+    /// <summary>
+    /// Saat. OPSİYONEL ve SON PARAMETRE: mevcut çağıranların hiçbiri değişmesin diye böyle
+    /// eklendi; DI kayıtlı sağlayıcıyı zaten enjekte eder, verilmezse sistem saatine düşülür.
+    /// Kodun mutlak son kullanma tarihi (<see cref="OtpEntry.IssuedAtUtc"/>) ancak saat
+    /// ileri alınabildiğinde test edilebilir.
+    /// </summary>
+    private readonly IDateTimeProvider? _clock;
+
+    private DateTime UtcNow => _clock?.UtcNow ?? DateTime.UtcNow;
+
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(5);
     private const int MaxAttempts = 5;
+
+    /// <summary>
+    /// Bir doğrulamanın kodu ne kadar süre "meşgul" tutabileceği.
+    /// </summary>
+    /// <remarks>
+    /// Doğru kod bulunduktan sonra yapılan iş (e-posta gönderimi, hesap açma, JWT üretimi)
+    /// normalde saniyenin altındadır; 30 saniye bunun cömert üst sınırıdır. İki uçtan da
+    /// korur: bu süre boyunca aynı kodla gelen İKİNCİ istek ilerleyemez (çift oturum yok),
+    /// süre dolduğunda ise kilit kendiliğinden düşer — süreç bir istisnayla ölse bile kod
+    /// erişilemez hâlde çakılı kalmaz.
+    /// </remarks>
+    private static readonly TimeSpan ClaimWindow = TimeSpan.FromSeconds(30);
 
     /// <summary>Aynı telefona bu pencerede en çok bu kadar kod istenebilir (SMS bombardımanı + enumerasyon freni).</summary>
     private static readonly TimeSpan RequestWindow = TimeSpan.FromMinutes(10);
@@ -123,8 +145,10 @@ public sealed class CustomerOtpService
         ISearchIndexService search,
         IHostEnvironment env,
         IConfiguration configuration,
-        ILogger<CustomerOtpService> logger)
+        ILogger<CustomerOtpService> logger,
+        IDateTimeProvider? clock = null)
     {
+        _clock = clock;
         _db = db;
         _store = store;
         _messaging = messaging;
@@ -144,24 +168,29 @@ public sealed class CustomerOtpService
         var phone = FirstNonEmpty(configuration["CustomerOtp:StoreReviewPhone"], configuration["AppReview:CustomerPhone"]);
         var code = FirstNonEmpty(configuration["CustomerOtp:StoreReviewCode"], configuration["AppReview:CustomerOtpCode"]);
 
-        // TEK ANAHTARLA KAPANIR. Eskiden kısayol yalnızca telefon+kod alanlarına bakıyordu:
-        // inceleme bitince "AppReview:Enabled=false" yapmak SABİT KODU KAPATMIYORDU, çünkü
-        // telefon/kod satırları config'te unutulmuş hâlde kalıyordu. Artık Enabled açıkça true
-        // değilse kısayol devre dışıdır — bayrağı kapatmak tek başına yeterli.
+        // TEK ANAHTARLA KAPANIR — HANGİ BLOKTAN GELİRSE GELSİN.
         //
-        // GERİYE DÖNÜK: eski kurulumlar yalnız CustomerOtp:StoreReview* kullanıyor ve Enabled
-        // anahtarını hiç tanımıyor. O yapılandırmada bayrak ARANMAZ; yeni AppReview bloğu
-        // kullanılıyorsa bayrak zorunludur.
-        var usesNewBlock = !string.IsNullOrWhiteSpace(configuration["AppReview:CustomerPhone"])
-            || !string.IsNullOrWhiteSpace(configuration["AppReview:CustomerOtpCode"]);
+        // Kısayolu açan şey telefon/kod satırlarının VARLIĞI değil, BAYRAKTIR. Bayrak yoksa ya da
+        // true değilse sabit kod devre dışıdır; inceleme bitince tek satırı false yapmak (ya da
+        // silmek) yeterlidir, config'te unutulan telefon/kod satırları tek başına hiçbir şeyi
+        // açık bırakmaz.
+        //
+        // BURADA ESKİDEN BİR MUAFİYET VARDI ve açığın ta kendisiydi: bayrak yalnız YENİ
+        // AppReview:CustomerPhone/CustomerOtpCode anahtarları doluysa aranıyordu. Yalnız ESKİ
+        // CustomerOtp:StoreReview* anahtarlarının dolu olduğu bir kurulumda — üretimin tam olarak
+        // bulunduğu durum — koşul hiç çalışmıyor, sabit kod ETKİN kalıyordu. "Geriye dönük
+        // uyumluluk" diye korunan şey, kapatma düğmesinin çalışmadığı TEK yapılandırmaydı.
+        //
+        // Eski anahtarlar DEĞER kaynağı olarak okunmaya devam eder; yalnız kendi başlarına
+        // kısayolu AÇAMAZLAR.
         var reviewEnabled = bool.TryParse(configuration["AppReview:Enabled"], out var flag) && flag;
-        if (usesNewBlock && !reviewEnabled)
+        if (!reviewEnabled && (phone is not null || code is not null))
         {
             phone = null;
             code = null;
             _logger.LogInformation(
-                "AppReview:CustomerPhone/CustomerOtpCode tanımlı ama AppReview:Enabled=false — " +
-                "mağaza inceleme kısayolu KAPALI.");
+                "Mağaza inceleme telefonu/kodu tanımlı ama AppReview:Enabled açık değil — " +
+                "sabit kod kısayolu KAPALI.");
         }
 
         // İkisi de dolu olmadan devreye girmez; yarım yapılandırma sessizce "açık" sayılmasın.
@@ -238,10 +267,40 @@ public sealed class CustomerOtpService
         public int Attempts { get; set; }
 
         /// <summary>
-        /// Kod tüketildi mi. Eşzamanlı iki DOĞRU doğrulama, silme gerçekleşmeden ikisi de kaydı
-        /// okuyup iki ayrı oturum açabiliyordu; bayrak kilit altında işaretlenir.
+        /// Kodun ÜRETİLDİĞİ an — MUTLAK son kullanma buradan hesaplanır.
         /// </summary>
-        public bool Consumed { get; set; }
+        /// <remarks>
+        /// Depo TTL'i tek başına yetmez: <see cref="IOtpStateStore.MutateAsync"/> kaydı her geri
+        /// yazışında ömrü yeniden <see cref="CodeLifetime"/> yapar. Kayıt artık doğrulama
+        /// sırasında da (claim/serbest bırakma) geri yazıldığı için, yalnız TTL'e güvenilseydi
+        /// başarısız denemelerle aynı kod SÜRESİZ yaşatılabilirdi. Bu alan, kaç kez yazılırsa
+        /// yazılsın kodun 5 dakikada öldüğü sabit noktadır.
+        ///
+        /// <para>Serileştirme sonrası JSON'daki değer bu varsayılanı EZER; varsayılan yalnız
+        /// kaydın ilk kurulduğu an için geçerlidir.</para>
+        /// </remarks>
+        public DateTime IssuedAtUtc { get; set; } = DateTime.UtcNow;
+
+        /// <summary>
+        /// DEVAM EDEN doğrulamanın kimliği. Doluysa bu kodla bir giriş/kayıt işlemi ŞU AN yürüyor.
+        /// </summary>
+        /// <remarks>
+        /// İKİ FAZLI TÜKETİMİN birinci fazı. Kod doğru bulunduğunda kayıt SİLİNMEZ, yalnız
+        /// işaretlenir; asıl silme (tüketim) ancak giriş/kayıt BAŞARIYLA döndükten sonra yapılır.
+        /// Önceden doğru kod, kilidin altında hemen siliniyordu: sonraki adımda SMTP hatası,
+        /// geçici bir veritabanı hatası ya da düzeltilebilir bir doğrulama hatası oluşursa
+        /// kullanıcının elindeki DOĞRU kod geri dönülemez biçimde yok oluyor, telefon başına
+        /// 10 dakikada 3 istek sınırı yüzünden birkaç aksilik hesabı tamamen kilitleyebiliyordu.
+        ///
+        /// <para>Aynı anda iki isteğin iki oturum açmasını da bu alan engeller: ikinci istek
+        /// <see cref="ClaimWindow"/> dolmadan geldiğinde kodu doğru bilse bile "işlem sürüyor"
+        /// cevabı alır. Pencere, işlem bir istisnayla yarıda kalırsa kaydın sonsuza dek kilitli
+        /// kalmaması için vardır.</para>
+        /// </remarks>
+        public string? ClaimId { get; set; }
+
+        /// <summary>Claim'in alındığı an — <see cref="ClaimWindow"/> bunun üstüne sayılır.</summary>
+        public DateTime? ClaimedAtUtc { get; set; }
     }
 
     private static string CacheKey(string loginKey, CustomerOtpPurpose purpose) => $"customer-otp:{purpose}:{loginKey}";
@@ -423,6 +482,7 @@ public sealed class CustomerOtpService
                 // akışını deneyebilsin.
                 Channel = CustomerOtpChannel.Sms,
                 Target = null,
+                IssuedAtUtc = UtcNow,
             };
 
             // TELEFONSUZ KAYIT: akış e-posta aşamasında BAŞLAR ve orada biter. İki aşamalı
@@ -637,6 +697,29 @@ public sealed class CustomerOtpService
             _ => [CustomerOtpChannel.Sms, CustomerOtpChannel.WhatsApp],
         };
 
+    /// <summary>
+    /// Yarıda kalan doğrulamanın claim'ini bırakır: kod yerinde kalır, yeniden denenebilir.
+    /// </summary>
+    /// <remarks>
+    /// YALNIZ KENDİ CLAIM'İNİ bırakır. <paramref name="claimId"/> eşleşmiyorsa araya başka bir
+    /// istek girmiş (ilk claim pencereyi doldurmuş, ikinci istek kodu yeniden sahiplenmiş)
+    /// demektir; o isteğin claim'ini silmek iki işlemin aynı anda ilerlemesine kapı açardı.
+    ///
+    /// <para>Geri yazım depo TTL'ini tazeler, ama kodun gerçek ömrü
+    /// <see cref="OtpEntry.IssuedAtUtc"/> üzerinden sabittir — bu yüzden serbest bırakmak kodu
+    /// yaşatmaz.</para>
+    /// </remarks>
+    private Task ReleaseClaimAsync(string cacheKey, string claimId, CancellationToken ct) =>
+        _store.MutateAsync<OtpEntry, bool>(cacheKey, CodeLifetime, current =>
+        {
+            if (current is null || !string.Equals(current.ClaimId, claimId, StringComparison.Ordinal))
+                return (current, false);
+
+            current.ClaimId = null;
+            current.ClaimedAtUtc = null;
+            return (current, true);
+        }, ct);
+
     /// <summary>Kodu doğrular ve akışa göre giriş ya da kayıt yapar. Kod TEK KULLANIMLIKTIR.</summary>
     public async Task<Result<LoginResponse>> VerifyAsync(
         CustomerLoginRequest request,
@@ -656,14 +739,24 @@ public sealed class CustomerOtpService
         // (mesaj gönderimi, hesap açma) bilerek dışarıda bırakılır — kilit altında ağ beklemek
         // hem aynı kullanıcının diğer isteklerini kilitler hem de dağıtık kilidin ömrünü aşabilir.
         //
-        // BAŞARIDA KAYIT SİLİNİR (Consumed bayrağı yerine): ikinci istek kaydı hiç bulamaz.
-        // Bayrak process içi paylaşılan nesneye dayanıyordu; depoya taşınan durumda silme hem
-        // daha basit hem de yeniden okumaya karşı dayanıklıdır.
+        // KOD BURADA SİLİNMEZ, YALNIZ SAHİPLENİLİR (claim). Silme, giriş/kayıt gerçekten
+        // başarıyla döndükten sonra aşağıda yapılır — bkz. SettleAsync. Kilidin altında silmek,
+        // sonraki adımdaki her aksiliği (SMTP hatası, geçici DB hatası, düzeltilebilir doğrulama
+        // hatası) DOĞRU kodun kalıcı kaybına çeviriyordu.
+        //
+        // Çift oturum riski silmeyle değil, claim'in kendisiyle kapatılır: claim de bu kilidin
+        // altında konur, dolayısıyla aynı anda yalnız BİR istek ilerleyebilir.
         var identity = IdentityOf(request.FullName, request.Phone);
         var trimmedCode = code?.Trim();
+        var claimId = Guid.NewGuid().ToString("N");
         var decision = await _store.MutateAsync<OtpEntry, VerifyDecision>(cacheKey, CodeLifetime, current =>
         {
             if (current is null)
+                return (null, VerifyDecision.Fail("Kodun süresi doldu ya da kod istenmedi. Yeni kod isteyin."));
+
+            // MUTLAK SON KULLANMA. Kayıt artık doğrulama sırasında da geri yazıldığı için depo
+            // TTL'i her yazımda tazelenir; kodun gerçek ömrü üretildiği andan sayılır.
+            if (UtcNow - current.IssuedAtUtc >= CodeLifetime)
                 return (null, VerifyDecision.Fail("Kodun süresi doldu ya da kod istenmedi. Yeni kod isteyin."));
 
             if (current.Attempts >= MaxAttempts)
@@ -681,13 +774,40 @@ public sealed class CustomerOtpService
                     VerifyDecision.Fail("Kod hatalı. Tekrar deneyin."));
             }
 
-            return (null, VerifyDecision.Ok(current));
+            // Kod DOĞRU. Aynı kodla başka bir istek hâlâ yürüyorsa ilerleme: iki oturum açılmasın.
+            // Deneme sayacı ARTIRILMAZ — bu yanlış bir deneme değil, sırasını bekleyen bir istek.
+            if (current.ClaimedAtUtc is { } claimedAt && UtcNow - claimedAt < ClaimWindow)
+            {
+                return (current, VerifyDecision.Fail(
+                    "Bu kod için bir doğrulama işlemi sürüyor. Birkaç saniye sonra tekrar deneyin."));
+            }
+
+            current.ClaimId = claimId;
+            current.ClaimedAtUtc = UtcNow;
+            return (current, VerifyDecision.Ok(current));
         }, ct);
 
         if (decision.Entry is null)
             return Result<LoginResponse>.Failure(Error.Unauthorized(decision.Failure!));
 
         var entry = decision.Entry;
+
+        // İKİ FAZLI TÜKETİMİN İKİNCİ FAZI.
+        //
+        // BAŞARI  → kayıt silinir; kod gerçekten tek kullanımlıktır, ikinci istek hiç bulamaz.
+        // HATA    → yalnız claim bırakılır; kod yerinde kalır ve kullanıcı AYNI kodla hemen
+        //           yeniden deneyebilir. Kod yine de IssuedAtUtc + CodeLifetime'da ölür, yani
+        //           bu tolerans kodun ömrünü uzatmaz.
+        //
+        // İSTİSNA yolu bilerek ele alınmaz: claim ClaimWindow sonunda kendiliğinden düşer.
+        // try/finally ile serbest bırakmak, işlemin gerçekten tamamlanıp tamamlanmadığı belirsizken
+        // kodu yeniden kullanılabilir yapardı.
+        async Task<Result<LoginResponse>> SettleAsync(Result<LoginResponse> outcome)
+        {
+            if (outcome.IsSuccess) await _store.RemoveAsync(cacheKey, ct);
+            else await ReleaseClaimAsync(cacheKey, claimId, ct);
+            return outcome;
+        }
 
         if (purpose == CustomerOtpPurpose.Register)
         {
@@ -707,8 +827,9 @@ public sealed class CustomerOtpService
                 var mail = CustomerIdentityLookup.NormalizeEmail(payload.Email);
                 if (mail.Length == 0)
                 {
-                    return Result<LoginResponse>.Failure(Error.Validation(
-                        "E-posta adresi zorunludur; girişte doğrulama kodu bu adrese gönderilir."));
+                    // DÜZELTİLEBİLİR HATA: kullanıcı adresi yazıp AYNI SMS koduyla devam edebilmeli.
+                    return await SettleAsync(Result<LoginResponse>.Failure(Error.Validation(
+                        "E-posta adresi zorunludur; girişte doğrulama kodu bu adrese gönderilir.")));
                 }
 
                 var emailCode = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
@@ -716,8 +837,11 @@ public sealed class CustomerOtpService
                     await GetAvailableChannelsAsync(ct), "Müşteri Kaydı", tenantName: null, ct);
                 if (sent.Channel is null)
                 {
-                    return Result<LoginResponse>.Failure(Error.Unauthorized(
-                        "Doğrulama e-postası gönderilemedi. Adresinizi kontrol edip tekrar deneyin."));
+                    // DENETİMİN İŞARET ETTİĞİ ASIL YOL: SMTP geçici olarak düşmüş olabilir ve
+                    // kullanıcının telefon kanıtı bununla çöpe gitmemeli. Claim bırakılır, SMS
+                    // kodu yerinde kalır; kullanıcı birkaç saniye sonra aynı kodla tekrar dener.
+                    return await SettleAsync(Result<LoginResponse>.Failure(Error.Unauthorized(
+                        "Doğrulama e-postası gönderilemedi. Adresinizi kontrol edip tekrar deneyin.")));
                 }
 
                 // Aynı önbellek kaydı 2. aşamaya devreder: telefon kanıtı korunur.
@@ -730,7 +854,14 @@ public sealed class CustomerOtpService
                     AwaitingEmailStage = true,
                     PendingEmail = mail,
                     PhoneProven = true,
+                    // YENİ KOD = YENİ ÖMÜR. 2. aşama kendi 5 dakikasıyla başlar; 1. aşamanın
+                    // süresini devralsaydı, SMS'i geç giren kullanıcı e-posta kodunu girmeye
+                    // fırsat bulamadan süresi dolmuş olurdu.
+                    IssuedAtUtc = UtcNow,
                 };
+                // SettleAsync ÇAĞRILMAZ: bu yazım kaydın tamamını değiştirir, dolayısıyla 1. aşamanın
+                // kodu da claim'i de yerini yeni koda bırakır. Serbest bırakmak, az önce yazılan
+                // 2. aşama kaydını bozardı.
                 await _store.SetAsync(cacheKey, next, CodeLifetime, ct);
 
                 // Akış TAMAMLANMADI: istemci ayırt edilebilir kodla "e-posta adımına geç" der.
@@ -741,10 +872,12 @@ public sealed class CustomerOtpService
 
             // ---- AŞAMA 2: e-posta da doğrulandı → hesap açılır ----
             payload = payload with { Email = entry.PendingEmail };
-            return await _auth.CustomerRegisterAsync(payload, entry.PhoneProven, entry.PendingEmail, ct);
+            return await SettleAsync(
+                await _auth.CustomerRegisterAsync(payload, entry.PhoneProven, entry.PendingEmail, ct));
         }
 
-        // Kod doğru → kimlik yeniden doğrulanır, JWT üretilir.
-        return await _auth.CustomerLoginAsync(request, ct);
+        // Kod doğru → kimlik yeniden doğrulanır, JWT üretilir. Kod ancak oturum GERÇEKTEN
+        // açıldıktan sonra tüketilir.
+        return await SettleAsync(await _auth.CustomerLoginAsync(request, ct));
     }
 }

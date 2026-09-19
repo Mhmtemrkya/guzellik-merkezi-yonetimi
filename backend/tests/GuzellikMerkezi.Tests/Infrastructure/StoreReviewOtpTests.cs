@@ -66,7 +66,7 @@ public sealed class StoreReviewOtpTests
             db,
             new GuzellikMerkezi.Infrastructure.Services.MemoryOtpStateStore(new MemoryCache(new MemoryCacheOptions())),
             messaging,
-            auth ?? Substitute.For<IAuthService>(),
+            auth ?? NewAuth(),
             TestSearchIndex.Create(),
             env,
             new ConfigurationBuilder().AddInMemoryCollection(settings).Build(),
@@ -123,6 +123,31 @@ public sealed class StoreReviewOtpTests
     }
 
     private static CustomerLoginRequest Login(string fullName, string phone) => new(fullName, phone);
+
+    /// <summary>
+    /// Giriş/kayıt sahtesi — BAŞARI DÖNER.
+    /// </summary>
+    /// <remarks>
+    /// Yapılandırılmamış bir NSubstitute sahtesi <c>Task&lt;Result&lt;LoginResponse&gt;&gt;</c> için
+    /// <c>null</c> döner. Kod artık sonucu OKUYOR (başarıysa OTP tüketilir, değilse claim
+    /// bırakılır), dolayısıyla "sonuç yok" hâli üretimde hiç oluşmayan bir durumu test ortamına
+    /// sokuyordu. Sahte artık gerçek servisin döndüğü şeyi döner.
+    /// </remarks>
+    internal static IAuthService NewAuth()
+    {
+        var auth = Substitute.For<IAuthService>();
+        auth.CustomerLoginAsync(Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Result<LoginResponse>.Success(SampleLogin()));
+        auth.CustomerRegisterAsync(Arg.Any<CustomerRegisterRequest>(), Arg.Any<bool>(),
+                Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Result<LoginResponse>.Success(SampleLogin()));
+        return auth;
+    }
+
+    internal static LoginResponse SampleLogin() => new(
+        "access", "refresh", DateTime.UtcNow.AddHours(1),
+        new UserProfileDto(Guid.NewGuid(), "musteri@example.com", "Musteri", UserRole.Customer,
+            null, null, Array.Empty<string>(), false));
 
     // ---------------------------------------------------------------- inceleme hesabı
 
@@ -307,7 +332,7 @@ public sealed class StoreReviewOtpTests
         var messaging = NewMessaging();
 
         await using var db = NewDb(options);
-        var auth = Substitute.For<IAuthService>();
+        var auth = NewAuth();
         var service = NewService(db, messaging, auth: auth, config: new Dictionary<string, string?>
         {
             // Örnek dosyadan kopyalanmış hâli: eski anahtarlar VAR ama BOŞ.
@@ -353,7 +378,7 @@ public sealed class StoreReviewOtpTests
         await SeedAsync(options);
         // Yalnız e-posta kurulu; "Denetci Hesap" kaydının e-postası YOK.
         var messaging = NewMessaging(whatsApp: false, sms: false, email: true);
-        var auth = Substitute.For<IAuthService>();
+        var auth = NewAuth();
 
         await using var db = NewDb(options);
         var service = NewService(db, messaging, configured: false, auth: auth);
@@ -418,7 +443,7 @@ public sealed class StoreReviewOtpTests
         var options = NewOptions();
         await SeedAsync(options);
         var messaging = NewMessaging();
-        var auth = Substitute.For<IAuthService>();
+        var auth = NewAuth();
 
         await using var db = NewDb(options);
         var service = NewService(db, messaging, auth: auth, config: new Dictionary<string, string?>
@@ -437,6 +462,84 @@ public sealed class StoreReviewOtpTests
         await service.VerifyAsync(
             Login("Denetci Hesap", ReviewPhone), ReviewCode,
             CustomerOtpPurpose.Login, null, CancellationToken.None);
+        await auth.Received(1).CustomerLoginAsync(
+            Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// ÜRETİMİN TAM DURUMU: yalnız ESKİ anahtarlar dolu, <c>AppReview:Enabled</c> HİÇ YOK.
+    /// </summary>
+    /// <remarks>
+    /// Bu, kapatma düğmesinin çalışmadığı tek yapılandırmaydı. Bayrak yalnız YENİ
+    /// <c>AppReview:CustomerPhone/CustomerOtpCode</c> anahtarları doluysa aranıyor, eski
+    /// <c>CustomerOtp:StoreReview*</c> çifti ise "geriye dönük uyumluluk" gerekçesiyle bayraktan
+    /// MUAF tutuluyordu. Canlıda dolu olan tam da o eski çiftti: sabit kod, kimse istemeden
+    /// etkin durumdaydı ve <c>AppReview:Enabled=false</c> yazmak onu kapatmıyordu.
+    ///
+    /// <para>Artık kısayolu telefon/kod satırlarının VARLIĞI değil yalnız bayrak açar.</para>
+    /// </remarks>
+    [Fact]
+    public async Task StoreReviewShortcut_IsOff_WhenOnlyLegacyKeysSet_AndFlagMissing()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        var messaging = NewMessaging();
+        var auth = NewAuth();
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, auth: auth, config: new Dictionary<string, string?>
+        {
+            // Canlının hâli: ESKİ çift dolu, AppReview bloğu HİÇ tanımlı değil.
+            ["CustomerOtp:StoreReviewPhone"] = ReviewPhone,
+            ["CustomerOtp:StoreReviewCode"] = ReviewCode,
+        });
+
+        await service.RequestAsync(
+            Login("Denetci Hesap", ReviewPhone), null,
+            CustomerOtpPurpose.Login, CustomerOtpChannel.Auto, CancellationToken.None);
+
+        // Kısayol KAPALI: sabit kod artık geçmez ve oturum açılmaz.
+        var verify = await service.VerifyAsync(
+            Login("Denetci Hesap", ReviewPhone), ReviewCode,
+            CustomerOtpPurpose.Login, null, CancellationToken.None);
+
+        Assert.True(verify.IsFailure);
+        await auth.DidNotReceive().CustomerLoginAsync(
+            Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// ESKİ ANAHTARLAR HÂLÂ DEĞER KAYNAĞIDIR — bayrak açıldığında kısayol yine çalışır.
+    /// </summary>
+    /// <remarks>
+    /// Düzeltme eski anahtarları OKUMAYI bırakmadı; yalnız onların TEK BAŞINA kısayolu açmasını
+    /// engelledi. İnceleme sürerken eski yapılandırmayı taşıyan bir kurulum, tek satır
+    /// <c>AppReview:Enabled=true</c> ekleyerek çalışmaya devam eder.
+    /// </remarks>
+    [Fact]
+    public async Task StoreReviewShortcut_Works_WhenLegacyKeysSet_AndFlagEnabled()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        var messaging = NewMessaging();
+        var auth = NewAuth();
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, auth: auth, config: new Dictionary<string, string?>
+        {
+            ["CustomerOtp:StoreReviewPhone"] = ReviewPhone,
+            ["CustomerOtp:StoreReviewCode"] = ReviewCode,
+            ["AppReview:Enabled"] = "true",
+        });
+
+        await service.RequestAsync(
+            Login("Denetci Hesap", ReviewPhone), null,
+            CustomerOtpPurpose.Login, CustomerOtpChannel.Auto, CancellationToken.None);
+
+        await service.VerifyAsync(
+            Login("Denetci Hesap", ReviewPhone), ReviewCode,
+            CustomerOtpPurpose.Login, null, CancellationToken.None);
+
         await auth.Received(1).CustomerLoginAsync(
             Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
     }
@@ -594,7 +697,7 @@ public sealed class StoreReviewOtpTests
         var options = NewOptions();
         await SeedAsync(options);
         var messaging = NewMessaging(whatsApp: true, sms: true, email: true);
-        var auth = Substitute.For<IAuthService>();
+        var auth = NewAuth();
 
         await using var db = NewDb(options);
         var service = NewService(db, messaging, configured: false, auth: auth);
