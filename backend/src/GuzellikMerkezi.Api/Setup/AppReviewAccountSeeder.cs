@@ -37,25 +37,79 @@ public static class AppReviewAccountSeeder
     /// <summary>Denetçi hiçbir özellikte "paketiniz izin vermiyor" duvarına çarpmasın: tüm özellikleri açan plan.</summary>
     private const string PreferredPlanKey = "Enterprise";
 
-    public static async Task SeedAppReviewAccountAsync(this WebApplication app)
+    /// <summary>
+    /// Bu açılışta inceleme HESABI kurulmalı mı? Yarım yapılandırmada fırlatır.
+    /// </summary>
+    /// <param name="skipWarning">
+    /// Kurulum yapılmayacaksa ve bu sessizce geçilmemesi gereken bir durumsa, loglanacak uyarı.
+    /// </param>
+    /// <remarks>
+    /// <b>BAYRAK İKİ AYRI ÖMRÜ TAŞIYOR.</b> <c>AppReview:Enabled</c> hem "inceleme modu açık"
+    /// (müşteri OTP'sinde sabit kod kabul edilir) hem de "inceleme kurumunu kur" anlamına
+    /// geliyordu. Bu ikisi aynı şey değil: denetçi, kurulmuş bir demo kuruma değil MEVCUT bir
+    /// müşteri kaydına sabit kodla giriyor.
+    ///
+    /// <para>
+    /// Ayrım yapılmadığı için üretimde bir kesinti yaşandı (19 Eyl 2026): kısayolu bayrakla
+    /// yönetmek üzere <c>Enabled=true</c> verildi, bu kurucu <c>OwnerEmail/OwnerPassword</c>
+    /// yok diye açılışta fırlattı ve backend çökme döngüsüne girdi. Artık HESAP KURULUMU,
+    /// bayrakla değil <c>OwnerEmail</c>'in VARLIĞIYLA istenir.
+    /// </para>
+    ///
+    /// <para>
+    /// Fail-fast KALDIRILMADI, daraltıldı: ikisinden yalnız BİRİ verilmişse bu hâlâ yarım bir
+    /// yapılandırmadır ve "hesap açıldı" sanılıp mağazaya yanlış bilgi verilmesine yol açar —
+    /// o durumda yine fırlatılır.
+    /// </para>
+    /// </remarks>
+    public static bool ShouldSeedAccount(IConfiguration config, out string? skipWarning)
     {
-        if (!bool.TryParse(app.Configuration["AppReview:Enabled"], out var enabled) || !enabled) return;
+        skipWarning = null;
+        if (!bool.TryParse(config["AppReview:Enabled"], out var enabled) || !enabled) return false;
 
-        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("AppReviewAccount");
+        var email = config["AppReview:OwnerEmail"]?.Trim();
+        var password = config["AppReview:OwnerPassword"];
+        var hasEmail = !string.IsNullOrWhiteSpace(email);
+        var hasPassword = !string.IsNullOrWhiteSpace(password);
 
-        var ownerEmail = app.Configuration["AppReview:OwnerEmail"]?.Trim();
-        var ownerPassword = app.Configuration["AppReview:OwnerPassword"];
-        // FAIL-FAST: yarım yapılandırma "hesap açıldı" sanılıp mağazaya yanlış bilgi verilmesine yol açar.
-        if (string.IsNullOrWhiteSpace(ownerEmail) || string.IsNullOrWhiteSpace(ownerPassword))
+        // HESAP İSTENMEMİŞ: inceleme modu açık ama kurulacak bir hesap tarif edilmemiş.
+        if (!hasEmail && !hasPassword)
+        {
+            skipWarning =
+                "AppReview:Enabled=true ama AppReview:OwnerEmail/OwnerPassword verilmedi — " +
+                "inceleme KURUMU kurulmayacak. (Müşteri OTP kısayolu bundan bağımsız olarak açıktır.) " +
+                "Demo kurum da isteniyorsa iki anahtarı da verin.";
+            return false;
+        }
+
+        // YARIM YAPILANDIRMA: biri var, diğeri yok.
+        if (!hasEmail || !hasPassword)
         {
             throw new InvalidOperationException(
-                "AppReview:Enabled=true verildi ama AppReview:OwnerEmail / AppReview:OwnerPassword eksik. " +
+                "AppReview:OwnerEmail / AppReview:OwnerPassword anahtarlarından yalnız biri verilmiş. " +
                 "İnceleme hesabı için ikisi de zorunludur.");
         }
-        if (ownerPassword.Length < 8)
+
+        if (password!.Length < 8)
         {
             throw new InvalidOperationException("AppReview:OwnerPassword en az 8 karakter olmalı.");
         }
+
+        return true;
+    }
+
+    public static async Task SeedAppReviewAccountAsync(this WebApplication app)
+    {
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("AppReviewAccount");
+
+        if (!ShouldSeedAccount(app.Configuration, out var skipWarning))
+        {
+            if (skipWarning is not null) logger.LogWarning("{Uyari}", skipWarning);
+            return;
+        }
+
+        var ownerEmail = app.Configuration["AppReview:OwnerEmail"]!.Trim();
+        var ownerPassword = app.Configuration["AppReview:OwnerPassword"]!;
 
         var slug = Slugify(app.Configuration["AppReview:TenantSlug"], DefaultSlug);
         var tenantName = Fallback(app.Configuration["AppReview:TenantName"], DefaultTenantName);
