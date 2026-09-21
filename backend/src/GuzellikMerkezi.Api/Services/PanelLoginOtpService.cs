@@ -105,8 +105,9 @@ public sealed class PanelLoginOtpService
         // Apple inceleme hesabı `.test` adresi kullandığı için gerçek posta teslimatı mümkün
         // değildir. Kısa yol yalnız yapılandırılmış e-posta + InstitutionOwner rolü + kurumun
         // ÜÇÜ birden eşleşirse açılır; parola, hesap, kurum ve cihaz kontrolleri yukarıdaki
-        // LoginAsync çağrısında yine eksiksiz çalışmıştır. Kod yanıtla yalnız bu dar hesap için
-        // paylaşılır ve mağaza onayından sonra AppReview:Enabled kapatılarak devreden çıkarılır.
+        // LoginAsync çağrısında yine eksiksiz çalışmıştır. Sabit kod yalnız mağaza inceleme
+        // notlarında paylaşılır; production API yanıtında asla ifşa edilmez. Mağaza onayından
+        // sonra AppReview:Enabled kapatılarak yol tamamen devreden çıkarılır.
         var reviewCode = AppReviewOwnerCode(session.User);
         var code = reviewCode
             ?? RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
@@ -125,7 +126,7 @@ public sealed class PanelLoginOtpService
         await _store.SetAsync(Key(challengeId), new PendingLogin { Code = code, Email = email, Session = session }, ChallengeLifetime, ct);
 
         return Result<PanelLoginChallenge>.Success(new PanelLoginChallenge(
-            challengeId, EmailMask.Mask(email), reviewCode is not null || _env.IsDevelopment() ? code : null));
+            challengeId, EmailMask.Mask(email), _env.IsDevelopment() ? code : null));
     }
 
     /// <summary>

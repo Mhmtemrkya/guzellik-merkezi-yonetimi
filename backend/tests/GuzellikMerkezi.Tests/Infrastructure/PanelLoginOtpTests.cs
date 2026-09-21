@@ -76,9 +76,14 @@ public sealed class PanelLoginOtpTests
             NullLogger<PanelLoginOtpService>.Instance);
     }
 
-    private static IAuthService NewAuth(bool passwordOk = true, UserRole? role = null)
+    private static IAuthService NewAuth(bool passwordOk = true, UserRole? role = null, bool nullTenant = false)
     {
-        var session = role is null ? Session : Session with { User = Profile with { Role = role.Value } };
+        var profile = Profile with
+        {
+            Role = role ?? Profile.Role,
+            TenantId = nullTenant ? null : Profile.TenantId,
+        };
+        var session = Session with { User = profile };
         var auth = Substitute.For<IAuthService>();
         auth.LoginAsync(Arg.Any<LoginRequest>(), Arg.Any<CancellationToken>())
             .Returns(passwordOk
@@ -215,8 +220,9 @@ public sealed class PanelLoginOtpTests
 
     /// <summary>
     /// Apple inceleme hesabının <c>.test</c> adresi gerçek posta alamaz. İnceleme modu açıkken,
-    /// yalnız yapılandırılmış yönetici + kurum eşleşmesine sabit kod ekranda gösterilir; SMTP'ye
-    /// gidilmez. Parola, rol, kurum ve cihaz kontrolleri yine LoginAsync içinde eksiksiz çalışır.
+    /// yalnız yapılandırılmış yönetici + kurum eşleşmesi sabit kodu kabul eder; SMTP'ye gidilmez.
+    /// Kod production API yanıtında ifşa edilmez, inceleme ekibi kodu mağaza notlarından alır.
+    /// Parola, rol, kurum ve cihaz kontrolleri yine LoginAsync içinde eksiksiz çalışır.
     /// </summary>
     [Fact]
     public async Task AppReviewOwner_ExactIdentity_UsesConfiguredCodeWithoutEmail()
@@ -235,7 +241,7 @@ public sealed class PanelLoginOtpTests
         var start = await service.StartAsync(Request(), CancellationToken.None);
 
         Assert.True(start.IsSuccess);
-        Assert.Equal(reviewCode, start.Value!.DevCode);
+        Assert.Null(start.Value!.DevCode);
         await messaging.DidNotReceive().SendEmailAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
 
@@ -245,26 +251,42 @@ public sealed class PanelLoginOtpTests
     }
 
     /// <summary>
-    /// İnceleme kısa yolu yalnız tam kimliğe aittir: mod kapalıysa, kurum yanlışsa, rol yanlışsa
-    /// veya kod biçimi geçersizse normal fail-closed e-posta yolu değişmeden kalır.
+    /// İnceleme kısa yolu yalnız tam kimliğe aittir. Eksik/bozuk yapılandırma, yanlış kimlik,
+    /// rol veya kullanıcıda kurum bulunmaması normal fail-closed e-posta yoluna düşer.
     /// </summary>
     [Theory]
-    [InlineData(false, false, false, false, false)]
-    [InlineData(true, true, false, false, false)]
-    [InlineData(true, false, true, false, false)]
-    [InlineData(true, false, false, true, false)]
-    [InlineData(true, false, false, false, true)]
-    public async Task AppReviewOwner_NonExactConfiguration_DoesNotBypassEmail(
-        bool enabled, bool wrongEmail, bool wrongTenant, bool wrongRole, bool invalidCode)
+    [InlineData("disabled")]
+    [InlineData("wrong-email")]
+    [InlineData("wrong-tenant")]
+    [InlineData("wrong-role")]
+    [InlineData("invalid-code")]
+    [InlineData("missing-tenant")]
+    [InlineData("malformed-tenant")]
+    [InlineData("missing-code")]
+    [InlineData("null-user-tenant")]
+    public async Task AppReviewOwner_NonExactConfiguration_DoesNotBypassEmail(string scenario)
     {
         var settings = new Dictionary<string, string?>
         {
-            ["AppReview:Enabled"] = enabled.ToString(),
-            ["AppReview:OwnerEmail"] = wrongEmail ? "someone-else@beautyasist.test" : Profile.Email,
-            ["AppReview:OwnerTenantId"] = (wrongTenant ? Guid.CreateVersion7() : Profile.TenantId!.Value).ToString(),
-            ["AppReview:OwnerOtpCode"] = invalidCode ? "abc" : "731946",
+            ["AppReview:Enabled"] = (scenario != "disabled").ToString(),
+            ["AppReview:OwnerEmail"] = scenario == "wrong-email" ? "someone-else@beautyasist.test" : Profile.Email,
+            ["AppReview:OwnerTenantId"] = scenario switch
+            {
+                "wrong-tenant" => Guid.CreateVersion7().ToString(),
+                "missing-tenant" => null,
+                "malformed-tenant" => "not-a-guid",
+                _ => Profile.TenantId!.Value.ToString(),
+            },
+            ["AppReview:OwnerOtpCode"] = scenario switch
+            {
+                "invalid-code" => "abc",
+                "missing-code" => null,
+                _ => "731946",
+            },
         };
-        var auth = NewAuth(role: wrongRole ? UserRole.Staff : UserRole.InstitutionOwner);
+        var auth = NewAuth(
+            role: scenario == "wrong-role" ? UserRole.Staff : UserRole.InstitutionOwner,
+            nullTenant: scenario == "null-user-tenant");
         var messaging = NewMessaging(emailWorks: false);
 
         var result = await NewService(auth, messaging, settings: settings)
@@ -272,6 +294,30 @@ public sealed class PanelLoginOtpTests
 
         Assert.True(result.IsFailure);
         await messaging.Received(1).SendEmailAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Review yapılandırmasının tam olması alttaki parola/hesap/cihaz doğrulamasını atlayamaz.
+    /// Auth başarısızsa challenge kurulmaz ve e-posta da gönderilmez.
+    /// </summary>
+    [Fact]
+    public async Task AppReviewOwner_AuthenticationFailure_DoesNotCreateChallengeOrSendEmail()
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["AppReview:Enabled"] = "true",
+            ["AppReview:OwnerEmail"] = Profile.Email,
+            ["AppReview:OwnerTenantId"] = Profile.TenantId!.Value.ToString(),
+            ["AppReview:OwnerOtpCode"] = "731946",
+        };
+        var messaging = NewMessaging(emailWorks: false);
+
+        var result = await NewService(NewAuth(passwordOk: false), messaging, settings: settings)
+            .StartAsync(Request(), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        await messaging.DidNotReceive().SendEmailAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
