@@ -103,7 +103,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           fullName: nameController.text,
           phone: phoneController.text,
           purpose: 1,
-          channel: CustomerOtpChannel.sms.code, // kayıt = SMS (sunucu da ezer)
+          // ÖLÜ GİRDİ: kanalı sunucu her hâlükârda eziyor (CustomerOtpService.RequestAsync).
+          // Platformun hedefi TEK KANAL E-POSTA olduğu için beyanı da e-posta tutuyoruz.
+          channel: CustomerOtpChannel.email.code,
           email: emailController.text,
         );
         final devCode = res['devCode'];
@@ -171,7 +173,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         fullName: nameController.text,
         phone: phoneController.text,
         purpose: 1,
-        channel: CustomerOtpChannel.sms.code, // kayıt = SMS (sunucu da ezer)
+        // ÖLÜ GİRDİ: kanalı sunucu her hâlükârda eziyor (CustomerOtpService.RequestAsync).
+        // Platformun hedefi TEK KANAL E-POSTA olduğu için beyanı da e-posta tutuyoruz.
+        channel: CustomerOtpChannel.email.code,
         email: emailController.text,
       );
       final devCode = res['devCode'];
@@ -327,7 +331,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 prefixIcon: Icon(Icons.mail_outline_rounded),
                               ),
                             ),
-                            // Kod nereye gidecek? (Kayıt = SMS; kural sunucuda zorlanır.)
+                            // Kod nereye gidecek? Kuralı sunucu zorlar; metin phoneStageLikely
+                            // ile gerçek kanal durumuna bağlıdır (telefon kanalı kapalıysa e-posta).
                             if (!otpStage) ..._channelNotice(),
                             // --- İSTEĞE BAĞLI PROFİL BİLGİLERİ ---
                             // Randevu almak için gerekmediklerinden ZORUNLU DEĞİL (App Store 5.1.1(v)).
@@ -504,7 +509,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                       child: CircularProgressIndicator(
                                           strokeWidth: 2, color: Colors.white),
                                     )
-                                  : Icon(otpStage ? Icons.check_rounded : Icons.sms_rounded),
+                                  // Simge de kanalı takip eder: telefon kanalı kapalıyken SMS
+                                  // simgesi göstermek, gelmeyecek bir SMS'i vaat etmekti.
+                                  : Icon(otpStage
+                                      ? Icons.check_rounded
+                                      : (phoneStageLikely
+                                          ? Icons.sms_rounded
+                                          : Icons.mark_email_unread_outlined)),
                               label: Text(otpStage
                                   ? 'Kodu Doğrula ve Kaydı Tamamla'
                                   : 'Doğrulama Kodu Gönder'),
