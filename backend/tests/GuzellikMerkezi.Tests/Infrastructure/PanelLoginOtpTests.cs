@@ -213,6 +213,68 @@ public sealed class PanelLoginOtpTests
         Assert.True(result.IsFailure);
     }
 
+    /// <summary>
+    /// Apple inceleme hesabının <c>.test</c> adresi gerçek posta alamaz. İnceleme modu açıkken,
+    /// yalnız yapılandırılmış yönetici + kurum eşleşmesine sabit kod ekranda gösterilir; SMTP'ye
+    /// gidilmez. Parola, rol, kurum ve cihaz kontrolleri yine LoginAsync içinde eksiksiz çalışır.
+    /// </summary>
+    [Fact]
+    public async Task AppReviewOwner_ExactIdentity_UsesConfiguredCodeWithoutEmail()
+    {
+        const string reviewCode = "731946";
+        var messaging = NewMessaging(emailWorks: false);
+        var settings = new Dictionary<string, string?>
+        {
+            ["AppReview:Enabled"] = "true",
+            ["AppReview:OwnerEmail"] = Profile.Email,
+            ["AppReview:OwnerTenantId"] = Profile.TenantId!.Value.ToString(),
+            ["AppReview:OwnerOtpCode"] = reviewCode,
+        };
+        var service = NewService(NewAuth(), messaging, settings: settings);
+
+        var start = await service.StartAsync(Request(), CancellationToken.None);
+
+        Assert.True(start.IsSuccess);
+        Assert.Equal(reviewCode, start.Value!.DevCode);
+        await messaging.DidNotReceive().SendEmailAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        var verified = await service.VerifyAsync(start.Value.ChallengeId, reviewCode, CancellationToken.None);
+        Assert.True(verified.IsSuccess);
+        Assert.Equal("access-token", verified.Value!.AccessToken);
+    }
+
+    /// <summary>
+    /// İnceleme kısa yolu yalnız tam kimliğe aittir: mod kapalıysa, kurum yanlışsa, rol yanlışsa
+    /// veya kod biçimi geçersizse normal fail-closed e-posta yolu değişmeden kalır.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, false, false, false)]
+    [InlineData(true, true, false, false, false)]
+    [InlineData(true, false, true, false, false)]
+    [InlineData(true, false, false, true, false)]
+    [InlineData(true, false, false, false, true)]
+    public async Task AppReviewOwner_NonExactConfiguration_DoesNotBypassEmail(
+        bool enabled, bool wrongEmail, bool wrongTenant, bool wrongRole, bool invalidCode)
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["AppReview:Enabled"] = enabled.ToString(),
+            ["AppReview:OwnerEmail"] = wrongEmail ? "someone-else@beautyasist.test" : Profile.Email,
+            ["AppReview:OwnerTenantId"] = (wrongTenant ? Guid.CreateVersion7() : Profile.TenantId!.Value).ToString(),
+            ["AppReview:OwnerOtpCode"] = invalidCode ? "abc" : "731946",
+        };
+        var auth = NewAuth(role: wrongRole ? UserRole.Staff : UserRole.InstitutionOwner);
+        var messaging = NewMessaging(emailWorks: false);
+
+        var result = await NewService(auth, messaging, settings: settings)
+            .StartAsync(Request(), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        await messaging.Received(1).SendEmailAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     /// <summary>Yanlış kod oturumu açmaz; doğru kod açar ve kod TEK KULLANIMLIKTIR.</summary>
     [Fact]
     public async Task Verify_RejectsWrongCode_AcceptsRightCodeOnce()

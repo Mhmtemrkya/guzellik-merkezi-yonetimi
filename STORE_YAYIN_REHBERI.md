@@ -169,6 +169,8 @@ Canlı `appsettings.Production.json` (ya da ortam değişkenleri):
   "TenantName": "BeautyAsist Demo Merkezi",
   "TenantSlug": "beautyasist-app-review",
   "OwnerEmail": "review@beautyasist.app",
+  "OwnerTenantId": "<kurulumdan sonra olusan demo kurum UUID'si>",
+  "OwnerOtpCode": "<6 haneli sabit inceleme kodu>",
   "OwnerPassword": "<en az 8 karakter, güçlü>",
   "OwnerName": "Demo Yonetici",
   "CustomerFullName": "Demo Musteri",
@@ -197,6 +199,7 @@ DEMO ACCOUNT (Staff / Business owner)
   Sign-in mode: "Personel / Yönetici" tab
   Username: review@beautyasist.app
   Password: <AppReview:OwnerPassword ile aynı>
+  Verification code: <AppReview:OwnerOtpCode ile aynı>
 
 DEMO ACCOUNT (Client / Consumer)
   Sign-in mode: "Müşteri" tab
@@ -205,6 +208,9 @@ DEMO ACCOUNT (Client / Consumer)
   Verification code: 424242   (fixed code for this review account)
 
 NOTES
+- The staff/business-owner verification code is displayed on the verification screen after the
+  correct username and password are entered. The review-only shortcut is restricted to the exact
+  configured owner e-mail, InstitutionOwner role and demo tenant UUID.
 - The verification code can be delivered by SMS, e-mail or WhatsApp; the user
   chooses the channel on the sign-in screen. WhatsApp is optional, never required.
 - For the demo client account above, the code is fixed (424242) because the
@@ -216,7 +222,7 @@ NOTES
 
 ### 5.4 İnceleme onaylandıktan SONRA
 
-- [ ] `AppReview:Enabled` → `false`, `OwnerPassword` ve `CustomerOtpCode` temizlendi
+- [ ] `AppReview:Enabled` → `false`; `OwnerPassword`, `OwnerOtpCode` ve `CustomerOtpCode` temizlendi
 - [ ] Backend yeniden başlatıldı (loglarda artık `MAĞAZA İNCELEME HESABI AÇIK` uyarısı YOK)
 - [ ] `beautyasist-app-review` kurumu platform panelinden askıya alındı / silindi
 

@@ -102,9 +102,16 @@ public sealed class PanelLoginOtpService
 
         var session = login.Value!;
         var email = session.User.Email;
-        var code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+        // Apple inceleme hesabı `.test` adresi kullandığı için gerçek posta teslimatı mümkün
+        // değildir. Kısa yol yalnız yapılandırılmış e-posta + InstitutionOwner rolü + kurumun
+        // ÜÇÜ birden eşleşirse açılır; parola, hesap, kurum ve cihaz kontrolleri yukarıdaki
+        // LoginAsync çağrısında yine eksiksiz çalışmıştır. Kod yanıtla yalnız bu dar hesap için
+        // paylaşılır ve mağaza onayından sonra AppReview:Enabled kapatılarak devreden çıkarılır.
+        var reviewCode = AppReviewOwnerCode(session.User);
+        var code = reviewCode
+            ?? RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
 
-        var sent = await SendAsync(session.User, code, ct);
+        var sent = reviewCode is not null || await SendAsync(session.User, code, ct);
         if (!sent)
         {
             // FAIL-CLOSED: kod gönderilemediyse oturum TESLİM EDİLMEZ. "Gönderemedik, buyur gir"
@@ -118,7 +125,34 @@ public sealed class PanelLoginOtpService
         await _store.SetAsync(Key(challengeId), new PendingLogin { Code = code, Email = email, Session = session }, ChallengeLifetime, ct);
 
         return Result<PanelLoginChallenge>.Success(new PanelLoginChallenge(
-            challengeId, EmailMask.Mask(email), _env.IsDevelopment() ? code : null));
+            challengeId, EmailMask.Mask(email), reviewCode is not null || _env.IsDevelopment() ? code : null));
+    }
+
+    /// <summary>
+    /// App Store incelemesinde yalnız önceden belirlenmiş demo yöneticisine gösterilecek sabit kod.
+    /// Her yapılandırma parçası zorunludur; eksik/bozuk değer normal e-posta akışına fail-closed döner.
+    /// </summary>
+    private string? AppReviewOwnerCode(UserProfileDto user)
+    {
+        if (!_config.GetValue<bool>("AppReview:Enabled") ||
+            user.Role != UserRole.InstitutionOwner ||
+            user.TenantId is null)
+            return null;
+
+        var configuredEmail = _config["AppReview:OwnerEmail"]?.Trim();
+        var configuredTenant = _config["AppReview:OwnerTenantId"]?.Trim();
+        var configuredCode = _config["AppReview:OwnerOtpCode"]?.Trim();
+
+        if (string.IsNullOrWhiteSpace(configuredEmail) ||
+            !Guid.TryParse(configuredTenant, out var tenantId) ||
+            configuredCode is not { Length: 6 } ||
+            !configuredCode.All(char.IsAsciiDigit))
+            return null;
+
+        return string.Equals(user.Email.Trim(), configuredEmail, StringComparison.OrdinalIgnoreCase) &&
+               user.TenantId.Value == tenantId
+            ? configuredCode
+            : null;
     }
 
     /// <summary>Adım 2 — kod doğruysa oturum teslim edilir. Kod TEK KULLANIMLIKTIR.</summary>
