@@ -58,13 +58,20 @@ class AppointmentReminderScheduler {
         for (var i = 0; i < _leadMinutes.length; i++) {
           final when = start.subtract(Duration(minutes: _leadMinutes[i]));
           if (!when.isAfter(now)) continue; // hatırlatma anı geçmişse atla
-          await NotificationService.instance.schedule(
-            id: _reminderId(id, i),
-            title: _leadMinutes[i] >= 720 ? 'Yarınki randevu' : 'Yaklaşan randevu',
-            body: '$name · $subtitle',
-            whenUtc: when,
-            data: {'route': '/appointments', 'id': id, 'type': 4},
-          );
+          // TEK randevu başına korumalı: bir randevunun planlaması patlarsa (izin, kota,
+          // bozuk veri) döngü DEVAM etmeli. Eskiden tek bir hata metodun dıştaki
+          // catch'ine düşüyor ve kalan TÜM hatırlatmaları sessizce iptal ediyordu.
+          try {
+            await NotificationService.instance.schedule(
+              id: _reminderId(id, i),
+              title: _leadMinutes[i] >= 720 ? 'Yarınki randevu' : 'Yaklaşan randevu',
+              body: '$name · $subtitle',
+              whenUtc: when,
+              data: {'route': '/appointments', 'id': id, 'type': 4},
+            );
+          } catch (e) {
+            notifyLog('randevu hatırlatması kurulamadı (id=$id, lead=${_leadMinutes[i]}): $e');
+          }
         }
       }
       notifyLog('randevu hatırlatmaları planlandı (${items.length} randevu tarandı)');

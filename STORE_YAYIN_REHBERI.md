@@ -24,9 +24,21 @@ Her yeni yüklemede build numarasını artır: mobilde `1.0.0+2`, `1.0.1+3` …
 ## 1. Android (Google Play)
 
 ### 1.1 İmzalama anahtarı (ZORUNLU — bir kez)
+
+> **DURUM (22 Eyl 2026): TAMAMLANDI.** Upload anahtarı üretildi ve doğrulandı —
+> `~/beautyasist-upload.jks` (PKCS12, alias `beautyasist`, 10000 gün, 7 Şub 2054'e kadar).
+> `mobile/android/key.properties` bu dosyayı **mutlak yolla** gösteriyor.
+> Sertifika SHA-1: `6F:26:3C:B2:AB:8D:FB:BD:72:F2:4D:EF:E2:DE:42:31:4A:03:75:D1`
+>
+> Önceki `key.properties` bir **Windows yolunu** (`C:/Users/KAYA/keys/...`) gösteriyordu; macOS'ta
+> `android/` altına göreli çözülüp bulunamıyor ve build `validateSigningRelease` görevinde
+> **hata veriyordu**. Eski yedek: `mobile/android/key.properties.bak-*`.
+
+Sıfırdan üretmek gerekirse (bir kez):
 ```bash
-keytool -genkey -v -keystore ~/beautyasist-release.jks \
-  -keyalg RSA -keysize 2048 -validity 10000 -alias beautyasist
+keytool -genkeypair -v -keystore ~/beautyasist-upload.jks -storetype PKCS12 \
+  -keyalg RSA -keysize 2048 -validity 10000 -alias beautyasist \
+  -dname "CN=BeautyAsist,O=BeautyAsist,L=Istanbul,C=TR"
 ```
 Sonra `mobile/android/key.properties.example` → `mobile/android/key.properties` olarak kopyala,
 değerleri gir. `storeFile` ya mutlak yol ya da `android/` klasörüne göreli olabilir.
@@ -259,13 +271,21 @@ Aşağıdakiler canlı deploy sırasında tek tek doğrulandı; yeni bir sunucuy
 
 ## 6. Yayın öncesi kontrol listesi
 
-- [ ] `mobile/android/key.properties` oluşturuldu, `.jks` yedeklendi
+- [x] `mobile/android/key.properties` oluşturuldu (22 Eyl 2026) — **`.jks` ve parolayı YEDEKLE**
+- [x] Android release AAB üretildi ve imzası doğrulandı (`jar verified`, CN=BeautyAsist, 69.3MB)
+- [x] iOS release derlemesi geçti (`flutter build ios --release --no-codesign` → Runner.app 40.1MB)
 - [ ] `API_BASE_URL` canlı HTTPS'e ayarlı build alındı (Android AAB + iOS IPA)
+- [x] `/hesap-silme` sayfası YAZILDI (`Frontend/app/hesap-silme/page.tsx`, `legalLinks`'e eklendi,
+      `next build` ile derlendiği doğrulandı) — **⚠ canlıda hâlâ 404; frontend DEPLOY edilmeli**
+- [x] **`USE_EXACT_ALARM` manifest'ten KALDIRILDI** (22 Eyl 2026). AAB içinden doğrulandı:
+      `USE_EXACT_ALARM: 0`, `SCHEDULE_EXACT_ALARM: 1`. Tam alarm izni artık kullanıcı onayına bağlı;
+      onay yoksa `NotificationService.schedule` `inexactAllowWhileIdle`'a düşer (hatırlatma kaybolmaz)
 - [ ] Backend canlıda HTTPS + `Jwt:SigningKey`, `Encryption:MasterKeyBase64` gerçek gizli değerlerle
 - [ ] **SMS ya da e-posta kanalı canlıda kurulu ve GERÇEK gönderim test edildi** (§5.1 — 3.2.2(v))
 - [ ] **`AppReview:*` dolduruldu, loglarda hesap oluştu** (§5.2 — 2.1)
 - [ ] **App Store Connect "App Review Information" metni yazıldı** (§5.3 — 2.1)
-- [ ] Build numarası artırıldı (`pubspec.yaml` → `1.0.0+6`; Apple aynı numarayı kabul etmez)
+- [ ] Build numarası artırıldı — **pubspec şu an `1.0.0+6`**. 7 Ağu reddedilen turda 6 zaten
+      yüklendiyse Apple reddeder; App Store Connect'ten teyit edip gerekirse `1.0.0+7` yap
 - [ ] Gizlilik politikası URL'si yayında (Play + App Store)
 - [ ] Play Data safety / App Privacy formları dolduruldu — **doğum tarihi artık "zorunlu" değil**
 - [ ] (Push isteniyorsa) Firebase 4 adımı + APNs anahtarı tamam, loglarda gerçek gönderim

@@ -13,7 +13,14 @@
     <!-- Canlı bildirim izinleri -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <!-- USE_EXACT_ALARM BİLEREK YOK. Google Play bu izni yalnızca ÇEKİRDEK İŞLEVİ alarm/takvim
+         olan uygulamalara veriyor (çalar saat, zamanlayıcı, takvim); randevu hatırlatması bu
+         tanıma girmez ve beyan edilirse yayın reddine yol açar. Farkı: USE_EXACT_ALARM kurulumda
+         OTOMATİK verilir, SCHEDULE_EXACT_ALARM ise kullanıcı onayı ister —
+         NotificationService.requestExactAlarms() ilk hatırlatma kurulurken sistem ayar sayfasını
+         açar. Onay verilmezse zamanlama YAKLAŞIK moda düşer (bkz. NotificationService.schedule
+         içindeki exact_alarms_not_permitted geri düşüşü); hatırlatma birkaç dakika kayar,
+         kaybolmaz. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
