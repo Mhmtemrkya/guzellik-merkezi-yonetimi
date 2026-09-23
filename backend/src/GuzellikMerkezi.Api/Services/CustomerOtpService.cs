@@ -524,6 +524,9 @@ public sealed class CustomerOtpService
 
                 if (!delivered)
                 {
+                    if (purpose == CustomerOtpPurpose.Register)
+                        return Result<object>.Failure(Error.Validation(
+                            "Doğrulama e-postası gönderilemedi. Lütfen adresinizi kontrol edip tekrar deneyin."));
                     // Hiçbir kanaldan gitmedi. En olası sebep: platformda TEK kanal e-posta ve bu
                     // müşterinin kayıtlarında e-posta adresi yok.
                     //
@@ -549,12 +552,21 @@ public sealed class CustomerOtpService
             }
         }
 
+        var reviewMessage = isReview
+            ? $"Demo / App Review: E-posta, SMS veya WhatsApp mesajı gönderilmez. Doğrulama kodu: {_demoCode}. " +
+              $"No email, SMS or WhatsApp is sent for this demo account. Enter {_demoCode}."
+            : null;
         return Result<object>.Success(new
         {
-            message = GenericSentMessage,
+            isDemo = isReview,
+            message = reviewMessage ?? (purpose == CustomerOtpPurpose.Register
+                ? "Doğrulama kodunuz kayıt formunda yazdığınız e-posta adresine gönderildi. Kod 5 dakika geçerlidir."
+                : GenericSentMessage),
             // Kod gelmediğinde kullanıcı ne yapacak? Bu bilgi PLATFORM YAPILANDIRMASIdır (kim
             // kayıtlı olduğuyla ilgisi yok), o yüzden herkese aynı şekilde söylenebilir.
-            hint = BuildDeliveryHint(availability),
+            hint = reviewMessage ?? (purpose == CustomerOtpPurpose.Register
+                ? "Kayıt formunda yazdığınız e-posta kutusunu ve spam klasörünü kontrol edin. SMS veya WhatsApp kodu beklemeyin."
+                : BuildDeliveryHint(availability)),
             devCode,
         });
     }

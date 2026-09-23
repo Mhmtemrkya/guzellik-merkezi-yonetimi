@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_controller.dart';
+import '../../core/auth/otp_message.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -38,29 +39,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// Kayıt iki kanalı da doğrular — telefon hesabın kimliği, e-posta bir sonraki GİRİŞİN kodu.
   String? emailStage;
 
-  /// Platformda hangi kanallar KURULU? Yalnızca ekrandaki VAADİ doğru tutmak için okunur;
-  /// kararı sunucu verir.
-  ///
-  /// SMS ve WhatsApp'ın ikisi de kapalıyken sunucu telefon adımını atlar ve kodu doğrudan
-  /// e-postaya gönderir. Ekranda yine de "önce telefonunuza SMS göndereceğiz" yazsaydı,
-  /// kullanıcı gelmeyecek bir SMS'i bekler ve e-posta kutusuna hiç bakmazdı.
-  CustomerOtpChannels? channels;
-
-  /// Telefon adımı gerçekten olacak mı? Kanal bilgisi okunamadıysa (null) VAR sayılır:
-  /// sunucu zaten SMS/WhatsApp kuruluysa oradan gönderir, değilse e-postaya düşer ve
-  /// aşağıdaki metin tek cümlelik bir fazlalık olarak kalır — tersi (hiç söylememek)
-  /// kullanıcıyı kodun nereye geldiğini bilmeden bırakırdı.
-  bool get phoneStageLikely => channels == null || channels!.sms || channels!.whatsApp;
-
-  @override
-  void initState() {
-    super.initState();
-    // Sessiz ve BEST-EFFORT: okunamazsa ekran telefon adımı varmış gibi davranır (bkz.
-    // phoneStageLikely). Kayıt akışı bu isteğe hiçbir şekilde BAĞLI DEĞİLDİR.
-    widget.auth.customerOtpChannels().then((value) {
-      if (mounted) setState(() => channels = value);
-    });
-  }
+  // Customer registration uses email verification, including while channel
+  // metadata is unavailable. Do not promise a phone message as a fallback.
+  bool get phoneStageLikely => false;
 
   @override
   void dispose() {
@@ -108,15 +89,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           channel: CustomerOtpChannel.email.code,
           email: emailController.text,
         );
-        final devCode = res['devCode'];
-        final hint = res['hint']?.toString();
         if (mounted) {
           setState(() {
             otpStage = true;
-            final base = devCode == null
-                ? '6 haneli doğrulama kodunuz gönderildi. Kod 5 dakika geçerlidir.'
-                : 'Doğrulama kodu gönderildi. (Test ortamı kodu: $devCode)';
-            otpInfo = (hint == null || hint.isEmpty) ? base : '$base $hint';
+            otpInfo = customerOtpMessage(res, registration: true);
           });
         }
         return;
@@ -178,13 +154,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
         channel: CustomerOtpChannel.email.code,
         email: emailController.text,
       );
-      final devCode = res['devCode'];
       if (!mounted) return;
       setState(() {
         otpCodeController.clear();
-        otpInfo = devCode == null
-            ? 'Yeni doğrulama kodunuz gönderildi. Kod 5 dakika geçerlidir.'
-            : 'Yeni doğrulama kodu gönderildi. (Test ortamı kodu: $devCode)';
+        otpInfo = customerOtpMessage(res, registration: true);
       });
     } catch (e) {
       if (mounted) setState(() => error = '$e');

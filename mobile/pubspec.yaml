@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # App Store'a 1.0 (5) yüklenip reddedildi (3.2.2(v) + 2.1 + 5.1.1(v)). Apple aynı build
 # numarasını İKİNCİ KEZ KABUL ETMEZ; düzeltmelerin yeni yüklemesi 6'dan devam eder.
 # iOS Info.plist bu değeri $(FLUTTER_BUILD_NUMBER) üzerinden okur — tek kaynak burasıdır.
-version: 1.0.0+6
+version: 1.0.0+8
 
 environment:
   sdk: '>=3.9.0 <4.0.0'

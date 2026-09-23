@@ -769,6 +769,43 @@ public sealed class StoreReviewOtpTests
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData(CustomerOtpPurpose.Login)]
+    [InlineData(CustomerOtpPurpose.Register)]
+    public async Task DemoResponse_ExplicitlySaysNoMessageIsSent(CustomerOtpPurpose purpose)
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        await using var db = NewDb(options);
+        var service = NewService(db, NewMessaging(email: true), config: new Dictionary<string, string?>
+        {
+            ["AppReview:Enabled"] = "true",
+            ["AppReview:CustomerPhone"] = ReviewPhone,
+            ["AppReview:CustomerOtpCode"] = ReviewCode,
+        });
+        var result = await service.RequestAsync(Login("Denetci Hesap", ReviewPhone),
+            "reviewer@example.com", purpose, CustomerOtpChannel.Email, CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        var body = System.Text.Json.JsonSerializer.SerializeToElement(result.Value);
+        Assert.True(body.GetProperty("isDemo").GetBoolean());
+        Assert.Contains("No email, SMS or WhatsApp is sent", body.GetProperty("message").GetString());
+        Assert.Contains(ReviewCode, body.GetProperty("hint").GetString());
+    }
+
+    [Fact]
+    public async Task Registration_EmailDeliveryFailure_DoesNotClaimCodeWasSent()
+    {
+        var options = NewOptions();
+        await using var db = NewDb(options);
+        var messaging = NewMessaging(email: true);
+        messaging.SendEmailAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new MessagingTestResult(false, false, null, "SMTP unavailable"));
+        var result = await NewService(db, messaging, configured: false).RequestAsync(
+            Login("New Customer", RealPhone), RealEmail, CustomerOtpPurpose.Register,
+            CustomerOtpChannel.Email, CancellationToken.None);
+        Assert.False(result.IsSuccess);
+    }
+
     // ---------------------------------------------------------- 5.1.1(v) doğum tarihi yok
 
     /// <summary>
