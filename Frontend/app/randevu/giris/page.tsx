@@ -19,8 +19,10 @@ import {
 } from 'lucide-react'
 import {
   CUSTOMER_EMAIL_STAGE,
+  type CustomerOtpChannels,
   customerOtpRequest,
   customerOtpVerify,
+  getCustomerOtpChannels,
   getCustomerSession,
   PortalApiError,
 } from '@/lib/customerPortalApi'
@@ -99,6 +101,32 @@ export default function CustomerLoginPage() {
    */
   const [emailStage, setEmailStage] = useState<string | null>(null)
 
+  /**
+   * Platformda telefon kanalı (SMS/WhatsApp) gerçekten kurulu mu?
+   *
+   * SMS ve WhatsApp'ın ikisi de kapalıyken sunucu kayıtta telefon adımını atlar ve kodu doğrudan
+   * e-postaya gönderir (bkz. CustomerOtpService.RequestAsync → registerViaEmailOnly). Ekranda yine
+   * de "önce telefonunuza SMS göndereceğiz" yazsaydı, kullanıcı gelmeyecek bir SMS'i bekler ve
+   * e-posta kutusuna hiç bakmazdı. MOBİLDEKİ `phoneStageLikely` ile AYNI kural — iki istemci aynı
+   * şeyi söylesin diye bilerek birebir kopya.
+   */
+  const [channels, setChannels] = useState<CustomerOtpChannels | null>(null)
+
+  // Sessiz ve BEST-EFFORT: okunamazsa ekran telefon adımı varmış gibi davranır (aşağıdaki
+  // `phoneStageLikely` null'ı "var" sayar). Akış bu isteğe hiçbir şekilde BAĞLI DEĞİLDİR.
+  useEffect(() => {
+    let alive = true
+    getCustomerOtpChannels().then((value) => {
+      if (alive) setChannels(value)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  /** Kayıtta telefon adımı gerçekten olacak mı? Kanal bilgisi okunamadıysa (null) VAR sayılır. */
+  const phoneStageLikely = channels === null || channels.sms || channels.whatsApp
+
   /** Ortak kimlik doğrulaması — geçersizse hata basar ve null döner. */
   const validateIdentity = (): { name: string; normalizedPhone: string } | null => {
     const name = fullName.trim()
@@ -146,8 +174,11 @@ export default function CustomerLoginPage() {
         {
           fullName: id.name,
           phone: id.normalizedPhone,
-          // Sunucu kanalı akışa göre ezer; burada da aynı niyeti gönderiyoruz.
-          channel: mode === 'register' ? 'sms' : 'email',
+          // ÖLÜ GİRDİ: sunucu bu alanı her hâlükârda eziyor (CustomerOtpService.RequestAsync,
+          // `channel = ... ? Sms : Email`). Yine de e-posta yazıyoruz: platformun hedefi TEK KANAL
+          // E-POSTA ve istemcinin beyanı ile sunucunun kararı aynı yöne baksın. Kanalı gerçekten
+          // değiştiren tek şey platform ayarlarındaki SmsEnabled/WhatsAppEnabled'dır.
+          channel: 'email',
           // GİRİŞTE DE GÖNDERİLİR: sunucu bunu kayıttaki adresle karşılaştırır (kimlik kontrolü).
           // Boş bırakılırsa hiçbir giriş eşleşmez.
           email: email.trim() || null,
@@ -415,10 +446,13 @@ export default function CustomerLoginPage() {
               </div>
 
               {/*
-                KANAL SEÇİCİ YOK — kanal AKIŞA GÖRE sabittir (sunucu da böyle zorluyor):
-                  KAYIT → telefonunuza SMS (numaranın size ait olduğu kanıtlanır)
-                  GİRİŞ → kayıtlı e-postanıza kod (her girişte SMS harcanmaz)
+                KANAL SEÇİCİ YOK — kanalı sunucu belirler, istemci yalnız DOĞRU OLANI SÖYLER:
+                  GİRİŞ → her zaman kayıtlı e-postaya kod (telefon kanalı kurulu olsa bile)
+                  KAYIT → telefon kanalı (SMS/WhatsApp) kuruluysa telefona, değilse e-postaya
                 Seçim sunmak, kullanıcının seçtiği kanaldan kod gelmemesi anlamına gelirdi.
+                Aşağıdaki metin `phoneStageLikely` ile gerçek duruma bağlanır — mobildeki kuralın
+                birebir aynısı. Platform e-posta tek kanala alındığında (SmsEnabled=false) burada
+                SMS'ten hiç söz edilmez.
               */}
               {mode === 'login' && (
                 <div>
@@ -441,7 +475,7 @@ export default function CustomerLoginPage() {
               )}
 
               <div className="flex items-start gap-3 rounded-2xl border border-[#ead8df] bg-white/70 px-4 py-3">
-                {mode === 'register' && !emailStage ? (
+                {mode === 'register' && !emailStage && phoneStageLikely ? (
                   <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-[#c85776]" strokeWidth={1.7} />
                 ) : (
                   <Mail className="mt-0.5 h-4 w-4 shrink-0 text-[#c85776]" strokeWidth={1.7} />
@@ -451,7 +485,9 @@ export default function CustomerLoginPage() {
                     ? 'Doğrulama kodu kayıtlı e-posta adresinize gönderilecek.'
                     : emailStage
                       ? `Telefonunuz doğrulandı. Son adım: kod ${emailStage} adresine gönderildi.`
-                      : 'Önce telefonunuza SMS ile kod göndereceğiz, ardından e-postanızı doğrulayacağız.'}
+                      : phoneStageLikely
+                        ? 'Önce telefonunuza SMS ile kod göndereceğiz, ardından e-postanızı doğrulayacağız.'
+                        : 'Doğrulama kodunu e-posta adresinize göndereceğiz. Girişte de kod bu adrese gelir.'}
                 </p>
               </div>
 

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/auth_controller.dart';
+import '../../core/auth/otp_message.dart';
 import '../../core/network/api_config.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -303,17 +304,10 @@ class _LoginScreenState extends State<LoginScreen> {
         channel: CustomerOtpChannel.email.code, // giriş = e-posta (sunucu da ezer)
       );
       if (!mounted) return;
-      final devCode = res['devCode']?.toString();
-      // `hint` sunucudan gelir: kod gelmediğinde ne yapılacağını söyler. Yalnız e-posta kanalının
-      // kurulu olduğu bir platformda, kayıtlarda adresi olmayan kullanıcı için tek çıkış yolu bu.
-      final hint = res['hint']?.toString();
       setState(() {
         otpStage = true;
         otpCodeController.clear();
-        final base = (devCode != null && devCode.isNotEmpty)
-            ? 'Doğrulama kodu gönderildi. (Test kodu: $devCode)'
-            : 'Bilgileriniz kayıtlarımızla eşleşiyorsa 6 haneli doğrulama kodunuz gönderildi. Kod 5 dakika geçerlidir.';
-        otpInfo = (hint == null || hint.isEmpty) ? base : '$base $hint';
+        otpInfo = customerOtpMessage(res);
       });
     } catch (e) {
       if (mounted) setState(() => error = '$e');
@@ -780,7 +774,9 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                '6 haneli kodu ${challenge.maskedEmail} adresine gönderdik. Kod 10 dakika geçerlidir.',
+                challenge.devCode != null && challenge.devCode!.isNotEmpty
+                    ? 'Demo / Test: Mesaj beklemeyin. Kod: ${challenge.devCode}. No email, SMS or WhatsApp is sent; enter this test code.'
+                    : '6 haneli kodu ${challenge.maskedEmail} adresine gönderdik. Kod 10 dakika geçerlidir.',
                 style: const TextStyle(color: AppColors.muted, fontSize: 12.5, height: 1.35),
               ),
             ),

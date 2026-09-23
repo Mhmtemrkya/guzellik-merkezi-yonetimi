@@ -12,3 +12,6 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Eski key.properties yedekleri de sir icerir (parola).
+key.properties.bak-*

@@ -316,6 +316,14 @@ public sealed class CustomerOtpService
     /// Platformda hangi kanalların gerçekten yapılandırıldığı. KİMLİKTEN BAĞIMSIZDIR — bu yüzden
     /// istemciye açıkça söylenebilir ve "bu numara kayıtlı mı" sorusunu cevaplamaz.
     /// </summary>
+    /// <remarks>
+    /// <b>MÜŞTERİ KODU YALNIZ E-POSTAYLA GİDER</b> (23 Eyl 2026 ürün kararı). Platformda SMS ya da
+    /// WhatsApp kurulu olsa bile müşteri akışına kapalı raporlanır: kayıt böylece
+    /// <c>registerViaEmailOnly</c> yoluna girer ve istemciler (<c>/customer/otp/channels</c>'ı
+    /// okuyan web + mobil) "SMS göndereceğiz" yerine e-posta metnini gösterir. SMS yurt dışı
+    /// numaralara ulaşmadığında App Store bunu 3.2.2(v) "kullanıcı kısıtlaması" sayıyordu.
+    /// Platform ayarlarındaki SMS/WhatsApp başka akışlar (kurum kaydı, bildirimler) için AÇIK kalır.
+    /// </remarks>
     public async Task<CustomerOtpChannelAvailability> GetAvailableChannelsAsync(CancellationToken ct)
     {
         var settings = await _messaging.GetSettingsAsync(ct);
@@ -324,15 +332,15 @@ public sealed class CustomerOtpService
 
         var s = settings.Value;
         var available = new CustomerOtpChannelAvailability(
-            WhatsApp: s.WhatsAppEnabled && s.WhatsAppConfigured,
-            Sms: s.SmsEnabled && s.SmsConfigured,
+            WhatsApp: false,
+            Sms: false,
             Email: s.EmailEnabled && s.EmailConfigured);
 
         // Geliştirme ortamında hiçbir sağlayıcı kurulu olmaz; simülasyon gerçek gönderim yerine geçer,
         // kod zaten yanıtta döner. Aksi hâlde yerel geliştirmede giriş akışı hiç çalışmazdı.
         return available.Any || !_env.IsDevelopment()
             ? available
-            : new CustomerOtpChannelAvailability(true, true, true);
+            : new CustomerOtpChannelAvailability(false, false, true);
     }
 
     /// <summary>
@@ -388,6 +396,8 @@ public sealed class CustomerOtpService
         }
 
         // ═══ KANAL KARARI ════════════════════════════════════════════════════════════════
+        //   ŞU AN telefon kanalları müşteri akışına KAPALIDIR (bkz. GetAvailableChannelsAsync):
+        //   kayıt da her zaman aşağıdaki "telefonsuz kayıt" yolundan e-postayla yürür.
         //   KAYIT  → telefon (SMS/WhatsApp). Amaç numaranın gerçekten kişiye ait olduğunu
         //            kanıtlamak; hesap bu numarayla açılıyor ve randevu bildirimleri oraya gider.
         //   GİRİŞ  → e-posta. Kayıtlı kullanıcı her girişte SMS harcamaz (maliyet), üstelik
@@ -495,7 +505,10 @@ public sealed class CustomerOtpService
                 entry.Target = emailTarget;
                 entry.AwaitingEmailStage = true;
                 entry.PendingEmail = emailTarget;
-                entry.PhoneProven = false;
+                // İstisna: MAĞAZA İNCELEME numarası operatörün yapılandırdığı sabit bir numaradır,
+                // gerçek bir kişiye ait değildir. Kanıtlanmış sayılmazsa, farklı e-postalarla
+                // deneyen ikinci bir denetçi "bu numara başka hesapta" duvarına çarpardı.
+                entry.PhoneProven = isReview;
             }
 
             var delivered = true;
@@ -511,6 +524,9 @@ public sealed class CustomerOtpService
 
                 if (!delivered)
                 {
+                    if (purpose == CustomerOtpPurpose.Register)
+                        return Result<object>.Failure(Error.Validation(
+                            "Doğrulama e-postası gönderilemedi. Lütfen adresinizi kontrol edip tekrar deneyin."));
                     // Hiçbir kanaldan gitmedi. En olası sebep: platformda TEK kanal e-posta ve bu
                     // müşterinin kayıtlarında e-posta adresi yok.
                     //
@@ -536,12 +552,21 @@ public sealed class CustomerOtpService
             }
         }
 
+        var reviewMessage = isReview
+            ? $"Demo / App Review: E-posta, SMS veya WhatsApp mesajı gönderilmez. Doğrulama kodu: {_demoCode}. " +
+              $"No email, SMS or WhatsApp is sent for this demo account. Enter {_demoCode}."
+            : null;
         return Result<object>.Success(new
         {
-            message = GenericSentMessage,
+            isDemo = isReview,
+            message = reviewMessage ?? (purpose == CustomerOtpPurpose.Register
+                ? "Doğrulama kodunuz kayıt formunda yazdığınız e-posta adresine gönderildi. Kod 5 dakika geçerlidir."
+                : GenericSentMessage),
             // Kod gelmediğinde kullanıcı ne yapacak? Bu bilgi PLATFORM YAPILANDIRMASIdır (kim
             // kayıtlı olduğuyla ilgisi yok), o yüzden herkese aynı şekilde söylenebilir.
-            hint = BuildDeliveryHint(availability),
+            hint = reviewMessage ?? (purpose == CustomerOtpPurpose.Register
+                ? "Kayıt formunda yazdığınız e-posta kutusunu ve spam klasörünü kontrol edin. SMS veya WhatsApp kodu beklemeyin."
+                : BuildDeliveryHint(availability)),
             devCode,
         });
     }
@@ -832,9 +857,19 @@ public sealed class CustomerOtpService
                         "E-posta adresi zorunludur; girişte doğrulama kodu bu adrese gönderilir.")));
                 }
 
-                var emailCode = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
-                var sent = await SendCodeAsync(request.Phone, mail, emailCode, CustomerOtpChannel.Email,
-                    await GetAvailableChannelsAsync(ct), "Müşteri Kaydı", tenantName: null, ct);
+                // MAĞAZA İNCELEME HESABI 2. AŞAMADA DA sabit kodu kullanır ve e-posta GÖNDERİLMEZ.
+                // App Store 3.2.2(v)/2.1 (23 Eyl 2026): 1. aşama sabit kodla geçiliyor, ama 2. aşama
+                // denetçinin yazdığı adrese rastgele kod yolluyordu — o posta Apple'a ulaşmadı ve
+                // denetçi kaydı tamamlayamadı. Kayıt yine de İKİ aşamalıdır: akışın şekli değişmez,
+                // yalnız teslimat atlanır.
+                var isReview = IsStoreReviewPhone(key);
+                var emailCode = isReview
+                    ? _demoCode!
+                    : RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+                var sent = isReview
+                    ? (Channel: (CustomerOtpChannel?)CustomerOtpChannel.Email, Target: (string?)mail)
+                    : await SendCodeAsync(request.Phone, mail, emailCode, CustomerOtpChannel.Email,
+                        await GetAvailableChannelsAsync(ct), "Müşteri Kaydı", tenantName: null, ct);
                 if (sent.Channel is null)
                 {
                     // DENETİMİN İŞARET ETTİĞİ ASIL YOL: SMTP geçici olarak düşmüş olabilir ve

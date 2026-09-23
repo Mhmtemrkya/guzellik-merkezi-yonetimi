@@ -71,5 +71,8 @@ export const legalLinks: { href: string; label: string }[] = [
   { href: '/mesafeli-satis-sozlesmesi', label: 'Mesafeli Satış Sözleşmesi' },
   { href: '/teslimat-ve-iade', label: 'Teslimat ve İade Şartları' },
   { href: '/gizlilik', label: 'Gizlilik Politikası' },
+  // Google Play, uygulama içi silmenin YANINDA herkese açık (girişsiz) bir hesap silme
+  // URL'si zorunlu tutar; footer'dan bağlanmazsa rota öksüz kalır.
+  { href: '/hesap-silme', label: 'Hesap Silme' },
   { href: '/destek', label: 'Destek' },
 ]

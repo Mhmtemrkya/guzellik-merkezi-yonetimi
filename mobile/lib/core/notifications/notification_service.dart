@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -124,9 +125,10 @@ class NotificationService {
 
   /// TAM ALARM (SCHEDULE_EXACT_ALARM) izni — sistem ayar sayfası açar.
   ///
-  /// Yalnızca zamanlanmış randevu hatırlatması kurulurken anlamlıdır ve manifest'teki
-  /// `USE_EXACT_ALARM` sayesinde çoğu cihazda zaten verilmiş olur. Açılışta
-  /// çağrılmaz: kullanıcıyı ilk saniyede ayar ekranına atmak kabul edilemez.
+  /// `USE_EXACT_ALARM` manifest'ten KALDIRILDI (Google Play bu izni yalnız çekirdek işlevi
+  /// alarm/takvim olan uygulamalara veriyor; randevu hatırlatması o tanıma girmiyor).
+  /// Dolayısıyla izin artık otomatik verilmez — TEK verilme yolu bu çağrıdır.
+  /// Açılışta çağrılmaz: kullanıcıyı ilk saniyede ayar ekranına atmak kabul edilemez.
   Future<void> requestExactAlarms() async {
     try {
       final android = _plugin
@@ -154,7 +156,15 @@ class NotificationService {
   }
 
   /// [whenUtc] anına yerel bildirim zamanlar. Geçmişse hiçbir şey yapmaz.
-  /// exactAllowWhileIdle → Doze modunda ve internetsiz de tam saatinde tetiklenir.
+  ///
+  /// Önce `exactAllowWhileIdle` denenir → Doze modunda ve internetsiz de TAM saatinde tetiklenir.
+  /// Tam alarm izni verilmemişse plugin `exact_alarms_not_permitted` ile **fırlatır** — sessizce
+  /// yaklaşık moda düşmez. `USE_EXACT_ALARM` manifest'ten kaldırıldığı için bu artık olağan bir
+  /// durum; o yüzden burada yakalanıp `inexactAllowWhileIdle` ile yeniden denenir:
+  /// hatırlatma birkaç dakika kayabilir ama KAYBOLMAZ.
+  ///
+  /// Bu metot çağırana **fırlatmaz**; tek bir randevunun izin hatası, sıradaki randevuların
+  /// planlanmasını engellememelidir.
   Future<void> schedule({
     required int id,
     required String title,
@@ -165,17 +175,33 @@ class NotificationService {
   }) async {
     final when = tz.TZDateTime.from(whenUtc.toUtc(), tz.local);
     if (!when.isAfter(tz.TZDateTime.now(tz.local))) return;
-    await _plugin.zonedSchedule(
-      id,
-      title,
-      body,
-      when,
-      _details(channelId),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      payload: data == null ? null : jsonEncode(data),
-    );
+    final payload = data == null ? null : jsonEncode(data);
+
+    Future<void> put(AndroidScheduleMode mode) => _plugin.zonedSchedule(
+          id,
+          title,
+          body,
+          when,
+          _details(channelId),
+          androidScheduleMode: mode,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          payload: payload,
+        );
+
+    try {
+      await put(AndroidScheduleMode.exactAllowWhileIdle);
+    } on PlatformException catch (e) {
+      // exact_alarms_not_permitted → izin yok. Yaklaşık alarm hâlâ işe yarar.
+      debugPrint('tam alarm reddedildi (${e.code}); yaklaşık moda düşülüyor: id=$id');
+      try {
+        await put(AndroidScheduleMode.inexactAllowWhileIdle);
+      } catch (e2) {
+        debugPrint('bildirim zamanlanamadı: id=$id · $e2');
+      }
+    } catch (e) {
+      debugPrint('bildirim zamanlanamadı: id=$id · $e');
+    }
   }
 
   Future<void> cancel(int id) => _plugin.cancel(id);

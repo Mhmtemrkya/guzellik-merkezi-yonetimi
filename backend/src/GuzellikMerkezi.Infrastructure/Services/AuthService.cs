@@ -469,7 +469,7 @@ public sealed class AuthService : IAuthService
             if (byPhone is not null && !ReferenceEquals(byPhone, byEmail))
             {
                 return Result<LoginResponse>.Failure(Error.Unauthorized(
-                    "Bu telefon numarasıyla devam etmek için telefonunuza gelen kodu kullanın (SMS ya da WhatsApp)."));
+                    "Bu telefon numarasıyla kayıtlı bir hesap zaten var. Lütfen \"Giriş yap\" ile devam edin."));
             }
             customer = byEmail;
         }
