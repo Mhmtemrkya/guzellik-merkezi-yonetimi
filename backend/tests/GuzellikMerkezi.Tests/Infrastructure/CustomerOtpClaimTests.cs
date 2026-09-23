@@ -115,14 +115,6 @@ public sealed class CustomerOtpClaimTests
 
     private static CustomerLoginRequest Login() => new(Name, Phone);
 
-    private static string SmsCode(IPlatformMessagingService messaging) =>
-        Regex.Match(
-            (string)messaging.ReceivedCalls()
-                .Where(c => c.GetMethodInfo().Name == nameof(IPlatformMessagingService.SendSmsAsync))
-                .Select(c => c.GetArguments()[1]!)
-                .Last(),
-            @"(\d{6})").Groups[1].Value;
-
     private static string MailCode(IPlatformMessagingService messaging) =>
         Regex.Match(
             (string)messaging.ReceivedCalls()
@@ -295,51 +287,7 @@ public sealed class CustomerOtpClaimTests
     // ------------------------------------------------------------------------ kayıt akışı
 
     /// <summary>
-    /// DENETİMİN İŞARET ETTİĞİ ASIL YOL: doğrulama e-postası gönderilemezse TELEFON KANITI
-    /// çöpe gitmez.
-    /// </summary>
-    /// <remarks>
-    /// SMS kodu doğru girilmiş, telefon kanıtlanmıştır; sıradaki adım e-posta göndermektir. SMTP
-    /// geçici olarak düştüğünde eski kod SMS kaydını çoktan silmiş oluyor ve kullanıcı kayda
-    /// sıfırdan başlamak zorunda kalıyordu — üstelik istek sınırı yüzünden hemen de değil.
-    /// </remarks>
-    [Fact]
-    public async Task KayitEpostasiGonderilemezse_SmsKoduYasar()
-    {
-        var options = NewOptions();
-        await SeedAsync(options);
-        var messaging = NewMessaging();
-
-        // İlk gönderim başarısız (SMTP düşük), ikincisi başarılı.
-        messaging.SendEmailAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(
-                new MessagingTestResult(false, false, null, "smtp down"),
-                new MessagingTestResult(true, false, "id", null));
-
-        var auth = StoreReviewOtpTests.NewAuth();
-        await using var db = NewDb(options);
-        var service = NewService(db, messaging, auth);
-
-        const string newPhone = "+90 555 909 80 70";
-        const string newMail = "yeni.kayit@example.com";
-        var payload = new CustomerRegisterRequest(
-            "Yeni Kayit", newPhone, null, Gender.Unspecified, newMail, KvkkConsent: true);
-        var request = new CustomerLoginRequest("Yeni Kayit", newPhone);
-
-        await service.RequestAsync(request, newMail, CustomerOtpPurpose.Register, CustomerOtpChannel.Sms, CancellationToken.None);
-        var smsCode = SmsCode(messaging);
-
-        var failed = await service.VerifyAsync(request, smsCode, CustomerOtpPurpose.Register, payload, CancellationToken.None);
-        Assert.True(failed.IsFailure);
-
-        // ASIL İDDİA: aynı SMS kodu hâlâ geçerli ve akış e-posta aşamasına ilerleyebiliyor.
-        var retried = await service.VerifyAsync(request, smsCode, CustomerOtpPurpose.Register, payload, CancellationToken.None);
-        Assert.True(retried.IsFailure);
-        Assert.Equal("CustomerEmailStage", retried.Error.Code);
-    }
-
-    /// <summary>
-    /// KAYIT SON ADIMDA PATLARSA E-POSTA KODU YAŞAR — iki aşamalı akışın ikinci ayağı.
+    /// KAYIT SON ADIMDA PATLARSA E-POSTA KODU YAŞAR — kullanıcı yeni kod istemeden tekrar dener.
     /// </summary>
     [Fact]
     public async Task KayitSonAdimdaPatlarsa_EpostaKoduTekrarKullanilabilir()
@@ -364,18 +312,15 @@ public sealed class CustomerOtpClaimTests
         var request = new CustomerLoginRequest("Ikinci Asama", newPhone);
 
         await service.RequestAsync(request, newMail, CustomerOtpPurpose.Register, CustomerOtpChannel.Sms, CancellationToken.None);
-        var stage1 = await service.VerifyAsync(request, SmsCode(messaging), CustomerOtpPurpose.Register, payload, CancellationToken.None);
-        Assert.Equal("CustomerEmailStage", stage1.Error.Code);
-
         var mailCode = MailCode(messaging);
 
         var failed = await service.VerifyAsync(request, mailCode, CustomerOtpPurpose.Register, payload, CancellationToken.None);
         Assert.True(failed.IsFailure);
 
-        // Telefon kanıtı da e-posta kodu da korunmuştur: kullanıcı sıfırdan başlamaz.
+        // E-posta kodu korunmuştur: kullanıcı sıfırdan başlamaz.
         var second = await service.VerifyAsync(request, mailCode, CustomerOtpPurpose.Register, payload, CancellationToken.None);
         Assert.True(second.IsSuccess);
         await auth.Received(2).CustomerRegisterAsync(
-            Arg.Any<CustomerRegisterRequest>(), true, newMail, Arg.Any<CancellationToken>());
+            Arg.Any<CustomerRegisterRequest>(), false, newMail, Arg.Any<CancellationToken>());
     }
 }

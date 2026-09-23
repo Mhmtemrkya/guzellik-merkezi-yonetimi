@@ -203,7 +203,7 @@ public sealed class StoreReviewOtpTests
     {
         var options = NewOptions();
         await SeedAsync(options);
-        var messaging = NewMessaging();
+        var messaging = NewMessaging(email: true);
 
         await using var db = NewDb(options);
         var result = await NewService(db, messaging).RequestAsync(
@@ -329,7 +329,7 @@ public sealed class StoreReviewOtpTests
     {
         var options = NewOptions();
         await SeedAsync(options);
-        var messaging = NewMessaging();
+        var messaging = NewMessaging(email: true);
 
         await using var db = NewDb(options);
         var auth = NewAuth();
@@ -442,7 +442,7 @@ public sealed class StoreReviewOtpTests
     {
         var options = NewOptions();
         await SeedAsync(options);
-        var messaging = NewMessaging();
+        var messaging = NewMessaging(email: true);
         var auth = NewAuth();
 
         await using var db = NewDb(options);
@@ -521,7 +521,7 @@ public sealed class StoreReviewOtpTests
     {
         var options = NewOptions();
         await SeedAsync(options);
-        var messaging = NewMessaging();
+        var messaging = NewMessaging(email: true);
         var auth = NewAuth();
 
         await using var db = NewDb(options);
@@ -652,47 +652,41 @@ public sealed class StoreReviewOtpTests
     }
 
     /// <summary>
-    /// KAYIT her zaman SMS'tir — istemci e-posta istese bile.
+    /// KAYIT KODU YALNIZ E-POSTAYLA GİDER — platformda SMS/WhatsApp kurulu olsa ve istemci SMS
+    /// istese bile (23 Eyl 2026 kararı; SMS yurt dışı numaralara ulaşmıyordu → App Store 3.2.2(v)).
     /// </summary>
-    /// <remarks>
-    /// Kayıtta kanıtlanması gereken şey TELEFON sahipliğidir: hesap o numarayla açılıyor ve
-    /// randevu bildirimleri oraya gidiyor.
-    /// </remarks>
     [Fact]
-    public async Task Register_AlwaysUsesSms_EvenWhenClientAsksForEmail()
+    public async Task Register_AlwaysUsesEmail_EvenWhenSmsIsConfigured()
     {
         var options = NewOptions();
         await SeedAsync(options);
         var messaging = NewMessaging(whatsApp: true, sms: true, email: true);
 
         await using var db = NewDb(options);
-        await NewService(db, messaging, configured: false).RequestAsync(
+        var service = NewService(db, messaging, configured: false);
+        await service.RequestAsync(
             Login("Yeni Kullanici", "+90 555 123 45 67"), "yeni@example.com",
-            CustomerOtpPurpose.Register, CustomerOtpChannel.Email, CancellationToken.None);
+            CustomerOtpPurpose.Register, CustomerOtpChannel.Sms, CancellationToken.None);
 
-        await messaging.Received(1).SendSmsAsync(
+        await messaging.Received(1).SendEmailAsync(
+            "yeni@example.com", Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await messaging.DidNotReceive().SendSmsAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
-        await messaging.DidNotReceive().SendEmailAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await messaging.DidNotReceive().SendWhatsAppAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        // İstemciler de telefon kanalını görmez: "SMS göndereceğiz" metni gösterilmez.
+        var channels = await service.GetAvailableChannelsAsync(CancellationToken.None);
+        Assert.Equal(new CustomerOtpChannelAvailability(false, false, true), channels);
     }
 
     /// <summary>
-    /// KAYIT İKİ AŞAMALIDIR: önce TELEFON (SMS), sonra E-POSTA. Hesap ancak ikisi de
-    /// doğrulanınca açılır.
+    /// KAYIT TEK AŞAMALIDIR: kod yazılan e-postaya gider, doğrulanınca hesap açılır. Telefon
+    /// KANITLANMAMIŞ sayılır (phoneVerified=false); bu yüzden kayıt var olan bir hesabı
+    /// devralamaz, yalnız yeni hesap açar (bkz. AuthService.CustomerRegisterAsync).
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Telefon hesabın kimliğidir (randevu bildirimleri oraya gider); e-posta ise bir sonraki
-    /// GİRİŞİN kodunun gideceği adrestir. E-posta doğrulanmadan hesap açılsaydı, yanlış yazılmış
-    /// bir adres kullanıcıyı ilk girişte kilitlerdi.
-    /// </para>
-    /// <para>
-    /// 1. aşamanın sonucu ayırt edilebilir bir kodla (<c>CustomerEmailStage</c>) döner; istemci
-    /// bunu arıza değil "sıradaki adım" olarak gösterir.
-    /// </para>
-    /// </remarks>
     [Fact]
-    public async Task Register_RequiresPhoneThenEmail_BeforeAccountIsCreated()
+    public async Task Register_EmailCode_CreatesAccount_WithoutPhoneProof()
     {
         var options = NewOptions();
         await SeedAsync(options);
@@ -707,44 +701,72 @@ public sealed class StoreReviewOtpTests
         var payload = new CustomerRegisterRequest(
             "Yeni Kullanici", newPhone, null, Gender.Unspecified, mail, KvkkConsent: true);
 
-        // --- AŞAMA 1: SMS ---
         await service.RequestAsync(
             Login("Yeni Kullanici", newPhone), mail,
             CustomerOtpPurpose.Register, CustomerOtpChannel.Sms, CancellationToken.None);
 
-        var smsBody = messaging.ReceivedCalls()
-            .Where(c => c.GetMethodInfo().Name == nameof(IPlatformMessagingService.SendSmsAsync))
-            .Select(c => (string)c.GetArguments()[1]!)
-            .Single();
-        var smsCode = System.Text.RegularExpressions.Regex.Match(smsBody, @"(\d{6})").Groups[1].Value;
-
-        var stage1 = await service.VerifyAsync(
-            Login("Yeni Kullanici", newPhone), smsCode,
-            CustomerOtpPurpose.Register, payload, CancellationToken.None);
-
-        // HESAP HENÜZ AÇILMADI: ayırt edilebilir kod + e-posta gönderildi.
-        Assert.True(stage1.IsFailure);
-        Assert.Equal("CustomerEmailStage", stage1.Error.Code);
-        await auth.DidNotReceive().CustomerRegisterAsync(
-            Arg.Any<CustomerRegisterRequest>(), Arg.Any<bool>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-
-        // --- AŞAMA 2: e-posta ---
         var mailBody = messaging.ReceivedCalls()
             .Where(c => c.GetMethodInfo().Name == nameof(IPlatformMessagingService.SendEmailAsync))
             .Select(c => (string)c.GetArguments()[2]!)
-            .Last();
+            .Single();
         var mailCode = System.Text.RegularExpressions.Regex.Match(mailBody, @">(\d{6})<").Groups[1].Value;
 
-        await service.VerifyAsync(
+        var result = await service.VerifyAsync(
             Login("Yeni Kullanici", newPhone), mailCode,
             CustomerOtpPurpose.Register, payload, CancellationToken.None);
 
-        // Şimdi açılır: TELEFON kanıtlandı + doğrulanan e-posta taşındı.
+        Assert.True(result.IsSuccess);
         await auth.Received(1).CustomerRegisterAsync(
             Arg.Is<CustomerRegisterRequest>(r => r != null && r.Email == mail),
-            true,   // telefon kanıtı (1. aşamadan devredildi)
+            false,  // telefon kanıtlanmadı
             mail,   // doğrulanan adres
             Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// APP STORE 3.2.2(v)/2.1 (23 Eyl 2026): denetçi inceleme numarasıyla KAYIT olurken kendi
+    /// adresine giden kodu alamadı ve kaydı tamamlayamadı. İnceleme numarasında kayıt sabit kodla
+    /// TEK adımda tamamlanmalı ve HİÇBİR mesaj gitmemeli. Numara operatörün yapılandırdığı sabit
+    /// numara olduğundan kanıtlanmış sayılır: farklı adreslerle deneyen denetçiler takılmaz.
+    /// </summary>
+    [Fact]
+    public async Task StoreReviewPhone_Register_UsesFixedCode_AndSendsNothing()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        var messaging = NewMessaging(whatsApp: false, sms: true, email: true);
+        var auth = NewAuth();
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, auth: auth, config: new Dictionary<string, string?>
+        {
+            ["AppReview:Enabled"] = "true",
+            ["AppReview:CustomerPhone"] = ReviewPhone,
+            ["AppReview:CustomerOtpCode"] = ReviewCode,
+        });
+
+        const string mail = "reviewer@apple.example";
+        var payload = new CustomerRegisterRequest(
+            "Denetci Hesap", ReviewPhone, null, Gender.Unspecified, mail, KvkkConsent: true);
+
+        await service.RequestAsync(
+            Login("Denetci Hesap", ReviewPhone), mail,
+            CustomerOtpPurpose.Register, CustomerOtpChannel.Auto, CancellationToken.None);
+
+        var result = await service.VerifyAsync(
+            Login("Denetci Hesap", ReviewPhone), ReviewCode,
+            CustomerOtpPurpose.Register, payload, CancellationToken.None);
+        Assert.True(result.IsSuccess);
+
+        await auth.Received(1).CustomerRegisterAsync(
+            Arg.Is<CustomerRegisterRequest>(r => r != null && r.Email == mail),
+            true, mail, Arg.Any<CancellationToken>());
+        await messaging.DidNotReceive().SendSmsAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await messaging.DidNotReceive().SendWhatsAppAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await messaging.DidNotReceive().SendEmailAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     // ---------------------------------------------------------- 5.1.1(v) doğum tarihi yok

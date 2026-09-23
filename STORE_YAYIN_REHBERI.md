@@ -223,10 +223,11 @@ NOTES
 - The staff/business-owner verification code is displayed on the verification screen after the
   correct username and password are entered. The review-only shortcut is restricted to the exact
   configured owner e-mail, InstitutionOwner role and demo tenant UUID.
-- The verification code can be delivered by SMS, e-mail or WhatsApp; the user
-  chooses the channel on the sign-in screen. WhatsApp is optional, never required.
-- For the demo client account above, the code is fixed (424242) because the
-  reviewer cannot receive real messages. Enter it directly in the code field.
+- Client verification codes are sent by E-MAIL ONLY. SMS and WhatsApp are not
+  used. Sign-in: the code goes to the e-mail on the client record. Sign-up: one
+  step, the code goes to the e-mail address entered (any phone number, any country).
+- For the demo client phone above NO message is sent by any channel; the code is
+  fixed (424242). Enter it directly in the code field. On sign-up any e-mail works.
 - Date of birth is no longer requested at sign-in. It is optional at sign-up.
 ```
 
