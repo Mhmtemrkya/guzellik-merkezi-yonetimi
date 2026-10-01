@@ -1,5 +1,6 @@
 import { apiRequest } from '@/lib/apiClient'
 import type { AuthSession } from '@/lib/types'
+import { BILLING_ENABLED } from '@/lib/billing'
 
 /**
  * GİRİŞ SONRASI YÖNLENDİRME KAPISI — kurumun panele girme hakkı var mı?
@@ -58,7 +59,8 @@ export async function tenantHasPanelAccess(session: AuthSession): Promise<boolea
     const status = (summary?.status || '').toLowerCase()
 
     if (status === 'cancelled' || status === 'suspended') return false
-    if (status === 'trial') return !isPast(summary?.trialEndsAtUtc, now)
+    // Satış kapalıyken deneme süresi bir kapı değildir (backend `Billing:FreeMode` ile aynı).
+    if (status === 'trial') return !BILLING_ENABLED || !isPast(summary?.trialEndsAtUtc, now)
     if (status === 'active') return !isPast(summary?.subscriptionEndsAtUtc, now)
 
     // Tanınmayan durum: karar verilemiyor → panele. Backend kapısı zaten koruyor.

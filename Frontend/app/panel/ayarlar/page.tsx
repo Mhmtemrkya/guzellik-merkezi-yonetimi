@@ -29,6 +29,7 @@ import type {
   ApiAdisyon, ApiAuditLog, ApiBranch, ApiCustomerAccount, ApiAppointment, ApiService, ApiServicePackage,
   ApiStaff, ApiSubscriptionPlan, ApiTenant, ApiTenantUsage, PagedResult, Service, Staff, SubscriptionPlan, Tenant,
 } from '@/lib/types'
+import { BILLING_ENABLED } from '@/lib/billing'
 
 interface SettingsBranch {
   id: string
@@ -464,38 +465,40 @@ export default function AyarlarPage() {
           </motion.div>
         </section>
 
-        {/* MEVCUT PAKET + KULLANIM */}
-        <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.26 }}
-          className="overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/92 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
-          <div className="grid gap-0 lg:grid-cols-[.65fr_1fr]">
-            <div className="border-b border-[#EAD8DF] p-6 lg:border-b-0 lg:border-r">
-              <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.28em] text-[#A5556E]/75"><Package className="h-4 w-4" /> Mevcut Paket</div>
-              <h3 className="mt-3 font-display text-3xl tracking-tight">{usage.planName || 'Atanmamış'}</h3>
-              {currentPlan?.description && <p className="mt-1 line-clamp-2 text-[12px] text-[#5A4B53]">{currentPlan.description}</p>}
-              <div className="mt-4 font-display text-4xl tabular-nums beautyasist-text-gradient">{usage.planMonthlyPriceTRY === 0 ? 'Özel' : formatTL(usage.planMonthlyPriceTRY)}</div>
-              <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#74616A]">aylık</div>
-              {(usage.hasOverflow || usage.hasWarning) && (
-                <div className={`mt-5 flex items-start gap-2 rounded-[12px] border px-3 py-2.5 text-[11px] ${usage.hasOverflow ? 'border-rose-300/30 bg-rose-50 text-rose-700' : 'border-amber-300/30 bg-amber-50 text-amber-700'}`}>
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <div>{usage.hasOverflow ? 'Bazı metrikler paket limitlerini aşıyor — yükseltme önerilir.' : 'Bazı metrikler sınıra yaklaşıyor (%80+).'}</div>
+        {/* MEVCUT PAKET + KULLANIM — satış kapalıyken gizli (bkz. lib/billing.ts). */}
+        {BILLING_ENABLED && (
+          <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.26 }}
+            className="overflow-hidden rounded-[22px] border border-[#EAD8DF] bg-white/92 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
+            <div className="grid gap-0 lg:grid-cols-[.65fr_1fr]">
+              <div className="border-b border-[#EAD8DF] p-6 lg:border-b-0 lg:border-r">
+                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.28em] text-[#A5556E]/75"><Package className="h-4 w-4" /> Mevcut Paket</div>
+                <h3 className="mt-3 font-display text-3xl tracking-tight">{usage.planName || 'Atanmamış'}</h3>
+                {currentPlan?.description && <p className="mt-1 line-clamp-2 text-[12px] text-[#5A4B53]">{currentPlan.description}</p>}
+                <div className="mt-4 font-display text-4xl tabular-nums beautyasist-text-gradient">{usage.planMonthlyPriceTRY === 0 ? 'Özel' : formatTL(usage.planMonthlyPriceTRY)}</div>
+                <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#74616A]">aylık</div>
+                {(usage.hasOverflow || usage.hasWarning) && (
+                  <div className={`mt-5 flex items-start gap-2 rounded-[12px] border px-3 py-2.5 text-[11px] ${usage.hasOverflow ? 'border-rose-300/30 bg-rose-50 text-rose-700' : 'border-amber-300/30 bg-amber-50 text-amber-700'}`}>
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <div>{usage.hasOverflow ? 'Bazı metrikler paket limitlerini aşıyor — yükseltme önerilir.' : 'Bazı metrikler sınıra yaklaşıyor (%80+).'}</div>
+                  </div>
+                )}
+                <Link href="/panel/paket" className="group mt-5 inline-flex items-center gap-2 rounded-[10px] border border-[#BE7690]/75 bg-[#F6DFE6] px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-[#A5556E] transition-colors hover:bg-[#F6DFE6]">
+                  Paket detayı & yükselt <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                </Link>
+              </div>
+              <div className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#74616A]"><Sparkles className="h-3.5 w-3.5" /> Kullanım</div>
+                  <div className={`font-display text-lg tabular-nums ${usage.hasOverflow ? 'text-rose-700' : usage.hasWarning ? 'text-amber-700' : 'text-[#A5556E]'}`}>%{usage.maxPercent}</div>
                 </div>
-              )}
-              <Link href="/panel/paket" className="group mt-5 inline-flex items-center gap-2 rounded-[10px] border border-[#BE7690]/75 bg-[#F6DFE6] px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-[#A5556E] transition-colors hover:bg-[#F6DFE6]">
-                Paket detayı & yükselt <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-              </Link>
-            </div>
-            <div className="p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#74616A]"><Sparkles className="h-3.5 w-3.5" /> Kullanım</div>
-                <div className={`font-display text-lg tabular-nums ${usage.hasOverflow ? 'text-rose-700' : usage.hasWarning ? 'text-amber-700' : 'text-[#A5556E]'}`}>%{usage.maxPercent}</div>
-              </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {usage.metrics.map((m) => <UsageBar key={m.key} metric={m} icon={metricIcons[m.key]} />)}
-                {!usage.metrics.length && <div className="col-span-2 text-[11px] text-[#74616A]">Kullanım verisi alınamadı.</div>}
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  {usage.metrics.map((m) => <UsageBar key={m.key} metric={m} icon={metricIcons[m.key]} />)}
+                  {!usage.metrics.length && <div className="col-span-2 text-[11px] text-[#74616A]">Kullanım verisi alınamadı.</div>}
+                </div>
               </div>
             </div>
-          </div>
-        </motion.section>
+          </motion.section>
+        )}
 
         {/* ŞUBELER */}
         <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.3 }}

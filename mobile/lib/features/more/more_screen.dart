@@ -10,6 +10,7 @@ import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../../core/notifications/notification_service.dart';
 import '../notifications/notification_settings_sheet.dart';
+import '../../core/billing.dart';
 
 class MoreScreen extends StatefulWidget {
   const MoreScreen({required this.auth, required this.notifications, super.key});
@@ -266,11 +267,13 @@ class _MoreScreenState extends State<MoreScreen> {
             ),
             if (!user.isStaff)
               const _Module('Ayarlar', Icons.settings_rounded, '/settings'),
-            const _Module(
-              'Paketim',
-              Icons.workspace_premium_rounded,
-              '/paket',
-            ),
+            // Satış kapalıyken gizli (bkz. core/billing.dart).
+            if (kBillingEnabled)
+              const _Module(
+                'Paketim',
+                Icons.workspace_premium_rounded,
+                '/paket',
+              ),
             const _Module('Profilim', Icons.account_circle_rounded, '/profile'),
           ];
     final allowed = modules

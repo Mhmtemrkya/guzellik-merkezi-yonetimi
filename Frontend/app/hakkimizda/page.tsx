@@ -3,6 +3,7 @@ import Link from 'next/link'
 import LegalPage, { LegalFacts, LegalList, LegalSection, MailLink } from '@/components/legal/LegalPage'
 import PaymentBadges from '@/components/legal/PaymentBadges'
 import { company } from '@/lib/legal/company'
+import { BILLING_ENABLED } from '@/lib/billing'
 
 export const metadata: Metadata = {
   title: 'Hakkımızda — BeautyAsist',
@@ -63,27 +64,30 @@ export default function HakkimizdaPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="Nasıl satın alınır?">
-        <p>
-          {company.brand} bir <strong>abonelik (SaaS)</strong> hizmetidir; kutulu ürün veya fiziksel
-          teslimat yoktur. Hesabınızı açtıktan sonra <strong>14 gün ücretsiz</strong> deneyebilir,
-          memnun kalırsanız panel içindeki “Paket” ekranından kredi/banka kartıyla aboneliğinizi
-          başlatabilirsiniz. Ödeme adımı {company.paymentProvider} tarafından barındırılan güvenli
-          ödeme sayfasında tamamlanır; kart bilgileri hiçbir aşamada sunucularımıza gelmez.
-        </p>
-        <p>
-          Satın alma koşullarının tamamı{' '}
-          <Link href="/mesafeli-satis-sozlesmesi" className="font-medium text-[#EF6F94] underline underline-offset-2">
-            Mesafeli Satış Sözleşmesi
-          </Link>{' '}
-          ve{' '}
-          <Link href="/teslimat-ve-iade" className="font-medium text-[#EF6F94] underline underline-offset-2">
-            Teslimat ve İade Şartları
-          </Link>{' '}
-          sayfalarındadır.
-        </p>
-        <PaymentBadges className="mt-4" />
-      </LegalSection>
+      {/* Satış kapalıyken satın alma bölümü gösterilmez (bkz. lib/billing.ts). */}
+      {BILLING_ENABLED && (
+        <LegalSection title="Nasıl satın alınır?">
+          <p>
+            {company.brand} bir <strong>abonelik (SaaS)</strong> hizmetidir; kutulu ürün veya fiziksel
+            teslimat yoktur. Hesabınızı açtıktan sonra <strong>14 gün ücretsiz</strong> deneyebilir,
+            memnun kalırsanız panel içindeki “Paket” ekranından kredi/banka kartıyla aboneliğinizi
+            başlatabilirsiniz. Ödeme adımı {company.paymentProvider} tarafından barındırılan güvenli
+            ödeme sayfasında tamamlanır; kart bilgileri hiçbir aşamada sunucularımıza gelmez.
+          </p>
+          <p>
+            Satın alma koşullarının tamamı{' '}
+            <Link href="/mesafeli-satis-sozlesmesi" className="font-medium text-[#EF6F94] underline underline-offset-2">
+              Mesafeli Satış Sözleşmesi
+            </Link>{' '}
+            ve{' '}
+            <Link href="/teslimat-ve-iade" className="font-medium text-[#EF6F94] underline underline-offset-2">
+              Teslimat ve İade Şartları
+            </Link>{' '}
+            sayfalarındadır.
+          </p>
+          <PaymentBadges className="mt-4" />
+        </LegalSection>
+      )}
 
       <LegalSection title="İletişim ve künye">
         <LegalFacts

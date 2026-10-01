@@ -12,6 +12,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // yol açıyordu — sahte fonksiyon doğrudan dışa verilir.
 const { apiRequest } = vi.hoisted(() => ({ apiRequest: vi.fn() }))
 vi.mock('@/lib/apiClient', () => ({ apiRequest }))
+// Satış bayrağı test başına çevrilir; getter, modülün her okumada güncel değeri görmesini sağlar.
+const billing = vi.hoisted(() => ({ enabled: true }))
+vi.mock('@/lib/billing', () => ({ get BILLING_ENABLED() { return billing.enabled } }))
 
 import { tenantHasPanelAccess } from './subscriptionGate'
 
@@ -33,7 +36,10 @@ function oturum(overrides: Record<string, unknown> = {}) {
   } as never
 }
 
-beforeEach(() => apiRequest.mockReset())
+beforeEach(() => {
+  apiRequest.mockReset()
+  billing.enabled = true
+})
 
 describe('tenantHasPanelAccess', () => {
   it('süresi dolmamış abonelik panele girer', async () => {
@@ -53,6 +59,18 @@ describe('tenantHasPanelAccess', () => {
 
   it('bitmiş deneme panele giremez', async () => {
     apiRequest.mockResolvedValue({ status: 'Trial', trialEndsAtUtc: GECMIS })
+    expect(await tenantHasPanelAccess(oturum())).toBe(false)
+  })
+
+  it('satış KAPALIYKEN bitmiş deneme de panele girer (backend Billing:FreeMode ile aynı)', async () => {
+    billing.enabled = false
+    apiRequest.mockResolvedValue({ status: 'Trial', trialEndsAtUtc: GECMIS })
+    expect(await tenantHasPanelAccess(oturum())).toBe(true)
+  })
+
+  it('satış kapalıyken de askıya alınmış kurum panele giremez', async () => {
+    billing.enabled = false
+    apiRequest.mockResolvedValue({ status: 'Suspended' })
     expect(await tenantHasPanelAccess(oturum())).toBe(false)
   })
 

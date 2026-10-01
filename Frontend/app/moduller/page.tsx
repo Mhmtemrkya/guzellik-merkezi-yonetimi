@@ -1,3 +1,4 @@
+import { BILLING_ENABLED, SIGNUP_CTA } from '@/lib/billing'
 import type { Metadata } from 'next'
 import Nav from '@/components/landing/apple/Nav'
 import Reveal from '@/components/landing/Reveal'
@@ -216,11 +217,13 @@ export default function ModulesPage() {
 
                 <div className="mt-8 flex flex-wrap justify-center gap-3">
                   <PressButton href="/kayit" tone="primary" className="px-6 py-3 text-[14.5px] font-medium">
-                    14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
+                    {SIGNUP_CTA} <ArrowRight className="h-4 w-4" />
                   </PressButton>
-                  <PressButton href="/#fiyat" tone="glass-light" className="border border-[#EEC9D7] px-6 py-3 text-[14.5px]">
-                    Fiyatlandırmayı görün
-                  </PressButton>
+                  {BILLING_ENABLED && (
+                    <PressButton href="/#fiyat" tone="glass-light" className="border border-[#EEC9D7] px-6 py-3 text-[14.5px]">
+                      Fiyatlandırmayı görün
+                    </PressButton>
+                  )}
                 </div>
               </div>
             </Reveal>
@@ -339,7 +342,7 @@ export default function ModulesPage() {
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-3">
                   <PressButton href="/kayit" tone="primary" className="px-6 py-3 text-[14.5px] font-medium">
-                    14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
+                    {SIGNUP_CTA} <ArrowRight className="h-4 w-4" />
                   </PressButton>
                   <PressButton href="/" tone="glass-light" className="border border-[#EEC9D7] px-6 py-3 text-[14.5px]">
                     Tanıtıma dön

@@ -28,6 +28,7 @@ import {
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { generateCredentialsPdf } from '@/lib/credentialsPdf'
 import { company } from '@/lib/legal/company'
+import { BILLING_ENABLED } from '@/lib/billing'
 import {
   SignupError,
   getSignupReadiness,
@@ -42,7 +43,7 @@ import {
 } from '@/lib/tenantSignupApi'
 
 /*
- * SELF-SERVİS KURUM KAYDI — 14 gün ücretsiz deneme.
+ * SELF-SERVİS KURUM KAYDI — satış kapalıyken süresiz ücretsiz, açıkken 14 gün deneme (bkz. lib/billing.ts).
  *
  * Akış İKİ ya da ÜÇ adım + sonuç ekranıdır. Adımlar bilinçli olarak AYRI ekranlar: tek uzun
  * formda doğrulama kodu alanları da görünür olurdu ve kullanıcı hangi kodun nereye geldiğini
@@ -514,13 +515,13 @@ export default function TenantSignupPage() {
               <span>
                 <span className="block font-display text-2xl tracking-[-0.02em] text-[#3a1f2c]">BeautyAsist</span>
                 <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-[0.24em] text-[#c85776]/80">
-                  Ücretsiz Deneme
+                  {BILLING_ENABLED ? 'Ücretsiz Deneme' : 'Ücretsiz Kayıt'}
                 </span>
               </span>
             </Link>
 
             <h1 className="mt-12 font-display text-5xl leading-[1.02] tracking-tight text-[#3a1f2c] xl:text-6xl">
-              14 gün ücretsiz,
+              {BILLING_ENABLED ? '14 gün ücretsiz,' : 'Tamamen ücretsiz,'}
               <br />
               <span className="beautyasist-text-gradient italic">kartsız.</span>
             </h1>
@@ -594,8 +595,8 @@ export default function TenantSignupPage() {
                 </div>
                 <h2 className="mt-5 font-display text-[26px] text-[#2f1724]">Online kayıt geçici olarak kapalı</h2>
                 <p className="mx-auto mt-3 max-w-sm text-[13px] leading-relaxed text-[#352432]/[0.60]">
-                  Hesabınızı sizin için biz açalım. Bize ulaşın, aynı gün içinde 14 günlük denemenizi
-                  başlatalım.
+                  Hesabınızı sizin için biz açalım. Bize ulaşın, aynı gün içinde
+                  {BILLING_ENABLED ? ' 14 günlük denemenizi başlatalım.' : ' hesabınızı ücretsiz açalım.'}
                 </p>
                 {/*
                   ÇIKIŞSIZ BIRAKMA: kayıt kapalıyken "ana sayfaya dön" demek, ilgilenen bir
@@ -603,7 +604,7 @@ export default function TenantSignupPage() {
                 */}
                 <div className="mx-auto mt-6 flex max-w-sm flex-col gap-2.5">
                   <a
-                    href={`mailto:${company.email}?subject=${encodeURIComponent('BeautyAsist deneme hesabı talebi')}`}
+                    href={`mailto:${company.email}?subject=${encodeURIComponent(BILLING_ENABLED ? 'BeautyAsist deneme hesabı talebi' : 'BeautyAsist hesap açma talebi')}`}
                     className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#e798b4] via-[#d4789a] to-[#b75a7e] px-6 py-3.5 text-[13px] font-semibold text-white"
                   >
                     <Mail className="h-4 w-4" /> {company.email}
@@ -821,7 +822,9 @@ export default function TenantSignupPage() {
                       </motion.div>
                       <h2 className="mt-5 font-display text-[30px] leading-tight text-[#2f1724] sm:text-[36px]">Hesabınız hazır</h2>
                       <p className="mt-2 text-[13px] text-[#352432]/[0.55]">
-                        {result.credentials.tenantName} · 14 günlük ücretsiz denemeniz başladı
+                        {result.credentials.tenantName} · {BILLING_ENABLED && result.tenant.trialEndsAtUtc
+                          ? '14 günlük ücretsiz denemeniz başladı'
+                          : 'ücretsiz kullanmaya başlayabilirsiniz'}
                       </p>
                     </div>
 
@@ -870,10 +873,14 @@ export default function TenantSignupPage() {
                       </button>
                     </div>
 
-                    <div className="mt-5 flex items-center justify-center gap-2 text-[11.5px] text-[#352432]/[0.50]">
-                      <CalendarClock className="h-3.5 w-3.5 text-[#c85776]/70" />
-                      Denemeniz {new Date(result.tenant.trialEndsAtUtc || Date.now()).toLocaleDateString('tr-TR')} tarihinde biter
-                    </div>
+                    {/* Bitiş tarihi YALNIZ gerçekten varsa: ücretsiz modda kurum süresizdir ve
+                        eski `|| Date.now()` yedeği "bugün biter" yazıyordu. */}
+                    {BILLING_ENABLED && result.tenant.trialEndsAtUtc && (
+                      <div className="mt-5 flex items-center justify-center gap-2 text-[11.5px] text-[#352432]/[0.50]">
+                        <CalendarClock className="h-3.5 w-3.5 text-[#c85776]/70" />
+                        Denemeniz {new Date(result.tenant.trialEndsAtUtc).toLocaleDateString('tr-TR')} tarihinde biter
+                      </div>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>

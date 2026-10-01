@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { ArrowRight, ChevronDown } from 'lucide-react'
 import PressButton from './PressButton'
 import { SPRING_ENTER } from './springs'
+import { SIGNUP_CTA } from '@/lib/billing'
 
 /**
  * AÇILIŞ — yolculuğun ilk karesi.
@@ -66,7 +67,7 @@ export default function Hero() {
           className="mt-10 flex flex-wrap items-center justify-center gap-3"
         >
           <PressButton href="/kayit" tone="primary" className="px-7 py-3.5 text-[15px] font-medium">
-            14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
+            {SIGNUP_CTA} <ArrowRight className="h-4 w-4" />
           </PressButton>
           <PressButton href="#bir-gun" tone="glass-dark" className="px-7 py-3.5 text-[15px]">
             Bir günü izleyin <ChevronDown className="h-4 w-4" />

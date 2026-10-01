@@ -27,6 +27,9 @@ public sealed class AuthService : IAuthService
     private readonly Application.Features.AppNotifications.IAppNotificationService _notifications;
     private readonly ISearchIndexService _search;
 
+    /// <summary>Ücretsiz kullanım modu (bkz. <see cref="BillingMode"/>): deneme süresi dolsa da kurum askıya alınmaz.</summary>
+    private readonly bool _freeMode;
+
     public AuthService(
         GuzellikDbContext db,
         IPasswordHasher passwordHasher,
@@ -36,8 +39,10 @@ public sealed class AuthService : IAuthService
         ICurrentUser currentUser,
         Application.Features.Features.IFeatureService features,
         Application.Features.AppNotifications.IAppNotificationService notifications,
-        ISearchIndexService search)
+        ISearchIndexService search,
+        Microsoft.Extensions.Configuration.IConfiguration? configuration = null)
     {
+        _freeMode = BillingMode.IsFree(configuration);
         _db = db;
         _passwordHasher = passwordHasher;
         _tokenService = tokenService;
@@ -546,7 +551,7 @@ public sealed class AuthService : IAuthService
 
         if (tenant.Status == TenantStatus.Trial)
         {
-            if (tenant.IsTrialExpired(now))
+            if (!_freeMode && tenant.IsTrialExpired(now))
             {
                 tenant.Suspend();
                 await _db.SaveChangesAsync(cancellationToken);

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import PaymentBadges, { LegalLinkRow } from '@/components/legal/PaymentBadges'
 import { legalLinks } from '@/lib/legal/company'
+import { BILLING_ENABLED, SIGNUP_CTA } from '@/lib/billing'
 
 /** Paket kataloğu ISR ile tazelenir: platformda plan güncellenince tanıtım sayfası da güncellenir. */
 export const revalidate = 300
@@ -117,7 +118,8 @@ const testimonials = [
 export default async function LandingPage() {
   // Fiyat bölümü platformdaki GERÇEK paketlerden beslenir; backend kapalıysa null döner ve
   // sayfa fiyatsız "teklif iste" akışına düşer (bkz. Pricing).
-  const plans = await fetchPublicPlans()
+  // Satış kapalıyken (bkz. lib/billing.ts) fiyat bölümü hiç çizilmez; katalog da çekilmez.
+  const plans = BILLING_ENABLED ? await fetchPublicPlans() : null
 
   return (
     <div className="relative min-h-screen overflow-x-clip bg-[#140A11] text-[#352432] antialiased">
@@ -139,7 +141,7 @@ export default async function LandingPage() {
           <ProductStage />
           <Modules />
           <Steps />
-          <Pricing plans={plans} />
+          {BILLING_ENABLED && <Pricing plans={plans} />}
         </SilkStage>
 
         <Voices />
@@ -611,13 +613,15 @@ function FinalCta() {
           <div className="material-dark material-thick mx-auto max-w-[760px] rounded-[28px] p-9 text-center sm:p-12">
             <h2 className="display-lg balance mx-auto max-w-[20ch] text-white">Yarın sabah, gün yine hazır olsun.</h2>
             <p className="on-material balance mx-auto mt-5 max-w-[50ch] text-[16.5px] leading-relaxed text-white">
-              Kartsız, 14 gün ücretsiz deneyin; farkı ilk günden görün. Mevcut danışan ve paket
-              kayıtlarınızı biz aktarıyoruz.
+              {BILLING_ENABLED
+                ? 'Kartsız, 14 gün ücretsiz deneyin; farkı ilk günden görün.'
+                : 'Kayıt olun, hemen ücretsiz kullanmaya başlayın; farkı ilk günden görün.'}{' '}
+              Mevcut danışan ve paket kayıtlarınızı biz aktarıyoruz.
             </p>
 
             <div className="mt-10 flex flex-wrap justify-center gap-3">
               <PressButton href="/kayit" tone="primary" className="px-7 py-3.5 text-[15px] font-medium">
-                14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
+                {SIGNUP_CTA} <ArrowRight className="h-4 w-4" />
               </PressButton>
               <PressButton
                 href="/salonlar"
@@ -629,7 +633,7 @@ function FinalCta() {
             </div>
 
             <ul className="mt-9 flex flex-wrap justify-center gap-x-7 gap-y-2.5 border-t border-white/20 pt-7">
-              {['14 gün ücretsiz deneme', 'Kurulum ve eğitim dahil', 'Kredi kartı gerektirmez'].map((t) => (
+              {[BILLING_ENABLED ? '14 gün ücretsiz deneme' : 'Ücretsiz kullanım', 'Kurulum ve eğitim dahil', 'Kredi kartı gerektirmez'].map((t) => (
                 <li key={t} className="flex items-center gap-2 text-[13.5px] text-white">
                   <Check className="h-4 w-4 shrink-0 text-[#FFB6CC]" strokeWidth={2.4} />
                   {t}
@@ -647,7 +651,7 @@ function SiteFooter() {
   // YASAL SÜTUN ZORUNLU: ödeme kuruluşu (iyzico) üye iş yeri incelemesinde hakkımızda,
   // mesafeli satış, teslimat/iade ve gizlilik metinlerinin siteden ulaşılabilir olmasını arar.
   const columns = [
-    { title: 'Ürün', links: [['#bir-gun', 'Bir gün'], ['#tur', 'Ürün turu'], ['/moduller', 'Modüller'], ['#nasil', 'Nasıl çalışır'], ['#fiyat', 'Fiyatlandırma']] },
+    { title: 'Ürün', links: [['#bir-gun', 'Bir gün'], ['#tur', 'Ürün turu'], ['/moduller', 'Modüller'], ['#nasil', 'Nasıl çalışır'], ...(BILLING_ENABLED ? [['#fiyat', 'Fiyatlandırma']] : [])] },
     { title: 'Danışanlar', links: [['/salonlar', 'Salonları keşfet'], ['/salonlar', 'Randevu al'], ['/randevu', 'Randevularım']] },
     // "Hakkımızda" YASAL sütununda duruyor (kriterler listesinde sözleşmelerle birlikte aranır).
     { title: 'Kurumsal', links: [['#referans', 'Referanslar'], ['/login', 'Giriş yap']] },
@@ -670,14 +674,16 @@ function SiteFooter() {
         <Reveal>
           <div className="material-light flex flex-col items-start justify-between gap-6 rounded-[22px] p-6 sm:p-8 lg:flex-row lg:items-center">
             <div>
-              <h2 className="display-md text-[#352432]">Merkezinizi 14 gün ücretsiz deneyin.</h2>
+              <h2 className="display-md text-[#352432]">
+                {BILLING_ENABLED ? 'Merkezinizi 14 gün ücretsiz deneyin.' : 'Merkezinizi ücretsiz yönetin.'}
+              </h2>
               <p className="on-material mt-2 max-w-[52ch] text-[14px] leading-relaxed text-[#4A3A44]">
                 Kurulum, veri aktarımı ve eğitim bizde. Kredi kartı gerekmez.
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap gap-3">
               <PressButton href="/kayit" tone="primary" className="px-6 py-3 text-[14.5px] font-medium">
-                14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
+                {SIGNUP_CTA} <ArrowRight className="h-4 w-4" />
               </PressButton>
               <PressButton href="/salonlar" tone="glass-light" className="border border-[#EEC9D7] px-6 py-3 text-[14.5px]">
                 Salonları görün

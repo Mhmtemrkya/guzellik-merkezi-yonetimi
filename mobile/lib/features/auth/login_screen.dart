@@ -8,6 +8,7 @@ import '../../core/auth/auth_controller.dart';
 import '../../core/auth/otp_message.dart';
 import '../../core/network/api_config.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/billing.dart';
 
 /// Giriş modu: personel/yönetici (e-posta + şifre) veya müşteri (ad soyad + telefon + doğrulama kodu).
 enum LoginMode { staff, customer }
@@ -653,7 +654,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 child: TextButton.icon(
                                   onPressed: loading ? null : _openTenantSignup,
                                   icon: const Icon(Icons.storefront_rounded, size: 18),
-                                  label: const Text('İşletmenizi kaydedin — 14 gün ücretsiz'),
+                                  label: const Text(kBillingEnabled
+                                      ? 'İşletmenizi kaydedin — 14 gün ücretsiz'
+                                      : 'İşletmenizi ücretsiz kaydedin'),
                                 ),
                               ),
                             ],

@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { redirect } from 'next/navigation'
+import { BILLING_ENABLED } from '@/lib/billing'
 import { fetchPublicPlans } from '@/lib/landingPlans'
 import CheckoutClient from '@/components/checkout/CheckoutClient'
 
@@ -22,6 +24,9 @@ export const revalidate = 300
  * hiçbir fiyat ödemeye esas alınmaz.
  */
 export default async function CheckoutPage() {
+  // Satış kapalı (bkz. lib/billing.ts): eski bir bağlantı ya da yer imiyle gelen ziyaretçi
+  // ödeme yerine ücretsiz kayda gider.
+  if (!BILLING_ENABLED) redirect('/kayit')
   const plans = await fetchPublicPlans()
   return <CheckoutClient plans={plans} />
 }

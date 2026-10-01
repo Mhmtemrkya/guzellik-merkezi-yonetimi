@@ -22,6 +22,7 @@ import '../customers/passive_customers_sheet.dart';
 import '../import/import_sheet.dart';
 import '../../shared/widgets/status_badge.dart';
 import '../notifications/notification_inbox_screen.dart';
+import '../../core/billing.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
@@ -296,7 +297,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         periodLabel: _period.label(),
                         trailing: heroTrailing,
                       ),
-                    if (data.tenant != null) ...[
+                    // Deneme/abonelik bandı satış kapalıyken gizli (bkz. core/billing.dart).
+                    if (kBillingEnabled && data.tenant != null) ...[
                       const SizedBox(height: 14),
                       _TrialBanner(tenant: data.tenant!),
                     ],

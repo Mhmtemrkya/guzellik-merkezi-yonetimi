@@ -8,6 +8,7 @@ import {
   Loader2, Mail, Phone, Rocket, Ticket, UserCog, type LucideIcon,
 } from 'lucide-react'
 import { createSupportTicket, type SupportCategory, type SupportTicketCreated } from '@/lib/supportApi'
+import { BILLING_ENABLED } from '@/lib/billing'
 
 /**
  * DESTEK FORMU — tanıtım sayfasındaki `/destek` sayfasının kalbi.
@@ -40,7 +41,7 @@ interface CategoryOption {
 }
 
 /** Kullanıcının kendi dilinde — "Bug"/"Onboarding" değil, ne yaşadığı. */
-const CATEGORIES: CategoryOption[] = [
+const ALL_CATEGORIES: CategoryOption[] = [
   { key: 1, label: 'Bir şey çalışmıyor', hint: 'Hata alıyorum, sayfa açılmıyor, kayıt gitmiyor.', icon: Bug },
   { key: 2, label: 'Fatura & abonelik', hint: 'Ödeme, paket yükseltme, fatura sorusu.', icon: CreditCard },
   { key: 4, label: 'Hesap & yetki', hint: 'Giriş yapamıyorum, personel yetkisi, şifre.', icon: UserCog },
@@ -48,6 +49,9 @@ const CATEGORIES: CategoryOption[] = [
   { key: 3, label: 'Özellik isteği', hint: 'Şu olsa çok iyi olurdu…', icon: Lightbulb },
   { key: 0, label: 'Genel soru', hint: 'Diğer her şey.', icon: HelpCircle },
 ]
+
+// Satış kapalıyken fatura/abonelik konusu yok (bkz. lib/billing.ts).
+const CATEGORIES = ALL_CATEGORIES.filter((c) => BILLING_ENABLED || c.key !== 2)
 
 const fade: Variants = {
   hidden: { opacity: 0, y: 12 },

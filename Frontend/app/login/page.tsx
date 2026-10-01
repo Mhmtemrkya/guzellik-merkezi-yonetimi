@@ -27,6 +27,7 @@ import ForgotPasswordDialog from '@/components/auth/ForgotPasswordDialog'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import type { AuthSession, Branch, Institution, UserRole } from '@/lib/types'
+import { BILLING_ENABLED } from '@/lib/billing'
 
 function tenantStatusLabel(status: string | null | undefined): string {
   const key = String(status || '').toLowerCase()
@@ -104,7 +105,7 @@ const roleMetas: RoleMeta[] = [
  * Platform yöneticisinin aboneliği yoktur, kapı ona da sorulmaz.
  */
 async function destinationAfterLogin(session: AuthSession | null, roleHref: string): Promise<string> {
-  if (hasPendingCart()) return '/'
+  if (BILLING_ENABLED && hasPendingCart()) return '/'
   if (!session || session.user?.role !== 'InstitutionOwner') return roleHref
   return (await tenantHasPanelAccess(session)) ? roleHref : '/'
 }

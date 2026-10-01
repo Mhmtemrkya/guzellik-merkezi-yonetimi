@@ -72,7 +72,7 @@ public sealed class TenantSignupTests
     /// </param>
     private static TenantSignupService NewService(
         GuzellikDbContext db, IPlatformMessagingService messaging, IOtpStateStore? store = null,
-        string? trialPlanKey = null, bool requirePhoneVerification = true) =>
+        string? trialPlanKey = null, bool requirePhoneVerification = true, bool freeMode = false) =>
         new(db,
             store ?? new GuzellikMerkezi.Infrastructure.Services.MemoryOtpStateStore(new MemoryCache(new MemoryCacheOptions())),
             messaging,
@@ -86,6 +86,8 @@ public sealed class TenantSignupTests
             {
                 ["TenantSignup:TrialPlanKey"] = trialPlanKey,
                 ["TenantSignup:RequirePhoneVerification"] = requirePhoneVerification ? "true" : "false",
+                // Varsayılan testler SATIŞ AÇIK yolunu (deneme sayacı) doğrular; ücretsiz mod ayrıca test edilir.
+                [BillingMode.ConfigKey] = freeMode ? "true" : "false",
             }).Build(),
             NullLogger<TenantSignupService>.Instance);
 
@@ -195,6 +197,46 @@ public sealed class TenantSignupTests
         Assert.Single(tenant.Branches);
         Assert.Single(tenant.Users);
         Assert.Equal(UserRole.InstitutionOwner, tenant.Users.First().Role);
+    }
+
+    /// <summary>
+    /// ÜCRETSİZ MOD (<c>Billing:FreeMode</c>): kurum denemesiz, bitiş tarihsiz AKTİF açılır —
+    /// hiçbir kapının (giriş, middleware, arka plan) askıya alacağı bir tarih yoktur.
+    /// </summary>
+    [Fact]
+    public async Task FreeMode_KurumSuresizAktifAcilir()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        var messaging = NewMessaging(whatsApp: false, sms: false);
+
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, requirePhoneVerification: false, freeMode: true);
+
+        var start = await service.StartAsync(Form());
+        Assert.True(start.IsSuccess);
+        var step2 = await service.VerifyEmailAsync(
+            new TenantSignupVerifyEmailRequest(start.Value!.SignupId, CodeFromEmail(messaging)));
+        Assert.True(step2.IsSuccess);
+
+        var done = step2.Value!.Completed!;
+        Assert.Equal(TenantStatus.Active, done.Tenant.Status);
+
+        await using var verify = NewDb(options);
+        var tenant = await verify.Tenants.IgnoreQueryFilters().SingleAsync();
+        Assert.Null(tenant.TrialEndsAtUtc);
+        Assert.Null(tenant.SubscriptionEndsAtUtc);
+        Assert.NotNull(tenant.SubscriptionPlanId); // özellikler yine paket üzerinden açılır
+        Assert.False(tenant.IsSubscriptionExpired(DateTime.UtcNow.AddYears(5)));
+    }
+
+    [Fact]
+    public void BillingMode_AyarYoksaUcretsizSayilir()
+    {
+        Assert.True(BillingMode.IsFree(null));
+        Assert.True(BillingMode.IsFree(new ConfigurationBuilder().Build()));
+        Assert.False(BillingMode.IsFree(new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { [BillingMode.ConfigKey] = "false" }).Build()));
     }
 
     // ------------------------------------------------ telefon adımı KAPALI (canlı varsayılan)

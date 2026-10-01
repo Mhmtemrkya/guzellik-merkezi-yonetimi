@@ -10,6 +10,7 @@ import { useAuth } from '@/components/dashboard/AuthContext'
 import PressButton from './PressButton'
 import NavAccount from './NavAccount'
 import { SPRING_MOVE, SPRING_SHEET } from './springs'
+import { BILLING_ENABLED } from '@/lib/billing'
 
 /**
  * ÜST ÇUBUK — videonun üstünde YÜZEN BEYAZ YÜZEY.
@@ -42,7 +43,8 @@ const LINKS: { href: string; label: string; page?: string }[] = [
   { href: '/#tur', label: 'Ürün turu' },
   { href: '/moduller', label: 'Modüller', page: '/moduller' },
   { href: '/#nasil', label: 'Nasıl çalışır' },
-  { href: '/#fiyat', label: 'Fiyatlandırma' },
+  // Satış kapalıyken fiyat bölümü yok (bkz. lib/billing.ts); ölü çapa bırakılmaz.
+  ...(BILLING_ENABLED ? [{ href: '/#fiyat', label: 'Fiyatlandırma' }] : []),
   { href: '/destek', label: 'Destek', page: '/destek' },
 ]
 

@@ -2,6 +2,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { Lock } from 'lucide-react'
 import { company, legalLinks } from '@/lib/legal/company'
+import { BILLING_ENABLED } from '@/lib/billing'
 
 /**
  * ÖDEME ALTYAPISI ŞERİDİ — iyzico'nun kendi footer bandı.
@@ -27,6 +28,8 @@ export default function PaymentBadges({
   className?: string
   showNote?: boolean
 }) {
+  // Satış kapalıyken ödeme rozeti gösterilmez (bkz. lib/billing.ts).
+  if (!BILLING_ENABLED) return null
   const src = variant === 'white' ? '/payment/iyzico-band-white.svg' : '/payment/iyzico-band.svg'
   return (
     <div className={`flex flex-col gap-2 ${className}`}>

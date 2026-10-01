@@ -11,6 +11,7 @@ import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../account/account_deletion.dart';
 import '../appointments/calendar_theme.dart';
+import '../../core/billing.dart';
 
 /// Ayarlar — web "ayarlar" sayfasının mobil paritesi: Kurum Profili, Ödeme &
 /// Taksit, WhatsApp, Gelir Bilgileri + Gelir Kalemleri, Kayıt Özeti, Aktif
@@ -439,8 +440,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       const SizedBox(height: 12),
       _activeStaffCard(d.staff, activeStaff, specialties.toList()),
       const SizedBox(height: 12),
-      _planUsageCard(d.usage),
-      const SizedBox(height: 12),
+      // Satış kapalıyken paket kartı gizli (bkz. core/billing.dart).
+      if (kBillingEnabled) ...[
+        _planUsageCard(d.usage),
+        const SizedBox(height: 12),
+      ],
       _branchesCard(d.branches),
       const SizedBox(height: 12),
       _linksCard(),

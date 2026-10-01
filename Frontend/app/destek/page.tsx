@@ -1,3 +1,4 @@
+import { BILLING_ENABLED, SIGNUP_CTA } from '@/lib/billing'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import Nav from '@/components/landing/apple/Nav'
@@ -53,10 +54,15 @@ const FAQS: Faq[] = [
     q: 'Şifremi unuttum, ne yapmalıyım?',
     a: 'Giriş ekranındaki “Şifremi unuttum” bağlantısından hesap e-postanıza doğrulama kodu isteyin; kodu girip yeni şifrenizi belirleyin. Güvenlik için diğer tüm oturumlarınız kapatılır. Personelseniz kurum yöneticiniz de Personel sayfasından şifrenizi sıfırlayabilir.',
   },
-  {
-    q: 'Deneme süresi bitince verilerim silinir mi?',
-    a: 'Hayır. Deneme bitince hesabınız askıya alınır ve panele giriş kapanır, ancak verileriniz durur. Bir paket seçtiğinizde kaldığınız yerden devam edersiniz.',
-  },
+  BILLING_ENABLED
+    ? {
+        q: 'Deneme süresi bitince verilerim silinir mi?',
+        a: 'Hayır. Deneme bitince hesabınız askıya alınır ve panele giriş kapanır, ancak verileriniz durur. Bir paket seçtiğinizde kaldığınız yerden devam edersiniz.',
+      }
+    : {
+        q: 'Kullanmak için ücret ödemem gerekiyor mu?',
+        a: 'Hayır. Kurumunuzu kayıt ederek BeautyAsist’i şu an ücretsiz kullanabilirsiniz; paket seçmeniz ya da kart bilgisi girmeniz gerekmez.',
+      },
   {
     q: 'Eski müşteri listemi sisteme aktarabilir miyim?',
     a: 'Evet. Panelde üst çubuktaki “İçeri Aktar” ile Excel dosyanızı yükleyebilirsiniz; kolon adları farklı olsa bile sistem eşleştirmeyi size sorar. Büyük listeler için kurulum ekibimiz aktarımı sizin yerinize yapar.',
@@ -71,7 +77,7 @@ const FAQS: Faq[] = [
   },
   {
     q: 'Birden fazla şubem var, hepsini tek hesapta yönetebilir miyim?',
-    a: 'Evet. Şubeleri Ayarlar sayfasından tanımlarsınız; üst çubuktaki şube seçicisiyle geçiş yaparsınız. Raporlarda şubeleri karşılaştırabilir, personeli şubeler arasında aktarabilirsiniz. Çok şube desteği pakete bağlıdır.',
+    a: 'Evet. Şubeleri Ayarlar sayfasından tanımlarsınız; üst çubuktaki şube seçicisiyle geçiş yaparsınız. Raporlarda şubeleri karşılaştırabilir, personeli şubeler arasında aktarabilirsiniz.' + (BILLING_ENABLED ? ' Çok şube desteği pakete bağlıdır.' : ''),
   },
   {
     q: 'Hesabımı nasıl kapatırım?',
@@ -287,12 +293,12 @@ export default function SupportPage() {
                 <div>
                   <h2 className="display-md text-[#352432]">Henüz müşterimiz değil misiniz?</h2>
                   <p className="on-material mt-2 max-w-[56ch] text-[14px] leading-relaxed text-[#4A3A44]">
-                    Kurulum, veri aktarımı ve eğitim dahil; 14 gün ücretsiz deneyin. Kredi kartı istemiyoruz.
+                    Kurulum, veri aktarımı ve eğitim dahil; {BILLING_ENABLED ? '14 gün ücretsiz deneyin' : 'kayıt olun, ücretsiz kullanın'}. Kredi kartı istemiyoruz.
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-3">
                   <PressButton href="/kayit" tone="primary" className="px-6 py-3 text-[14.5px] font-medium">
-                    14 gün ücretsiz dene <ArrowRight className="h-4 w-4" />
+                    {SIGNUP_CTA} <ArrowRight className="h-4 w-4" />
                   </PressButton>
                   <PressButton href="/moduller" tone="glass-light" className="border border-[#EEC9D7] px-6 py-3 text-[14.5px]">
                     Modülleri inceleyin

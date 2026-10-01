@@ -99,6 +99,9 @@ public sealed class TenantSignupService : ITenantSignupService
     /// </remarks>
     private readonly bool _requirePhoneVerification;
 
+    /// <summary>Ücretsiz kullanım modu (bkz. <see cref="BillingMode"/>): kurum denemesiz, süresiz Aktif açılır.</summary>
+    private readonly bool _freeMode;
+
     /// <summary>Doğrulama e-postasındaki "Doğrulama Bağlantısı" satırının taban adresi için.</summary>
     private readonly Microsoft.Extensions.Configuration.IConfiguration _config;
 
@@ -119,6 +122,7 @@ public sealed class TenantSignupService : ITenantSignupService
         // Varsayılan KAPALI: sağlayıcı kurulana kadar açık bırakmak her kaydı bloke ederdi.
         _requirePhoneVerification =
             bool.TryParse(configuration["TenantSignup:RequirePhoneVerification"], out var requirePhone) && requirePhone;
+        _freeMode = BillingMode.IsFree(configuration);
         _config = configuration;
         _db = db;
         _store = store;
@@ -605,7 +609,8 @@ public sealed class TenantSignupService : ITenantSignupService
         for (var attempt = 0; attempt < MaxCodeAttempts; attempt++)
         {
             var code = await TenantCodeAllocator.NextAsync(_db, attempt, ct);
-            var tenant = new Tenant(form.TenantName, draft.Slug, plan.Name, TenantStatus.Trial);
+            var tenant = new Tenant(form.TenantName, draft.Slug, plan.Name,
+                _freeMode ? TenantStatus.Active : TenantStatus.Trial);
             tenant.AssignCode(code);
             tenant.MarkSelfSignup();
             tenant.SetProfile(null, form.OwnerName);
@@ -613,8 +618,9 @@ public sealed class TenantSignupService : ITenantSignupService
             tenant.SetProfileExtras(null, null, form.Email);
             tenant.SetPhoneIndex(_search.BuildPhoneKey(form.Phone));
             tenant.AssignSubscriptionPlan(plan);
-            // Sayaç ŞİMDİ başlar (yukarıdaki nota bakın).
-            tenant.StartTrial(now, TrialDays);
+            // ÜCRETSİZ MODDA sayaç YOK: kurum Aktif ve bitiş tarihsiz kalır, hiçbir kapı askıya almaz.
+            // Satış açıkken sayaç ŞİMDİ başlar (yukarıdaki nota bakın).
+            if (!_freeMode) tenant.StartTrial(now, TrialDays);
 
             var branch = tenant.AddBranch(form.BranchName, form.City, isDefault: true);
             var owner = tenant.GrantAccess(form.Email, UserRole.InstitutionOwner, null, form.OwnerName);
@@ -634,7 +640,9 @@ public sealed class TenantSignupService : ITenantSignupService
             // ya da "oturumu var ama kurumu yok" gibi girilemez bir durum bırakabilirdi.
             var session = BuildSession(tenant, owner, branch, now);
             await _audit.LogAsync(tenant.Id, branch.Id, "SelfSignup", "Tenant", tenant.Id,
-                $"Kurum self-servis kayıtla oluşturuldu ({code}); {TrialDays} günlük deneme başladı.", null, ct);
+                _freeMode
+                    ? $"Kurum self-servis kayıtla oluşturuldu ({code}); ücretsiz kullanım."
+                    : $"Kurum self-servis kayıtla oluşturuldu ({code}); {TrialDays} günlük deneme başladı.", null, ct);
 
             try
             {
@@ -975,7 +983,7 @@ public sealed class TenantSignupService : ITenantSignupService
             $"<div style='font-family:sans-serif;font-size:15px;color:#2f1724'>" +
             $"<p>Merhaba {System.Net.WebUtility.HtmlEncode(form.OwnerName)},</p>" +
             $"<p><b>{System.Net.WebUtility.HtmlEncode(form.TenantName)}</b> için BeautyAsist hesabınız hazır. " +
-            $"{TrialDays} günlük ücretsiz denemeniz başladı.</p>" +
+            (_freeMode ? "Hesabınızı hemen ücretsiz kullanmaya başlayabilirsiniz.</p>" : $"{TrialDays} günlük ücretsiz denemeniz başladı.</p>") +
             $"<table style='border-collapse:collapse;margin:16px 0'>" +
             $"<tr><td style='padding:4px 12px 4px 0;color:#7c6170'>Kurum kodu</td><td style='font-weight:700'>{tenantCode}</td></tr>" +
             $"<tr><td style='padding:4px 12px 4px 0;color:#7c6170'>E-posta</td><td>{System.Net.WebUtility.HtmlEncode(form.Email)}</td></tr>" +

@@ -6,6 +6,7 @@ import { CalendarHeart, LayoutGrid, ShoppingBag } from 'lucide-react'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { useCart } from '@/lib/cart'
 import PressButton from './PressButton'
+import { BILLING_ENABLED } from '@/lib/billing'
 
 /**
  * ÜST ÇUBUĞUN HESAP + SEPET BÖLÜMÜ.
@@ -35,7 +36,7 @@ export default function NavAccount() {
   return (
     <div className="flex shrink-0 items-center gap-2">
       {/* SEPET — yalnız doluyken görünür. Boş bir sepet simgesi hiçbir şey söylemez. */}
-      {ready && item && (
+      {BILLING_ENABLED && ready && item && (
         <PressButton
           href="/odeme"
           tone="glass-light"

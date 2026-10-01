@@ -9,7 +9,7 @@ import { getCustomerSession } from '@/lib/customerPortalApi'
 const MENU = [
   { label: 'Keşfet', href: '/salonlar' },
   { label: 'Hizmetler', href: '/salonlar#kategoriler' },
-  { label: 'Salona Üye Ol', href: '/#pricing' },
+  { label: 'Salona Üye Ol', href: '/kayit' },
   { label: 'Hakkımızda', href: '/#features' },
   { label: 'İletişim', href: '/#footer' },
 ]

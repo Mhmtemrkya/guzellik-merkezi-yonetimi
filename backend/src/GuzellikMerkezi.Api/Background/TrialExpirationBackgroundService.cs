@@ -51,8 +51,9 @@ public sealed class TrialExpirationBackgroundService : BackgroundService
 
         var now = DateTime.UtcNow;
 
-        // Süresi dolan denemeler.
-        var expiredTrials = await db.Tenants
+        // Süresi dolan denemeler. ÜCRETSİZ MODDA deneme askıya alınmaz (bkz. BillingMode).
+        var freeMode = Infrastructure.Services.BillingMode.IsFree(scope.ServiceProvider.GetService<IConfiguration>());
+        var expiredTrials = freeMode ? new List<Domain.Entities.Tenant>() : await db.Tenants
             .Where(t => t.Status == TenantStatus.Trial
                      && t.TrialEndsAtUtc.HasValue
                      && t.TrialEndsAtUtc.Value <= now)

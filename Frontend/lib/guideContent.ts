@@ -53,6 +53,7 @@ import {
   Wallet,
   Zap,
 } from 'lucide-react'
+import { BILLING_ENABLED } from '@/lib/billing'
 
 export interface GuideStep {
   icon: LucideIcon
@@ -85,13 +86,16 @@ const guides: Record<string, PageGuide> = {
     intro:
       'Salonunuzun günlük nabzını tek ekranda tutar: gelir grafikleri, randevu durumu, personel performansı ve hızlı işlemler burada.',
     steps: [
-      {
-        icon: Hourglass,
-        title: 'Abonelik sayacı',
-        anchor: 'dash-abonelik',
-        desc:
-          'Sayfanın en üstündeki kart, BeautyAsist aboneliğinizin (deneme / aylık / yıllık) kalan süresini canlı geri sayımla gösterir. Süre azaldıkça birim otomatik olarak aydan güne, günden saate iner.',
-      },
+      // Satış kapalıyken sayaç kartı çizilmez (bkz. lib/billing.ts); rehber de onu anlatmaz.
+      ...(BILLING_ENABLED
+        ? [{
+            icon: Hourglass,
+            title: 'Abonelik sayacı',
+            anchor: 'dash-abonelik',
+            desc:
+              'Sayfanın en üstündeki kart, BeautyAsist aboneliğinizin (deneme / aylık / yıllık) kalan süresini canlı geri sayımla gösterir. Süre azaldıkça birim otomatik olarak aydan güne, günden saate iner.',
+          }]
+        : []),
       {
         icon: Zap,
         title: 'Hızlı menü',

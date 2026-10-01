@@ -91,6 +91,7 @@ import type {
   PagedResult,
   Product,
 } from '@/lib/types'
+import { BILLING_ENABLED } from '@/lib/billing'
 
 interface ApiCustomerStats {
   total?: number
@@ -2168,7 +2169,7 @@ export default function AdminDashboard() {
           totalCustomers={customerStats.total ?? 0}
         />
 
-        <div data-guide="dash-abonelik"><SubscriptionCountdown tenantId={tenantId} /></div>
+        {BILLING_ENABLED && <div data-guide="dash-abonelik"><SubscriptionCountdown tenantId={tenantId} /></div>}
 
         <ApiStateNotice
           loading={loading}

@@ -2,6 +2,7 @@ using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
+using GuzellikMerkezi.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace GuzellikMerkezi.Api.Middleware;
@@ -18,7 +19,7 @@ public sealed class TrialAccessMiddleware
 
     public TrialAccessMiddleware(RequestDelegate next) => _next = next;
 
-    public async Task InvokeAsync(HttpContext httpContext, ICurrentUser currentUser, GuzellikDbContext db)
+    public async Task InvokeAsync(HttpContext httpContext, ICurrentUser currentUser, GuzellikDbContext db, IConfiguration configuration)
     {
         if (!currentUser.IsAuthenticated || currentUser.IsPlatformAdmin || currentUser.TenantId is null)
         {
@@ -34,7 +35,9 @@ public sealed class TrialAccessMiddleware
         }
 
         var now = DateTime.UtcNow;
-        if (tenant.Status == TenantStatus.Trial && tenant.IsTrialExpired(now))
+        // ÜCRETSİZ MOD: deneme süresi bir kapı DEĞİLDİR — süresi geçmiş deneme kurumu da girer.
+        var freeMode = BillingMode.IsFree(configuration);
+        if (!freeMode && tenant.Status == TenantStatus.Trial && tenant.IsTrialExpired(now))
         {
             tenant.Suspend();
             await db.SaveChangesAsync(httpContext.RequestAborted);
@@ -45,7 +48,7 @@ public sealed class TrialAccessMiddleware
             await db.SaveChangesAsync(httpContext.RequestAborted);
         }
 
-        var expiredTrial = tenant.TrialEndsAtUtc.HasValue && tenant.TrialEndsAtUtc.Value <= now;
+        var expiredTrial = !freeMode && tenant.TrialEndsAtUtc.HasValue && tenant.TrialEndsAtUtc.Value <= now;
         var expiredSubscription = tenant.SubscriptionEndsAtUtc.HasValue && tenant.SubscriptionEndsAtUtc.Value <= now;
         var blocked = tenant.Status == TenantStatus.Cancelled
             || tenant.Status == TenantStatus.Suspended
