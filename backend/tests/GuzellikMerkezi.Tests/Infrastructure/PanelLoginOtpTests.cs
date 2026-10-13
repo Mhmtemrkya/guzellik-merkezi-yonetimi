@@ -112,8 +112,38 @@ public sealed class PanelLoginOtpTests
         Assert.False(string.IsNullOrWhiteSpace(result.Value!.ChallengeId));
         Assert.Contains("•", result.Value.MaskedEmail);
         Assert.Null(result.Value.DevCode); // canlıda kod sızmaz
+        // Oturum alanları YALNIZ inceleme hesabında dolar; normal hesapta kod doğrulanmadan
+        // hiçbir token istemciye gitmez.
+        Assert.Null(result.Value.AccessToken);
+        Assert.Null(result.Value.RefreshToken);
+        Assert.Null(result.Value.ExpiresAtUtc);
+        Assert.Null(result.Value.User);
         await messaging.Received(1).SendEmailAsync(
             "yonetici@ornek.test", Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// SÖZLEŞME: normal hesapta yanıt eskisiyle AYNI kalır (token anahtarları hiç yazılmaz);
+    /// inceleme hesabında refreshToken <c>data</c>'nın ÜST SEVİYESİNDEDİR. Web proxy'si
+    /// <c>/api/auth/login</c> yanıtında yalnız <c>data.refreshToken</c>'ı HttpOnly çereze taşır —
+    /// iç içe bir nesneye konsaydı token tarayıcı JavaScript'ine açık kalırdı.
+    /// </summary>
+    [Fact]
+    public void Challenge_Json_TokenKeysOnlyForReviewSession_AtTopLevel()
+    {
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+
+        var normal = System.Text.Json.JsonSerializer.Serialize(new PanelLoginChallenge("c", "m•••@x.test"), options);
+        Assert.DoesNotContain("accessToken", normal);
+        Assert.DoesNotContain("refreshToken", normal);
+        Assert.DoesNotContain("\"user\"", normal);
+
+        var review = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(
+            new PanelLoginChallenge("c", "m•••@x.test", "731946",
+                Session.AccessToken, Session.RefreshToken, Session.ExpiresAtUtc, Session.User), options));
+        Assert.Equal("refresh-token", review.RootElement.GetProperty("refreshToken").GetString());
+        Assert.Equal("access-token", review.RootElement.GetProperty("accessToken").GetString());
+        Assert.Equal("c", review.RootElement.GetProperty("challengeId").GetString());
     }
 
     /// <summary>
@@ -220,12 +250,16 @@ public sealed class PanelLoginOtpTests
 
     /// <summary>
     /// Apple inceleme hesabının <c>.test</c> adresi gerçek posta alamaz. İnceleme modu açıkken,
-    /// yalnız yapılandırılmış yönetici + kurum eşleşmesi sabit kodu kabul eder; SMTP'ye gidilmez.
-    /// Kod production API yanıtında ifşa edilmez, inceleme ekibi kodu mağaza notlarından alır.
+    /// yalnız yapılandırılmış yönetici + kurum eşleşmesi kod adımını atlar; SMTP'ye gidilmez.
     /// Parola, rol, kurum ve cihaz kontrolleri yine LoginAsync içinde eksiksiz çalışır.
     /// </summary>
+    /// <remarks>
+    /// KARAR DEĞİŞTİ (14 Eki 2026): 599f67b bu hesapta kodu yanıttan gizliyordu; Apple demo
+    /// hesabın kod adımına takılmasını kabul etmedi. Artık bu hesapta kod adımı YOK — oturum ilk
+    /// adımda döner. Eski build kod ekranını yine açtığı için meydan okuma ve kod da yanıttadır.
+    /// </remarks>
     [Fact]
-    public async Task AppReviewOwner_ExactIdentity_UsesConfiguredCodeWithoutEmail()
+    public async Task AppReviewOwner_ExactIdentity_GetsSessionDirectly_WithoutEmail()
     {
         const string reviewCode = "731946";
         var messaging = NewMessaging(emailWorks: false);
@@ -241,13 +275,55 @@ public sealed class PanelLoginOtpTests
         var start = await service.StartAsync(Request(), CancellationToken.None);
 
         Assert.True(start.IsSuccess);
-        Assert.Null(start.Value!.DevCode);
+        // Güncel istemci: oturum doğrudan, kod ekranı yok.
+        Assert.Equal("access-token", start.Value!.AccessToken);
+        Assert.Equal("refresh-token", start.Value.RefreshToken);
+        Assert.Equal(Profile.Email, start.Value.User!.Email);
+        Assert.NotNull(start.Value.ExpiresAtUtc);
+        // Mağazadaki eski build: kod ekranını açar, kodu ekrana basar.
+        Assert.Equal(reviewCode, start.Value.DevCode);
         await messaging.DidNotReceive().SendEmailAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
 
         var verified = await service.VerifyAsync(start.Value.ChallengeId, reviewCode, CancellationToken.None);
         Assert.True(verified.IsSuccess);
         Assert.Equal("access-token", verified.Value!.AccessToken);
+    }
+
+    /// <summary>
+    /// Kod adımını atlama YALNIZ tam kimliğe aittir: kimlik ya da yapılandırma birebir tutmazsa
+    /// e-posta yoluna düşülür ve yanıtta ne oturum ne kod bulunur (e-posta çalışırken bile).
+    /// </summary>
+    [Theory]
+    [InlineData("disabled")]
+    [InlineData("wrong-email")]
+    [InlineData("wrong-tenant")]
+    [InlineData("wrong-role")]
+    [InlineData("missing-code")]
+    public async Task AppReviewOwner_NonExactConfiguration_GetsNoSessionOrCode(string scenario)
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["AppReview:Enabled"] = (scenario != "disabled").ToString(),
+            ["AppReview:OwnerEmail"] = scenario == "wrong-email" ? "someone-else@beautyasist.test" : Profile.Email,
+            ["AppReview:OwnerTenantId"] = scenario == "wrong-tenant"
+                ? Guid.CreateVersion7().ToString()
+                : Profile.TenantId!.Value.ToString(),
+            ["AppReview:OwnerOtpCode"] = scenario == "missing-code" ? null : "731946",
+        };
+        var auth = NewAuth(role: scenario == "wrong-role" ? UserRole.Staff : UserRole.InstitutionOwner);
+        var messaging = NewMessaging(emailWorks: true);
+
+        var result = await NewService(auth, messaging, settings: settings)
+            .StartAsync(Request(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.AccessToken);
+        Assert.Null(result.Value.RefreshToken);
+        Assert.Null(result.Value.User);
+        Assert.Null(result.Value.DevCode);
+        await messaging.Received(1).SendEmailAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>

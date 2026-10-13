@@ -150,7 +150,11 @@ class AuthController extends ChangeNotifier {
   /// OTURUM AÇMAZ: parola doğruysa e-postaya 6 haneli kod gider ve "meydan okuma" döner.
   /// Oturum yalnız [verifyLogin]'dan çıkar. Parolanın tek engel olması, müşteri kişisel
   /// verisi + tahsilat + kasa içeren bir panel için yeterli değildi.
-  Future<PanelLoginChallenge> login({
+  ///
+  /// TEK İSTİSNA mağaza inceleme hesabıdır: sunucu kod adımını atlar ve oturumu bu yanıtta
+  /// verir (`accessToken` dolu). O durumda oturum burada kurulur ve `null` döner — kod ekranı
+  /// hiç açılmaz.
+  Future<PanelLoginChallenge?> login({
     required String email,
     required String password,
     required String role,
@@ -171,6 +175,11 @@ class AuthController extends ChangeNotifier {
     // "Beni hatırla" tercihi ŞİMDİ saklanır; 2. adımda oturum ona göre kalıcılaşır.
     _remember = remember;
     final map = (data as Map).cast<String, dynamic>();
+    final accessToken = map['accessToken'];
+    if (accessToken is String && accessToken.isNotEmpty) {
+      await _acceptPanelSession(map);
+      return null;
+    }
     return PanelLoginChallenge(
       challengeId: '${map['challengeId'] ?? ''}',
       maskedEmail: '${map['maskedEmail'] ?? ''}',
@@ -184,7 +193,13 @@ class AuthController extends ChangeNotifier {
       'challengeId': challengeId,
       'code': code.trim(),
     });
-    session = AuthSession.fromJson((data as Map).cast<String, dynamic>());
+    await _acceptPanelSession((data as Map).cast<String, dynamic>());
+  }
+
+  /// Panel oturumunu kurar — kod doğrulamasından da, kod adımı olmayan inceleme hesabının
+  /// ilk adımından da AYNI yoldan geçer (iki kopya ayrışmasın).
+  Future<void> _acceptPanelSession(Map<String, dynamic> data) async {
+    session = AuthSession.fromJson(data);
     await _persistSession();
     status = AuthStatus.signedIn;
     passwordChangePending = session?.user.mustChangePassword == true;

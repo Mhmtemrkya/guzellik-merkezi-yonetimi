@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json.Serialization;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Auth;
@@ -12,7 +13,21 @@ using Microsoft.Extensions.Caching.Memory;
 namespace GuzellikMerkezi.Api.Services;
 
 /// <summary>Parola doğrulandı, sırada e-posta kodu var.</summary>
-public sealed record PanelLoginChallenge(string ChallengeId, string MaskedEmail, string? DevCode = null);
+/// <remarks>
+/// <b>Oturum alanları YALNIZ mağaza inceleme hesabında dolar</b> (bkz.
+/// <c>PanelLoginOtpService.AppReviewOwnerCode</c>): o hesapta kod adımı yoktur, oturum doğrudan
+/// döner. Alanlar iç içe bir nesnede değil ÜST SEVİYEDEDİR — web proxy'si <c>/api/auth/login</c>
+/// yanıtındaki <c>data.refreshToken</c>'ı HttpOnly çereze taşıyor; iç içe konsaydı refresh token
+/// tarayıcı JavaScript'ine açık kalırdı. Diğer tüm hesaplarda null'dır ve yanıta hiç yazılmaz.
+/// </remarks>
+public sealed record PanelLoginChallenge(
+    string ChallengeId,
+    string MaskedEmail,
+    string? DevCode = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AccessToken = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RefreshToken = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTime? ExpiresAtUtc = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] UserProfileDto? User = null);
 
 /// <summary>
 /// PANEL GİRİŞİNDE İKİNCİ FAKTÖR — parola + e-postaya gelen 6 haneli kod.
@@ -92,6 +107,7 @@ public sealed class PanelLoginOtpService
 
     /// <summary>
     /// Adım 1 — parola ve tüm giriş kontrolleri. Geçerse e-postaya kod gider ve MEYDAN OKUMA döner.
+    /// Tek istisna mağaza inceleme hesabıdır: kod gönderilmez, oturum bu adımda döner.
     /// </summary>
     public async Task<Result<PanelLoginChallenge>> StartAsync(LoginRequest request, CancellationToken ct)
     {
@@ -105,9 +121,8 @@ public sealed class PanelLoginOtpService
         // Apple inceleme hesabı `.test` adresi kullandığı için gerçek posta teslimatı mümkün
         // değildir. Kısa yol yalnız yapılandırılmış e-posta + InstitutionOwner rolü + kurumun
         // ÜÇÜ birden eşleşirse açılır; parola, hesap, kurum ve cihaz kontrolleri yukarıdaki
-        // LoginAsync çağrısında yine eksiksiz çalışmıştır. Sabit kod yalnız mağaza inceleme
-        // notlarında paylaşılır; production API yanıtında asla ifşa edilmez. Mağaza onayından
-        // sonra AppReview:Enabled kapatılarak yol tamamen devreden çıkarılır.
+        // LoginAsync çağrısında yine eksiksiz çalışmıştır. Mağaza onayından sonra
+        // AppReview:Enabled kapatılarak yol tamamen devreden çıkarılır.
         var reviewCode = AppReviewOwnerCode(session.User);
         var code = reviewCode
             ?? RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
@@ -124,6 +139,23 @@ public sealed class PanelLoginOtpService
 
         var challengeId = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         await _store.SetAsync(Key(challengeId), new PendingLogin { Code = code, Email = email, Session = session }, ChallengeLifetime, ct);
+
+        if (reviewCode is not null)
+        {
+            // İNCELEME HESABINDA KOD ADIMI YOK (kullanıcı kararı, 14 Eki 2026): Apple, demo
+            // hesabın e-posta koduna takılmasını kabul etmedi; denetçi ".test" adresindeki posta
+            // kutusunun şifresini istedi. Bu hesapta kodun koruduğu bir şey de yok — sabit kod
+            // zaten inceleme notlarında parolayla yan yana yazıyor.
+            //
+            // Oturum DOĞRUDAN döner: güncel istemci kod ekranını hiç açmaz. Mağazadaki eski build
+            // parola sonrası kod ekranını HER DURUMDA açar ve oturum alanlarını tanımaz; onun için
+            // meydan okuma yine kurulur ve kod yanıta konur — o build kodu ekrana basar
+            // ("Demo / Test: Mesaj beklemeyin. Kod: …"). 599f67b bu hesapta kodu gizlemişti; o
+            // karar YALNIZ bu hesap için geri alındı, diğer hesaplarda kod hâlâ asla dönmez.
+            return Result<PanelLoginChallenge>.Success(new PanelLoginChallenge(
+                challengeId, EmailMask.Mask(email), reviewCode,
+                session.AccessToken, session.RefreshToken, session.ExpiresAtUtc, session.User));
+        }
 
         return Result<PanelLoginChallenge>.Success(new PanelLoginChallenge(
             challengeId, EmailMask.Mask(email), _env.IsDevelopment() ? code : null));

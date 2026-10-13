@@ -349,7 +349,7 @@ export default function LoginPage() {
   /** Dolu olduğunda kapsam seçim modalı açıktır ve giriş cevabı bekler. */
   const [selectionRequest, setSelectionRequest] = useState<ScopeState | null>(null)
   const { selectedInstitutionId, selectedBranchId, setScope: setBranchScope } = useBranch()
-  const { loginScope, login, verifyLogin, hydrated, session, isAuthenticated } = useAuth()
+  const { loginScope, login, verifyLogin, acceptLogin, hydrated, session, isAuthenticated } = useAuth()
 
   /**
    * PANEL GİRİŞİ İKİNCİ FAKTÖRÜ. Dolu olduğunda kod ekranı açıktır: parola doğrulandı,
@@ -374,19 +374,30 @@ export default function LoginPage() {
         branchId: pending.branchId,
         scope: pending.scope,
       })
-      if (pending.institutionId && pending.branchScopeId) {
-        setBranchScope(pending.institutionId, pending.branchScopeId)
-      }
-      if (session?.user?.mustChangePassword) {
-        router.push('/change-password')
-        return
-      }
-      router.push(await destinationAfterLogin(session, pending.href))
+      await finishLogin(session, pending)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Kod doğrulanamadı.')
     } finally {
       setLoading(false)
     }
+  }
+
+  /**
+   * Oturum kurulduktan sonraki ortak yönlendirme. Kod doğrulaması da, kod adımı olmayan mağaza
+   * inceleme hesabı da buradan geçer — iki kopya ayrışmasın.
+   */
+  const finishLogin = async (
+    session: AuthSession | null,
+    target: Pick<PendingLogin, 'institutionId' | 'branchScopeId' | 'href'>,
+  ): Promise<void> => {
+    if (target.institutionId && target.branchScopeId) {
+      setBranchScope(target.institutionId, target.branchScopeId)
+    }
+    if (session?.user?.mustChangePassword) {
+      router.push('/change-password')
+      return
+    }
+    router.push(await destinationAfterLogin(session, target.href))
   }
   const [institutionId, setInstitutionId] = useState<string | null>(selectedInstitutionId)
   const [branchId, setBranchId] = useState<string | null>(selectedBranchId)
@@ -589,6 +600,29 @@ export default function LoginPage() {
         branchId: effectiveIsPlatform ? null : effectiveBranch?.id ?? null,
         remember,
       })
+      if (challenge.accessToken && challenge.user) {
+        // MAĞAZA İNCELEME HESABI: sunucu kod adımını atladı, oturum bu yanıtta geldi.
+        // refreshToken'ı proxy çereze taşıdı (gövdede boş gelir) — kod ekranı açılmaz.
+        const directSession = acceptLogin(
+          {
+            accessToken: challenge.accessToken,
+            refreshToken: challenge.refreshToken ?? '',
+            expiresAtUtc: challenge.expiresAtUtc ?? '',
+            user: challenge.user,
+          },
+          {
+            tenantId: effectiveIsPlatform ? null : effectiveInstitution?.id ?? null,
+            branchId: effectiveIsPlatform ? null : effectiveBranch?.id ?? null,
+            scope: { role: effectiveMeta.role, tenants: effectiveScope.tenants },
+          },
+        )
+        await finishLogin(directSession, {
+          href: effectiveMeta.href,
+          institutionId: effectiveInstitution?.id ?? null,
+          branchScopeId: effectiveBranch?.id ?? null,
+        })
+        return
+      }
       setPending({
         challengeId: challenge.challengeId,
         maskedEmail: challenge.maskedEmail,

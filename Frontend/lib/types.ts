@@ -145,12 +145,15 @@ export interface SessionScope {
 /**
  * Panel girişi 1. adımın yanıtı — HENÜZ OTURUM DEĞİL.
  * Kod doğrulanana kadar hiçbir token istemciye verilmez.
+ *
+ * TEK İSTİSNA mağaza inceleme hesabıdır: sunucu kod adımını atlar ve oturum alanlarını
+ * (`accessToken`, `user` …) bu yanıtta verir. refreshToken'ı proxy HttpOnly çereze taşır.
  */
-export interface ApiLoginChallenge {
+export interface ApiLoginChallenge extends Partial<ApiLoginResponse> {
   challengeId: string
   /** Kodun gittiği adres, maskeli (yazım hatası fark edilsin). */
   maskedEmail: string
-  /** Geliştirme ortamında kod; canlıda her zaman null. */
+  /** Geliştirme ortamında (ve mağaza inceleme hesabında) kod; diğer hesaplarda canlıda null. */
   devCode?: string | null
 }
 

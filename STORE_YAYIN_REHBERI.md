@@ -211,7 +211,7 @@ DEMO ACCOUNT (Staff / Business owner)
   Sign-in mode: "Personel / Yönetici" tab
   Username: review@beautyasist.app
   Password: <AppReview:OwnerPassword ile aynı>
-  Verification code: <AppReview:OwnerOtpCode ile aynı>
+  No verification code: this demo account signs in directly after the password.
 
 DEMO ACCOUNT (Client / Consumer)
   Sign-in mode: "Müşteri" tab
@@ -220,9 +220,10 @@ DEMO ACCOUNT (Client / Consumer)
   Verification code: 424242   (fixed code for this review account)
 
 NOTES
-- The staff/business-owner verification code is displayed on the verification screen after the
-  correct username and password are entered. The review-only shortcut is restricted to the exact
-  configured owner e-mail, InstitutionOwner role and demo tenant UUID.
+- The staff/business-owner demo account skips the e-mail verification step. The review-only
+  shortcut is restricted to the exact configured owner e-mail, InstitutionOwner role and demo
+  tenant UUID. (App builds older than 1.0.0 (9) still open the code screen; the code is printed
+  on that screen: <AppReview:OwnerOtpCode ile aynı>.)
 - Client verification codes are sent by E-MAIL ONLY. SMS and WhatsApp are not
   used. Sign-in: the code goes to the e-mail on the client record. Sign-up: one
   step, the code goes to the e-mail address entered (any phone number, any country).

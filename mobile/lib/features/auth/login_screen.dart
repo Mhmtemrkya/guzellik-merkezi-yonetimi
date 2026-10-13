@@ -333,7 +333,9 @@ class _LoginScreenState extends State<LoginScreen> {
         branchId: role == 'PlatformAdmin' ? null : chosenBranchId,
         remember: remember,
       );
-      if (!mounted) return;
+      // null = kod adımı olmayan mağaza inceleme hesabı: oturum zaten kuruldu, router
+      // yönlendirir. Kod ekranı açılmaz.
+      if (!mounted || challenge == null) return;
       setState(() {
         panelChallenge = challenge;
         panelCodeController.clear();

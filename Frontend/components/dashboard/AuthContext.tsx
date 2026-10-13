@@ -45,6 +45,11 @@ interface AuthContextValue {
   login: (input: LoginInput) => Promise<ApiLoginChallenge>
   /** PANEL GİRİŞİ ADIM 2 — e-postaya gelen kod doğruysa oturum kurulur. */
   verifyLogin: (challengeId: string, code: string, scope: LoginScopeInfo) => Promise<AuthSession | null>
+  /**
+   * Kod adımı OLMAYAN girişte (yalnız mağaza inceleme hesabı) 1. adımın yanıtıyla gelen oturumu
+   * kurar. {@link verifyLogin} ile AYNI normalizasyondan geçer — iki kopya ayrışmasın.
+   */
+  acceptLogin: (response: ApiLoginResponse, scope: LoginScopeInfo) => AuthSession | null
   logout: () => Promise<void>
   refresh: () => Promise<AuthSession | null>
   setSession: (session: AuthSession | null) => void
@@ -217,10 +222,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   )
 
-  const verifyLogin = useCallback(
-    async (challengeId: string, code: string, info: LoginScopeInfo): Promise<AuthSession | null> => {
-      setAuthError('')
-      const response = await authApi.loginVerify(challengeId, code)
+  const acceptLogin = useCallback(
+    (response: ApiLoginResponse, info: LoginScopeInfo): AuthSession | null => {
       const matchingTenant = (info.scope?.tenants || []).find(
         (tenant) => tenant.id === info.tenantId || tenant.tenantId === info.tenantId,
       )
@@ -238,6 +241,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return nextSession
     },
     [persist],
+  )
+
+  const verifyLogin = useCallback(
+    async (challengeId: string, code: string, info: LoginScopeInfo): Promise<AuthSession | null> => {
+      setAuthError('')
+      return acceptLogin(await authApi.loginVerify(challengeId, code), info)
+    },
+    [acceptLogin],
   )
 
   const adoptSession = useCallback(
@@ -342,12 +353,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginScope,
       login,
       verifyLogin,
+      acceptLogin,
       logout,
       refresh,
       setSession: persist,
       adoptSession,
     }),
-    [hydrated, session, authError, loginScope, login, verifyLogin, logout, refresh, persist, adoptSession],
+    [hydrated, session, authError, loginScope, login, verifyLogin, acceptLogin, logout, refresh, persist, adoptSession],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
@@ -365,6 +377,10 @@ const fallbackAuth: AuthContextValue = {
     throw new Error('AuthProvider dışında giriş yapılamaz.')
   },
   verifyLogin: async () => null,
+  // adoptSession ile aynı gerekçe: provider dışında sessiz "başarı" kullanıcıyı yanlış yönlendirir.
+  acceptLogin: () => {
+    throw new Error('AuthProvider dışında oturum kurulamaz.')
+  },
   logout: async () => {},
   refresh: async () => null,
   setSession: () => {},
