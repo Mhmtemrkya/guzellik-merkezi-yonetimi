@@ -203,7 +203,7 @@ public sealed class CustomerPortalService : ICustomerPortalService
         var dayAppointments = hasTimeOff
             ? null
             : await _db.Appointments.IgnoreQueryFilters().AsNoTracking()
-                .Where(a => a.TenantId == tenantId && a.StaffMemberId == staffId
+                .Where(a => !a.IsDeleted && a.TenantId == tenantId && a.StaffMemberId == staffId
                          && a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.NoShow && a.Status != AppointmentStatus.Draft
                          && a.StartUtc < dayEndUtc && a.EndUtc > dayStartUtc)
                 .Select(a => new { a.StartUtc, a.EndUtc })
@@ -262,7 +262,7 @@ public sealed class CustomerPortalService : ICustomerPortalService
         if (await _db.StaffTimeOffs.IgnoreQueryFilters().AsNoTracking().AnyAsync(t => !t.IsDeleted && t.TenantId == tenantId && t.StaffMemberId == request.StaffMemberId && t.Date == date && t.StartMinute <= 0 && t.EndMinute >= 1440, cancellationToken))
             return Result<PortalAppointmentDto>.Failure(Error.Conflict("Seçilen uzman o gün için müsait değil."));
 
-        var concurrent = await _db.Appointments.IgnoreQueryFilters().CountAsync(a => a.TenantId == tenantId && a.StaffMemberId == request.StaffMemberId
+        var concurrent = await _db.Appointments.IgnoreQueryFilters().CountAsync(a => !a.IsDeleted && a.TenantId == tenantId && a.StaffMemberId == request.StaffMemberId
             && a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.NoShow && a.Status != AppointmentStatus.Draft
             && a.StartUtc < endUtc && startUtc < a.EndUtc, cancellationToken);
         if (concurrent >= MaxConcurrentAppointmentsPerStaff)
@@ -273,7 +273,7 @@ public sealed class CustomerPortalService : ICustomerPortalService
 
         // Spam freni: müşterinin bu kurumda aynı anda sınırlı sayıda açık (gelecek tarihli) randevusu olabilir.
         var nowUtc = DateTime.UtcNow;
-        var upcoming = await _db.Appointments.IgnoreQueryFilters().CountAsync(a => a.TenantId == tenantId && a.CustomerId == bookingCustomerId
+        var upcoming = await _db.Appointments.IgnoreQueryFilters().CountAsync(a => !a.IsDeleted && a.TenantId == tenantId && a.CustomerId == bookingCustomerId
             && a.StartUtc > nowUtc
             && (a.Status == AppointmentStatus.Draft || a.Status == AppointmentStatus.Scheduled || a.Status == AppointmentStatus.Confirmed), cancellationToken);
         if (upcoming >= MaxUpcomingAppointmentsPerCustomer)
@@ -281,7 +281,7 @@ public sealed class CustomerPortalService : ICustomerPortalService
 
         // Gelmeme freni: yakın geçmişte tekrarlanan "gelmedi" kaydı olan müşteriye online kanal kapatılır.
         var noShowSinceUtc = nowUtc.AddDays(-NoShowLookbackDays);
-        var noShows = await _db.Appointments.IgnoreQueryFilters().CountAsync(a => a.TenantId == tenantId && a.CustomerId == bookingCustomerId
+        var noShows = await _db.Appointments.IgnoreQueryFilters().CountAsync(a => !a.IsDeleted && a.TenantId == tenantId && a.CustomerId == bookingCustomerId
             && a.Status == AppointmentStatus.NoShow && a.StartUtc >= noShowSinceUtc, cancellationToken);
         if (noShows >= NoShowBlockThreshold)
             return Result<PortalAppointmentDto>.Failure(Error.Conflict("Gelinmeyen randevularınız nedeniyle online randevu geçici olarak kapalı. Lütfen salonla iletişime geçin."));
@@ -404,7 +404,8 @@ public sealed class CustomerPortalService : ICustomerPortalService
         foreach (var cid in customerIds)
         {
             rows.AddRange(await _db.Appointments.IgnoreQueryFilters().AsNoTracking()
-                .Where(a => a.CustomerId == cid)
+                // Silinen randevu müşteriye görünmez (yönetici "Sil" dediğinde portalda kalıyordu).
+                .Where(a => a.CustomerId == cid && !a.IsDeleted)
                 .Select(a => new ApptRow(a.Id, a.BranchId, a.StaffMemberId, a.ServiceDefinitionId, a.TenantId, a.StartUtc, a.EndUtc, a.Status, a.Price, a.IsOnline))
                 .ToListAsync(cancellationToken));
         }
