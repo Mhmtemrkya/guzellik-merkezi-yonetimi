@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # App Store'a 1.0 (5) yüklenip reddedildi (3.2.2(v) + 2.1 + 5.1.1(v)). Apple aynı build
 # numarasını İKİNCİ KEZ KABUL ETMEZ; düzeltmelerin yeni yüklemesi 6'dan devam eder.
 # iOS Info.plist bu değeri $(FLUTTER_BUILD_NUMBER) üzerinden okur — tek kaynak burasıdır.
-version: 1.0.0+12
+version: 1.0.0+13
 
 environment:
   sdk: '>=3.9.0 <4.0.0'
@@ -117,9 +117,12 @@ flutter_launcher_icons:
   adaptive_icon_foreground_inset: 6
 
   # iOS İKONLARI SAYDAM OLAMAZ — App Store saydam/alfa içeren ikonu reddeder.
-  # Alfa kaldırılıp marka kremi ile doldurulur (Android'i etkilemez).
+  # Bu yüzden iOS'a ayrı görsel verilir: pembe plaka kenardan kenara uzatılmış logo
+  # (assets/images/app-icon-ios.png, logo.png'den üretildi). Krem zemin üstünde küçük plaka
+  # yerine yalnız logo görünür; köşeleri iOS kendi maskesiyle yuvarlar.
+  image_path_ios: assets/images/app-icon-ios.png
   remove_alpha_ios: true
-  background_color_ios: "#FFF7FA"
+  background_color_ios: "#DB7094"
 
   # To add assets to your application, add an assets section, like this:
   # assets:
