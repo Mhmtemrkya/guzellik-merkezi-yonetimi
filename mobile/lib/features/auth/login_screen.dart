@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/auth/otp_message.dart';
 import '../../core/network/api_config.dart';
+import '../../core/platform/store_policy.dart';
 import '../../core/theme/app_theme.dart';
 
 /// Giriş modu: personel/yönetici (e-posta + şifre) veya müşteri (ad soyad + telefon + doğrulama kodu).
@@ -650,14 +651,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ],
                               // KURUMSAL KAYIT WEB'DE YAPILIR (bkz. _openTenantSignup).
-                              const SizedBox(height: 6),
-                              Center(
-                                child: TextButton.icon(
-                                  onPressed: loading ? null : _openTenantSignup,
-                                  icon: const Icon(Icons.storefront_rounded, size: 18),
-                                  label: const Text('İşletmenizi kaydedin — 14 gün ücretsiz'),
+                              // iOS'ta yok: kayıt akışı abonelik ödemesi içeriyor (StorePolicy).
+                              if (!StorePolicy.hidesPurchaseFlows) ...[
+                                const SizedBox(height: 6),
+                                Center(
+                                  child: TextButton.icon(
+                                    onPressed: loading ? null : _openTenantSignup,
+                                    icon: const Icon(Icons.storefront_rounded, size: 18),
+                                    label: const Text('İşletmenizi kaydedin — 14 gün ücretsiz'),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ],
                             const SizedBox(height: 12),
                             _infoBox(isCustomer),

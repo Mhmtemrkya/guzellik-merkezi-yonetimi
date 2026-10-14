@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_controller.dart';
 import '../../core/network/api_client.dart';
+import '../../core/platform/store_policy.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/kvkk/kvkk_view_sheet.dart';
@@ -1343,15 +1344,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 4),
           InkWell(
             onTap: () => context.push('/paket'),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('Paket detayı & yükselt',
-                    style: TextStyle(
+                Text(StorePolicy.hidesPurchaseFlows
+                        ? 'Paket detayı'
+                        : 'Paket detayı & yükselt',
+                    style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: AppColors.primary)),
-                Icon(Icons.chevron_right_rounded,
+                const Icon(Icons.chevron_right_rounded,
                     size: 16, color: AppColors.primary),
               ],
             ),

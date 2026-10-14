@@ -276,19 +276,27 @@ Aşağıdakiler canlı deploy sırasında tek tek doğrulandı; yeni bir sunucuy
 - [x] `mobile/android/key.properties` oluşturuldu (22 Eyl 2026) — **`.jks` ve parolayı YEDEKLE**
 - [x] Android release AAB üretildi ve imzası doğrulandı (`jar verified`, CN=BeautyAsist, 69.3MB)
 - [x] iOS release derlemesi geçti (`flutter build ios --release --no-codesign` → Runner.app 40.1MB)
-- [ ] `API_BASE_URL` canlı HTTPS'e ayarlı build alındı (Android AAB + iOS IPA)
+- [x] `API_BASE_URL`: release build'de varsayılan zaten canlı HTTPS (`ApiConfig.productionBaseUrl`,
+      `/health` 200 — 14 Eki 2026); `--dart-define` gerekmez
 - [x] `/hesap-silme` sayfası YAZILDI (`Frontend/app/hesap-silme/page.tsx`, `legalLinks`'e eklendi,
-      `next build` ile derlendiği doğrulandı) — **⚠ canlıda hâlâ 404; frontend DEPLOY edilmeli**
+      `next build` ile derlendiği doğrulandı) — canlıda 200 (14 Eki 2026)
 - [x] **`USE_EXACT_ALARM` manifest'ten KALDIRILDI** (22 Eyl 2026). AAB içinden doğrulandı:
       `USE_EXACT_ALARM: 0`, `SCHEDULE_EXACT_ALARM: 1`. Tam alarm izni artık kullanıcı onayına bağlı;
       onay yoksa `NotificationService.schedule` `inexactAllowWhileIdle`'a düşer (hatırlatma kaybolmaz)
 - [ ] Backend canlıda HTTPS + `Jwt:SigningKey`, `Encryption:MasterKeyBase64` gerçek gizli değerlerle
-- [ ] **SMS ya da e-posta kanalı canlıda kurulu ve GERÇEK gönderim test edildi** (§5.1 — 3.2.2(v))
+- [x] **E-posta kanalı canlıda açık** (`/api/auth/customer/otp/channels` → `email:true`, 14 Eki 2026) (§5.1 — 3.2.2(v))
 - [ ] **`AppReview:*` dolduruldu, loglarda hesap oluştu** (§5.2 — 2.1)
 - [ ] **App Store Connect "App Review Information" metni yazıldı** (§5.3 — 2.1)
-- [ ] Build numarası artırıldı — **pubspec şu an `1.0.0+6`**. 7 Ağu reddedilen turda 6 zaten
-      yüklendiyse Apple reddeder; App Store Connect'ten teyit edip gerekirse `1.0.0+7` yap
-- [ ] Gizlilik politikası URL'si yayında (Play + App Store)
+- [x] Build 10 App Store Connect'e yüklendi (14 Eki 2026, iOS hedefi 13.0 → 90068 uyarısı).
+      Sonraki yükleme **`1.0.0+11`**, iOS hedefi **15.0** (Nisan 2027 zorunluluğu)
+- [x] **3.1.1: iOS'ta uygulama içi satın alma yönlendirmesi yok** (`StorePolicy.hidesPurchaseFlows`):
+      Paketim'de fiyat / yükseltme yolu / ödeme kartı, WhatsApp'ta kontör satın alma, girişte
+      "İşletmenizi kaydedin" bağlantısı gizli.
+      Android aynen kalır
+- [ ] **Backend `963b4db` (inceleme yöneticisi kodsuz giriş) canlıya DEPLOY edildi** — edilmezse
+      denetçi yine kod ekranına takılır (2.1)
+- [ ] App Review Information'daki kullanıcı adı canlıdaki `AppReview:OwnerEmail` ile BİREBİR aynı
+- [x] Gizlilik politikası URL'si yayında: `https://beautyasist.com/gizlilik` (destek: `/destek`)
 - [ ] Play Data safety / App Privacy formları dolduruldu — **doğum tarihi artık "zorunlu" değil**
 - [ ] (Push isteniyorsa) Firebase 4 adımı + APNs anahtarı tamam, loglarda gerçek gönderim
 - [ ] Masaüstü installer imzalandı (Windows sertifika / macOS notarization)

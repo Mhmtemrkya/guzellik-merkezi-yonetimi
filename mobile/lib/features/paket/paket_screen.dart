@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/platform/store_policy.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/widgets/app_background.dart';
@@ -335,33 +336,52 @@ class _PaketScreenState extends State<PaketScreen> {
                 ? 'Aylık'
                 : 'Abonelik';
 
+    // iOS: fiyat, yükseltme ve ödeme yüzeyleri yok (StorePolicy — App Store 3.1.1).
+    final storeSafe = StorePolicy.hidesPurchaseFlows;
+
     return [
-      const PageHeader(
+      PageHeader(
         eyebrow: 'Aboneliğim',
         title: 'Paketim',
-        subtitle: 'Mevcut abonelik, kullanım ve yükseltme yolu.',
+        subtitle: storeSafe
+            ? 'Mevcut abonelik ve bu ayki kullanım.'
+            : 'Mevcut abonelik, kullanım ve yükseltme yolu.',
       ),
       const SizedBox(height: 16),
-      if (showTrial)
+      if (storeSafe && (showTrial || showSub))
         _banner(
-          warning: trialDays > 0,
-          title: trialDays <= 0
-              ? 'Deneme sürenin doldu — abonelik gerek.'
-              : 'Deneme süren $trialDays gün içinde dolacak.',
-          sub: trialDays <= 0
-              ? 'Hesabın yakında pasifleştirilecek; bir paket seçerek aktivasyonu sürdür.'
-              : 'Şimdi bir paket seçerek geçişi sorunsuz yap.',
-        ),
-      if (showSub)
-        _banner(
-          warning: subDays > 0,
-          title: subDays <= 0
-              ? '$subPeriodLabel aboneliğin doldu — lütfen paket satın al.'
-              : '$subPeriodLabel aboneliğin $subDays gün içinde bitiyor.',
-          sub: subDays <= 0
-              ? 'Kurum pasife alındı; aşağıdan bir paket seçip dönem yenileyerek erişimi sürdür.'
-              : 'Şimdi yenileyerek kesintisiz devam et.',
-        ),
+          warning: true,
+          title: showTrial
+              ? (trialDays <= 0
+                  ? 'Deneme süren doldu.'
+                  : 'Deneme süren $trialDays gün içinde dolacak.')
+              : (subDays! <= 0
+                  ? '$subPeriodLabel aboneliğin doldu.'
+                  : '$subPeriodLabel aboneliğin $subDays gün içinde bitiyor.'),
+          sub: 'Abonelik işlemleri bu uygulamadan yapılmaz.',
+        )
+      else ...[
+        if (showTrial)
+          _banner(
+            warning: trialDays > 0,
+            title: trialDays <= 0
+                ? 'Deneme sürenin doldu — abonelik gerek.'
+                : 'Deneme süren $trialDays gün içinde dolacak.',
+            sub: trialDays <= 0
+                ? 'Hesabın yakında pasifleştirilecek; bir paket seçerek aktivasyonu sürdür.'
+                : 'Şimdi bir paket seçerek geçişi sorunsuz yap.',
+          ),
+        if (showSub)
+          _banner(
+            warning: subDays > 0,
+            title: subDays <= 0
+                ? '$subPeriodLabel aboneliğin doldu — lütfen paket satın al.'
+                : '$subPeriodLabel aboneliğin $subDays gün içinde bitiyor.',
+            sub: subDays <= 0
+                ? 'Kurum pasife alındı; aşağıdan bir paket seçip dönem yenileyerek erişimi sürdür.'
+                : 'Şimdi yenileyerek kesintisiz devam et.',
+          ),
+      ],
       if (_actionMsg != null) ...[
         _resultBanner(_actionMsg!, _actionErr),
         const SizedBox(height: 12),
@@ -377,13 +397,15 @@ class _PaketScreenState extends State<PaketScreen> {
             badgeColor: isTrial ? const Color(0xFFB7791F) : AppColors.success,
             big: true,
           ),
-          const SizedBox(width: 10),
-          _statCard(
-            Icons.credit_card_rounded,
-            'Aylık fiyat',
-            monthlyPrice == 0 ? 'Özel' : _tl(monthlyPrice),
-            sub: 'Aylık faturalandırılır',
-          ),
+          if (!storeSafe) ...[
+            const SizedBox(width: 10),
+            _statCard(
+              Icons.credit_card_rounded,
+              'Aylık fiyat',
+              monthlyPrice == 0 ? 'Özel' : _tl(monthlyPrice),
+              sub: 'Aylık faturalandırılır',
+            ),
+          ],
         ],
       ),
       const SizedBox(height: 10),
@@ -408,20 +430,22 @@ class _PaketScreenState extends State<PaketScreen> {
                     ? const Color(0xFFB7791F)
                     : AppColors.success,
           ),
-          const SizedBox(width: 10),
-          _statCard(
-            Icons.auto_awesome_rounded,
-            'Üst paketler',
-            '${upgradePath.length}',
-            badge: recommended != null ? '${recommended['name']} (Önerilen)' : null,
-            badgeColor: AppColors.primary,
-            sub: recommended == null ? 'en üst paktesin' : null,
-          ),
+          if (!storeSafe) ...[
+            const SizedBox(width: 10),
+            _statCard(
+              Icons.auto_awesome_rounded,
+              'Üst paketler',
+              '${upgradePath.length}',
+              badge: recommended != null ? '${recommended['name']} (Önerilen)' : null,
+              badgeColor: AppColors.primary,
+              sub: recommended == null ? 'en üst paktesin' : null,
+            ),
+          ],
         ],
       ),
       const SizedBox(height: 16),
       // ÖDEME: kayıtlı kart + son faturalar (ödeme altyapısı kapalıysa gösterilmez)
-      if (d.billing['paymentsEnabled'] == true) ...[
+      if (!storeSafe && d.billing['paymentsEnabled'] == true) ...[
         const SizedBox(height: 12),
         _billingCard(d.billing),
       ],
@@ -432,27 +456,29 @@ class _PaketScreenState extends State<PaketScreen> {
         _emptyBox('Kullanım verisi alınamadı.')
       else
         ...metrics.map(_usageCell),
-      const SizedBox(height: 16),
-      // YÜKSELTME YOLU
-      Row(
-        children: [
-          Expanded(
-            child: _sectionTitle(Icons.auto_awesome_rounded, 'Yükseltme Yolu'),
-          ),
-          _periodToggle(),
-        ],
-      ),
-      const SizedBox(height: 12),
-      if (d.plans.isEmpty)
-        _emptyBox('Plan kataloğu henüz yüklenmedi.')
-      else
-        ...d.plans.map((p) => _planCard(
-              p,
-              isCurrent: '${p['id']}' == currentPlanId,
-              isRecommended:
-                  recommended != null && '${p['id']}' == '${recommended['id']}' &&
-                      '${p['id']}' != currentPlanId,
-            )),
+      if (!storeSafe) ...[
+        const SizedBox(height: 16),
+        // YÜKSELTME YOLU
+        Row(
+          children: [
+            Expanded(
+              child: _sectionTitle(Icons.auto_awesome_rounded, 'Yükseltme Yolu'),
+            ),
+            _periodToggle(),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (d.plans.isEmpty)
+          _emptyBox('Plan kataloğu henüz yüklenmedi.')
+        else
+          ...d.plans.map((p) => _planCard(
+                p,
+                isCurrent: '${p['id']}' == currentPlanId,
+                isRecommended:
+                    recommended != null && '${p['id']}' == '${recommended['id']}' &&
+                        '${p['id']}' != currentPlanId,
+              )),
+      ],
     ];
   }
 

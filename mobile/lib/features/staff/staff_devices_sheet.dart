@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/platform/store_policy.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
@@ -300,7 +301,9 @@ class _StaffDevicesScreenState extends State<StaffDevicesScreen> {
                 Text(
                   featureAllowed
                       ? 'Açıkken personel yalnızca tanımlı cihazlarından giriş yapabilir; loglara cihaz + ağ bilgisi düşer.'
-                      : 'Bu özellik paketinize dahil değil — paket yükseltmesi gerekir.',
+                      : StorePolicy.hidesPurchaseFlows
+                          ? 'Bu özellik paketinize dahil değil.'
+                          : 'Bu özellik paketinize dahil değil — paket yükseltmesi gerekir.',
                   style: const TextStyle(fontSize: 11, color: AppColors.muted),
                 ),
               ],

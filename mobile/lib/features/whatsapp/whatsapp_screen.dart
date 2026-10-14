@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/platform/store_policy.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
@@ -340,19 +341,22 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
             const SizedBox(height: 12),
             for (final p in pending) _pendingRow(p),
           ],
-          const SizedBox(height: 12),
-          const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 6),
-            child: Text('Ek kontör al', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-          ),
-          for (final pkg in packages) _packageCard(pkg),
-          const Padding(
-            padding: EdgeInsets.all(6),
-            child: Text(
-                'Kartla ödemede kontör anında yüklenir; havale yolunda BeautyAsist onayından sonra eklenir. '
-                'Kart bilgileriniz bizde saklanmaz.',
-                style: TextStyle(fontSize: 11, color: AppColors.muted)),
-          ),
+          // iOS: kontör satın alma yok (StorePolicy — App Store 3.1.1); bakiye/kullanım görünür.
+          if (!StorePolicy.hidesPurchaseFlows) ...[
+            const SizedBox(height: 12),
+            const Padding(
+              padding: EdgeInsets.only(left: 4, bottom: 6),
+              child: Text('Ek kontör al', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+            ),
+            for (final pkg in packages) _packageCard(pkg),
+            const Padding(
+              padding: EdgeInsets.all(6),
+              child: Text(
+                  'Kartla ödemede kontör anında yüklenir; havale yolunda BeautyAsist onayından sonra eklenir. '
+                  'Kart bilgileriniz bizde saklanmaz.',
+                  style: TextStyle(fontSize: 11, color: AppColors.muted)),
+            ),
+          ],
         ],
       ),
     );
@@ -397,10 +401,15 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
           if (lowBalance)
             Padding(
               padding: const EdgeInsets.only(top: 10),
-              child: Row(children: const [
-                Icon(Icons.warning_amber_rounded, size: 14, color: Color(0xFFB7791F)),
-                SizedBox(width: 6),
-                Expanded(child: Text('Düşük bakiye — kontör yüklemeniz önerilir.', style: TextStyle(fontSize: 11.5, color: Color(0xFFB7791F), fontWeight: FontWeight.w600))),
+              child: Row(children: [
+                const Icon(Icons.warning_amber_rounded, size: 14, color: Color(0xFFB7791F)),
+                const SizedBox(width: 6),
+                Expanded(
+                    child: Text(
+                        StorePolicy.hidesPurchaseFlows
+                            ? 'Düşük bakiye.'
+                            : 'Düşük bakiye — kontör yüklemeniz önerilir.',
+                        style: const TextStyle(fontSize: 11.5, color: Color(0xFFB7791F), fontWeight: FontWeight.w600))),
               ]),
             ),
           if (w['billingEnabled'] == false)

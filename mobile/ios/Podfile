@@ -3,7 +3,7 @@
 # iOS 13.0+ ister. Bu satır yorumdayken CocoaPods varsayılan (daha düşük) hedefi kullanır
 # ve `pod install` "Specs satisfying the dependency ... could not be found" / deployment
 # target hatasıyla düşer. Değer Runner.xcodeproj'daki IPHONEOS_DEPLOYMENT_TARGET ile aynı.
-platform :ios, '13.0'
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
