@@ -357,7 +357,8 @@ public sealed class StoreReviewOtpTests
             CustomerOtpPurpose.Login, null, CancellationToken.None);
 
         // KOD KABUL EDİLDİ: yalnız bu durumda giriş çağrısına ulaşılır (yanlış kod erken döner).
-        await auth.Received(1).CustomerLoginAsync(
+        // 2 çağrı: kod isteği oturumu doğrudan açar (güncel istemci); sabit kod eski build için geçerli kalır.
+        await auth.Received(2).CustomerLoginAsync(
             Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
     }
 
@@ -462,7 +463,8 @@ public sealed class StoreReviewOtpTests
         await service.VerifyAsync(
             Login("Denetci Hesap", ReviewPhone), ReviewCode,
             CustomerOtpPurpose.Login, null, CancellationToken.None);
-        await auth.Received(1).CustomerLoginAsync(
+        // 2 çağrı: kod isteği oturumu doğrudan açar (güncel istemci); sabit kod eski build için geçerli kalır.
+        await auth.Received(2).CustomerLoginAsync(
             Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
     }
 
@@ -540,7 +542,8 @@ public sealed class StoreReviewOtpTests
             Login("Denetci Hesap", ReviewPhone), ReviewCode,
             CustomerOtpPurpose.Login, null, CancellationToken.None);
 
-        await auth.Received(1).CustomerLoginAsync(
+        // 2 çağrı: kod isteği oturumu doğrudan açar (güncel istemci); sabit kod eski build için geçerli kalır.
+        await auth.Received(2).CustomerLoginAsync(
             Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
     }
 
@@ -831,5 +834,133 @@ public sealed class StoreReviewOtpTests
         Assert.True(result.IsSuccess);
         await messaging.Received(1).SendEmailAsync(
             RealEmail, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    // ---------------------------------------------------------------- KOD ADIMSIZ GİRİŞ
+
+    private static Dictionary<string, string?> ReviewConfig(bool enabled = true) => new()
+    {
+        ["AppReview:Enabled"] = enabled ? "true" : "false",
+        ["AppReview:CustomerPhone"] = ReviewPhone,
+        ["AppReview:CustomerOtpCode"] = ReviewCode,
+    };
+
+    /// <summary>İnceleme müşterisi girişte kod ekranını görmez: oturum kod isteğinde döner.</summary>
+    [Fact]
+    public async Task ReviewCustomer_Login_ReturnsSessionDirectly()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        await using var db = NewDb(options);
+        var auth = NewAuth();
+        var service = NewService(db, NewMessaging(email: true), auth: auth, config: ReviewConfig());
+
+        var result = await service.RequestAsync(Login("Denetci Hesap", ReviewPhone), null,
+            CustomerOtpPurpose.Login, CustomerOtpChannel.Email, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var body = System.Text.Json.JsonSerializer.SerializeToElement(result.Value);
+        Assert.Equal("access", body.GetProperty("accessToken").GetString());
+        // Üst seviyede: web proxy'si data.refreshToken'ı HttpOnly çereze taşır.
+        Assert.Equal("refresh", body.GetProperty("refreshToken").GetString());
+        Assert.True(body.TryGetProperty("user", out _));
+        await auth.Received(1).CustomerLoginAsync(
+            Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>Kısa yol yalnız inceleme numarasınındır: gerçek müşteriye token DÖNMEZ.</summary>
+    [Fact]
+    public async Task RealCustomer_Login_NeverReturnsSession()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        await using var db = NewDb(options);
+        var auth = NewAuth();
+        var service = NewService(db, NewMessaging(email: true), auth: auth, config: ReviewConfig());
+
+        var result = await service.RequestAsync(Login("Gercek Musteri", RealPhone), RealEmail,
+            CustomerOtpPurpose.Login, CustomerOtpChannel.Email, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var body = System.Text.Json.JsonSerializer.SerializeToElement(result.Value);
+        Assert.False(body.TryGetProperty("accessToken", out _));
+        await auth.DidNotReceive().CustomerLoginAsync(
+            Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>Kayıtlı ad eşleşmeden inceleme numarası da oturum alamaz.</summary>
+    [Fact]
+    public async Task ReviewPhone_WithWrongName_DoesNotReturnSession()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        await using var db = NewDb(options);
+        var auth = NewAuth();
+        var service = NewService(db, NewMessaging(email: true), auth: auth, config: ReviewConfig());
+
+        var result = await service.RequestAsync(Login("Baska Biri", ReviewPhone), null,
+            CustomerOtpPurpose.Login, CustomerOtpChannel.Email, CancellationToken.None);
+
+        var body = System.Text.Json.JsonSerializer.SerializeToElement(result.Value);
+        Assert.False(body.TryGetProperty("accessToken", out _));
+        await auth.DidNotReceive().CustomerLoginAsync(
+            Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>AppReview:Enabled=false kısa yolu kapatır.</summary>
+    [Fact]
+    public async Task ReviewPhone_FlagOff_DoesNotReturnSession()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        await using var db = NewDb(options);
+        var auth = NewAuth();
+        var service = NewService(db, NewMessaging(email: true), auth: auth, config: ReviewConfig(enabled: false));
+
+        var result = await service.RequestAsync(Login("Denetci Hesap", ReviewPhone), null,
+            CustomerOtpPurpose.Login, CustomerOtpChannel.Email, CancellationToken.None);
+
+        var body = System.Text.Json.JsonSerializer.SerializeToElement(result.Value);
+        Assert.False(body.TryGetProperty("accessToken", out _));
+        await auth.DidNotReceive().CustomerLoginAsync(
+            Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>Kayıt akışı değişmez: inceleme numarasında da kod isteği oturum açmaz.</summary>
+    [Fact]
+    public async Task ReviewPhone_Register_DoesNotReturnSession()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        await using var db = NewDb(options);
+        var auth = NewAuth();
+        var service = NewService(db, NewMessaging(email: true), auth: auth, config: ReviewConfig());
+
+        var result = await service.RequestAsync(Login("Denetci Hesap", ReviewPhone), "reviewer@example.com",
+            CustomerOtpPurpose.Register, CustomerOtpChannel.Email, CancellationToken.None);
+
+        var body = System.Text.Json.JsonSerializer.SerializeToElement(result.Value);
+        Assert.False(body.TryGetProperty("accessToken", out _));
+    }
+
+    /// <summary>Oturum açılamazsa (kurum askıda vb.) kod ekranı yoluna düşülür, hata yutulmaz.</summary>
+    [Fact]
+    public async Task ReviewCustomer_LoginFailure_FallsBackToCodeStep()
+    {
+        var options = NewOptions();
+        await SeedAsync(options);
+        await using var db = NewDb(options);
+        var auth = Substitute.For<IAuthService>();
+        auth.CustomerLoginAsync(Arg.Any<CustomerLoginRequest>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Result<LoginResponse>.Failure(Error.Unauthorized("askida")));
+        var service = NewService(db, NewMessaging(email: true), auth: auth, config: ReviewConfig());
+
+        var result = await service.RequestAsync(Login("Denetci Hesap", ReviewPhone), null,
+            CustomerOtpPurpose.Login, CustomerOtpChannel.Email, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var body = System.Text.Json.JsonSerializer.SerializeToElement(result.Value);
+        Assert.False(body.TryGetProperty("accessToken", out _));
+        Assert.True(body.GetProperty("isDemo").GetBoolean());
     }
 }

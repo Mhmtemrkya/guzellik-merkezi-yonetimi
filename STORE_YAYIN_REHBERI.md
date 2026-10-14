@@ -185,9 +185,9 @@ Canlı `appsettings.Production.json` (ya da ortam değişkenleri):
   "OwnerOtpCode": "<6 haneli sabit inceleme kodu>",
   "OwnerPassword": "<en az 8 karakter, güçlü>",
   "OwnerName": "Demo Yonetici",
-  "CustomerFullName": "Demo Musteri",
-  "CustomerPhone": "+90 5XX XXX XX XX",
-  "CustomerEmail": "review.customer@beautyasist.app",
+  "CustomerFullName": "Demo Müşteri",
+  "CustomerPhone": "+905551112233",
+  "CustomerEmail": "musteri@beautyasist.test",
   "CustomerOtpCode": "424242"
 }
 ```
@@ -215,9 +215,10 @@ DEMO ACCOUNT (Staff / Business owner)
 
 DEMO ACCOUNT (Client / Consumer)
   Sign-in mode: "Müşteri" tab
-  Full name: Demo Musteri
-  Phone: +90 5XX XXX XX XX
-  Verification code: 424242   (fixed code for this review account)
+  Full name: Demo Müşteri      (type exactly, with "ü" and "ş" - or copy/paste)
+  Phone: +905551112233
+  E-mail: musteri@beautyasist.test
+  No verification code: this demo client signs in directly after "Continue".
 
 NOTES
 - The staff/business-owner demo account skips the e-mail verification step. The review-only
@@ -227,12 +228,19 @@ NOTES
 - Client verification codes are sent by E-MAIL ONLY. SMS and WhatsApp are not
   used. Sign-in: the code goes to the e-mail on the client record. Sign-up: one
   step, the code goes to the e-mail address entered (any phone number, any country).
-- For the demo client phone above NO message is sent by any channel; the code is
-  fixed (424242). Enter it directly in the code field. On sign-up any e-mail works.
+- For the demo client above NO message is sent by any channel and the code step is
+  skipped. (App builds older than 1.0.0 (12) still open the code screen; enter 424242.)
+  On sign-up any e-mail works.
 - Date of birth is no longer requested at sign-in. It is optional at sign-up.
 ```
 
-`+90 5XX XXX XX XX` ve parolayı gerçek değerlerle **doldurun** — Apple 2.1'i tam olarak burada verdi.
+Parolayı gerçek değerle **doldurun** — Apple 2.1'i tam olarak burada verdi.
+
+> **Müşteri kısa yolu (14 Eki 2026):** `AppReview:CustomerPhone` numarası + kayıtlı ad eşleşince
+> `/api/auth/customer/otp/request` oturumu doğrudan döner, kod ekranı açılmaz (mobil 1.0.0+12, web).
+> Ad karşılaştırması aksan DUYARLIDIR: canlıdaki müşteri kaydının adı tam `Demo Müşteri` olmalı.
+> Kurucu, telefon zaten kayıtlıysa adı/e-postayı GÜNCELLEMEZ — numara eskiden farklı bir adla
+> açıldıysa adı panelden düzeltin.
 
 ### 5.4 İnceleme onaylandıktan SONRA
 

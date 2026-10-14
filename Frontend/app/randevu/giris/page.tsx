@@ -185,6 +185,11 @@ export default function CustomerLoginPage() {
         },
         mode === 'register' ? 'register' : 'login',
       )
+      // Mağaza inceleme müşterisi: oturum kod isteğinde kuruldu, kod adımı yok.
+      if (res.signedIn) {
+        router.push(nextTarget())
+        return
+      }
       setOtpStage('code')
       setOtpCode('')
       // `hint` sunucudan gelir: kod gelmediğinde ne yapılacağını söyler. Yalnız e-posta kanalının

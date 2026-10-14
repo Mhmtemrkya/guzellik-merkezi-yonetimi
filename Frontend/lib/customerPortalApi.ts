@@ -238,11 +238,13 @@ const purposeCode = (purpose: CustomerOtpPurpose): number => (purpose === 'regis
  * `email` YALNIZCA kayıt akışında anlamlıdır: girişte kod, kurum kayıtlarındaki adrese gider —
  * kullanıcıdan adres istemek, yanlış yazıldığında sessiz başarısızlığa dönüşürdü.
  */
-export function customerOtpRequest(
+export async function customerOtpRequest(
   input: CustomerLoginInput & { channel?: CustomerOtpChannel; email?: string | null },
   purpose: CustomerOtpPurpose = 'login',
-): Promise<{ message?: string; hint?: string | null; devCode?: string | null }> {
-  return portalRequest<{ message?: string; hint?: string | null; devCode?: string | null }>('/api/auth/customer/otp/request', {
+): Promise<{ message?: string; hint?: string | null; devCode?: string | null; signedIn: boolean }> {
+  const res = await portalRequest<
+    { message?: string; hint?: string | null; devCode?: string | null } & Partial<CustomerSession>
+  >('/api/auth/customer/otp/request', {
     method: 'POST',
     auth: false,
     body: {
@@ -253,6 +255,12 @@ export function customerOtpRequest(
       email: input.email || null,
     },
   })
+  // Mağaza inceleme müşterisinde sunucu kod adımını atlar ve oturumu bu yanıtta verir.
+  if (res?.accessToken && res.user) {
+    storeCustomerSession(res as CustomerSession)
+    return { ...res, signedIn: true }
+  }
+  return { ...res, signedIn: false }
 }
 
 /** OTP adım 2: kod doğruysa giriş yapılır; kayıt akışında hesap açılıp giriş yapılır. */

@@ -556,6 +556,37 @@ public sealed class CustomerOtpService
             ? $"Demo / App Review: E-posta, SMS veya WhatsApp mesajı gönderilmez. Doğrulama kodu: {_demoCode}. " +
               $"No email, SMS or WhatsApp is sent for this demo account. Enter {_demoCode}."
             : null;
+
+        // İNCELEME MÜŞTERİSİNDE GİRİŞTE KOD ADIMI YOK (kullanıcı kararı, 14 Eki 2026) — panel
+        // tarafındaki PanelLoginOtpService kısa yolunun müşteri karşılığı. Kimlik şartı aynen
+        // geçerlidir: shouldSend yalnız yapılandırılmış numara + kayıtlı ad eşleşirse true olur,
+        // oturum da CustomerLoginAsync'in kurum/kara liste kontrollerinden geçer.
+        //
+        // Oturum alanları ÜST SEVİYEDEDİR: web proxy'si data.refreshToken'ı HttpOnly çereze taşır.
+        // Sabit kod yine önbellekte durur: mağazadaki eski build kod ekranını her durumda açar ve
+        // oturum alanlarını tanımaz; o build sabit kodla devam edebilir. Kayıt akışı değişmez.
+        if (isReview && shouldSend && purpose == CustomerOtpPurpose.Login)
+        {
+            var login = await _auth.CustomerLoginAsync(request, ct);
+            if (login.IsSuccess)
+            {
+                var session = login.Value!;
+                return Result<object>.Success(new
+                {
+                    isDemo = true,
+                    message = reviewMessage,
+                    hint = reviewMessage,
+                    devCode,
+                    accessToken = session.AccessToken,
+                    refreshToken = session.RefreshToken,
+                    expiresAtUtc = session.ExpiresAtUtc,
+                    user = session.User,
+                });
+            }
+            // Oturum açılamadıysa (kurum askıda vb.) kod ekranı yoluna düşülür; doğrulama adımı
+            // aynı hatayı kullanıcıya gösterir.
+        }
+
         return Result<object>.Success(new
         {
             isDemo = isReview,

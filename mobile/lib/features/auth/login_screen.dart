@@ -304,7 +304,9 @@ class _LoginScreenState extends State<LoginScreen> {
         email: customerEmailController.text,
         channel: CustomerOtpChannel.email.code, // giriş = e-posta (sunucu da ezer)
       );
-      if (!mounted) return;
+      // Mağaza inceleme müşterisi: oturum kod isteğinde kuruldu, router yönlendirir.
+      // Kod ekranı açılmaz.
+      if (!mounted || widget.auth.status == AuthStatus.signedIn) return;
       setState(() {
         otpStage = true;
         otpCodeController.clear();

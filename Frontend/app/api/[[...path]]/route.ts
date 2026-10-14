@@ -223,6 +223,9 @@ const TOKEN_ISSUING_PATHS = new Set([
   '/api/auth/login/verify',
   '/api/auth/refresh',
   '/api/auth/customer/otp/verify',
+  // Mağaza inceleme müşterisinde oturum kod İSTEĞİNDE döner (kod adımı yok). Diğer yanıtlarda
+  // refreshToken olmadığı için bu uç onlarda hiçbir şeyi değiştirmez.
+  '/api/auth/customer/otp/request',
   // Self-servis kurum kaydının son adımı da oturum döndürür; refresh token'ı aynı HttpOnly
   // çereze taşınmalı. Listede olmasaydı token tarayıcı depolamasında kalır ve XSS'e açılırdı.
   '/api/public/signup/verify-phone',

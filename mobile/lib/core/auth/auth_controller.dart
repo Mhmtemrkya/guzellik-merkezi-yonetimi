@@ -317,7 +317,14 @@ class AuthController extends ChangeNotifier {
       'channel': channel,
       'email': (trimmedEmail == null || trimmedEmail.isEmpty) ? null : trimmedEmail,
     });
-    return (data as Map).cast<String, dynamic>();
+    final map = (data as Map).cast<String, dynamic>();
+    // Mağaza inceleme müşterisinde sunucu kod adımını atlar ve oturumu bu yanıtta verir
+    // (`accessToken` dolu). Oturum burada kurulur; ekran [status]'a bakıp kod adımını açmaz.
+    final accessToken = map['accessToken'];
+    if (accessToken is String && accessToken.isNotEmpty) {
+      await _acceptCustomerSession(map);
+    }
+    return map;
   }
 
   /// OTP adım 2: kod doğruysa giriş yapılır; [purpose] = 1 ise hesap açılıp giriş yapılır.
@@ -345,7 +352,13 @@ class AuthController extends ChangeNotifier {
       // KVKK açık rızası — kayıt akışında ZORUNLU; sunucu onaysız kaydı reddeder.
       'kvkkConsent': kvkkConsent,
     });
-    session = AuthSession.fromJson((data as Map).cast<String, dynamic>());
+    await _acceptCustomerSession((data as Map).cast<String, dynamic>());
+  }
+
+  /// Müşteri oturumunu kurar — kod doğrulamasından da, kod adımı olmayan inceleme hesabının
+  /// kod isteğinden de AYNI yoldan geçer (iki kopya ayrışmasın).
+  Future<void> _acceptCustomerSession(Map<String, dynamic> data) async {
+    session = AuthSession.fromJson(data);
     _remember = true;
     await _persistSession();
     status = AuthStatus.signedIn;
