@@ -181,7 +181,26 @@ public static class AppReviewAccountSeeder
             var demoCustomer = existing.FirstOrDefault(
                 c => Infrastructure.Services.PhoneMask.LoginKey(c.Phone) == phoneKey);
 
-            if (demoCustomer is null)
+            // NUMARA BAŞKA BİR KURUMDA ZATEN KAYITLIYSA (ör. demo yöneticinin kurumunda hazırlanmış
+            // dolu bir demo müşteri) burada İKİNCİ kayıt tutulmaz: aynı ad + telefon iki kurumda
+            // eşleşince CustomerLoginAsync "birden fazla kurumda kaydınız var" der ve denetçi giremez.
+            // Bu kurucu her açılışta çalıştığı için kopyayı elle silmek yetmezdi; burada pasife alınır.
+            var search = scope.ServiceProvider.GetRequiredService<ISearchIndexService>();
+            var elsewhere = await Infrastructure.Services.CustomerIdentityLookup.FindByPhoneAsync(
+                db.Customers.IgnoreQueryFilters().AsNoTracking(), search, customerPhone, CancellationToken.None);
+            if (elsewhere.Any(c => c.TenantId != tenant.Id && !c.IsDeleted))
+            {
+                if (demoCustomer is not null)
+                {
+                    demoCustomer.SoftDelete(DateTime.UtcNow);
+                    await db.SaveChangesAsync();
+                }
+                logger.LogWarning(
+                    "AppReview:CustomerPhone başka bir kurumda kayıtlı — inceleme kurumunda demo müşteri tutulmuyor; " +
+                    "denetçi o kurumdaki kayıtla girer.");
+                demoCustomer = null;
+            }
+            else if (demoCustomer is null)
             {
                 demoCustomer = new Customer(tenant.Id, branch.Id, customerName, customerPhone, customerEmail);
                 // Doğum tarihi BİLEREK boş: girişte sorulmuyor (App Store 5.1.1(v)).
@@ -190,7 +209,7 @@ public static class AppReviewAccountSeeder
                 await db.SaveChangesAsync();
             }
 
-            if (created) await SeedContentAsync(db, tenant, branch, demoCustomer);
+            if (created && demoCustomer is not null) await SeedContentAsync(db, tenant, branch, demoCustomer);
         }
         else
         {
