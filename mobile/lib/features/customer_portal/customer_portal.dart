@@ -282,15 +282,17 @@ class _AppointmentCardState extends State<_AppointmentCard> {
   Future<void> _cancel() async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      // Butonlar DİYALOĞUN bağlamıyla kapatır (ctx). Dış `context` ile pop, diyaloğu değil
+      // altındaki müşteri sayfasını kapatıyor ve ekran siyah kalıyordu.
+      builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.event_busy_rounded, color: AppColors.danger, size: 40),
         title: const Text('Randevuyu iptal et'),
         content: const Text('Bu randevuyu iptal etmek istediğinize emin misiniz? Bu işlem geri alınamaz.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Vazgeç')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(ctx, true),
             child: const Text('İptal Et'),
           ),
         ],

@@ -431,11 +431,12 @@ class _ConfirmStepState extends State<_ConfirmStep> {
       if (!mounted) return;
       showDialog<void>(
         context: context,
-        builder: (_) => AlertDialog(
+        // Diyaloğun kendi bağlamıyla kapatılır (ctx); dış context yanlış sayfayı kapatıyordu.
+        builder: (ctx) => AlertDialog(
           icon: const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 48),
           title: const Text('Randevunuz alındı'),
           content: const Text('Randevunuz oluşturuldu ve kurumun takvimine işlendi. "Randevularım" sayfasından takip edebilirsiniz.'),
-          actions: [FilledButton(onPressed: () { Navigator.pop(context); widget.onDone(); }, child: const Text('Tamam'))],
+          actions: [FilledButton(onPressed: () { Navigator.pop(ctx); widget.onDone(); }, child: const Text('Tamam'))],
         ),
       );
     } catch (e) {
