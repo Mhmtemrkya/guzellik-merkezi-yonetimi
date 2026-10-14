@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../auth/auth_controller.dart';
 import '../storage/session_storage.dart';
+import '../platform/store_policy.dart';
 import 'api_config.dart';
 import 'device_identity.dart';
 
@@ -12,6 +13,22 @@ class ApiException implements Exception {
   final String? code;
   @override
   String toString() => message;
+}
+
+/// iOS'ta (App Store 3.1.1) sunucunun "paket satın alın" çağrısı gösterilmez: deneme/abonelik
+/// süresi dolan kuruma TrialAccessMiddleware ve giriş, satın almaya yönlendiren bir metin döner.
+/// Apple bunu IAP dışı ödemeye yönlendirme sayar. Durum bilgisi korunur, çağrı düşer.
+String _storeSafe(String message) {
+  if (!StorePolicy.hidesPurchaseFlows) return message;
+  final lower = message.toLowerCase();
+  if (!lower.contains('paket')) return message;
+  if (lower.contains('deneme')) {
+    return 'Deneme süresi bitti. Abonelik işlemleri bu uygulamadan yapılmaz.';
+  }
+  if (lower.contains('abonelik')) {
+    return 'Abonelik süreniz doldu. Abonelik işlemleri bu uygulamadan yapılmaz.';
+  }
+  return message;
 }
 
 class ApiClient {
@@ -174,7 +191,7 @@ class ApiClient {
         if (payload['success'] == true) return payload['data'];
         final error = payload['error'] as Map?;
         throw ApiException(
-          '${error?['message'] ?? 'İşlem tamamlanamadı.'}',
+          _storeSafe('${error?['message'] ?? 'İşlem tamamlanamadı.'}'),
           statusCode: response.statusCode,
           code: error?['code']?.toString(),
         );
@@ -185,7 +202,7 @@ class ApiClient {
       if (payload is Map) {
         final apiError = payload['error'] as Map?;
         throw ApiException(
-          '${apiError?['message'] ?? payload['message'] ?? 'Sunucuya bağlanılamadı.'}',
+          _storeSafe('${apiError?['message'] ?? payload['message'] ?? 'Sunucuya bağlanılamadı.'}'),
           statusCode: error.response?.statusCode,
           code: apiError?['code']?.toString(),
         );

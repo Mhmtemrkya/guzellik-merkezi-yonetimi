@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/platform/store_policy.dart';
 import '../../core/theme/responsive.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/network/api_client.dart';
@@ -1655,7 +1656,10 @@ class _TrialBanner extends StatelessWidget {
         color = AppColors.primaryDark;
       } else if (d <= 0) {
         title = 'Deneme süreniz doldu';
-        subtitle = 'Devam etmek için bir paket seçin.';
+        // iOS: satın almaya çağrı yok (StorePolicy — App Store 3.1.1).
+        subtitle = StorePolicy.hidesPurchaseFlows
+            ? 'Abonelik işlemleri bu uygulamadan yapılmaz.'
+            : 'Devam etmek için bir paket seçin.';
         color = AppColors.danger;
       } else {
         title = 'Deneme süreniz: $d gün kaldı';
@@ -1669,7 +1673,9 @@ class _TrialBanner extends StatelessWidget {
         return const SizedBox.shrink();
       } else if (d <= 0) {
         title = 'Aboneliğiniz sona erdi';
-        subtitle = 'Kesintisiz devam için yenileyin.';
+        subtitle = StorePolicy.hidesPurchaseFlows
+            ? 'Abonelik işlemleri bu uygulamadan yapılmaz.'
+            : 'Kesintisiz devam için yenileyin.';
         color = AppColors.danger;
       } else {
         title = 'Aboneliğiniz: $d gün kaldı';
