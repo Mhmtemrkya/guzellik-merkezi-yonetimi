@@ -1127,7 +1127,12 @@ class _DashboardHeroState extends State<_DashboardHero>
       child: Stack(
         children: [
           // Aurora lekeleri — koyu zeminde süzülerek dolaşır (animasyon).
-          AnimatedBuilder(
+          // Positioned.fill ŞART: içteki Stack'in yalnız Positioned çocukları var, boyutunu
+          // dışarıdan alır. Sarmasız hâlde ListView'in sınırsız yüksekliğini alıyor, düzen
+          // hesaplanamıyor ve release'te panonun tamamı BOŞ çiziliyordu. Kartın boyunu
+          // alttaki içerik (Padding) belirler; aurora o alana oturur.
+          Positioned.fill(
+            child: AnimatedBuilder(
             animation: _drift,
             builder: (context, _) {
               final t = _drift.value * 2 * math.pi;
@@ -1160,6 +1165,7 @@ class _DashboardHeroState extends State<_DashboardHero>
                 ],
               );
             },
+            ),
           ),
           // Periyodik ışık süpürmesi. Parıltı şeridi `child` olarak BİR KEZ kurulur;
           // her karede yalnız Transform güncellenir (MediaQuery de builder dışında).
