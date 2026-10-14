@@ -185,7 +185,7 @@ Canlı `appsettings.Production.json` (ya da ortam değişkenleri):
   "OwnerOtpCode": "<6 haneli sabit inceleme kodu>",
   "OwnerPassword": "<en az 8 karakter, güçlü>",
   "OwnerName": "Demo Yonetici",
-  "CustomerFullName": "Demo Müşteri",
+  "CustomerFullName": "Demo Musteri",
   "CustomerPhone": "+905551112233",
   "CustomerEmail": "musteri@beautyasist.test",
   "CustomerOtpCode": "424242"
@@ -215,7 +215,7 @@ DEMO ACCOUNT (Staff / Business owner)
 
 DEMO ACCOUNT (Client / Consumer)
   Sign-in mode: "Müşteri" tab
-  Full name: Demo Müşteri      (type exactly, with "ü" and "ş" - or copy/paste)
+  Full name: Demo Musteri
   Phone: +905551112233
   E-mail: musteri@beautyasist.test
   No verification code: this demo client signs in directly after "Continue".
@@ -238,7 +238,8 @@ Parolayı gerçek değerle **doldurun** — Apple 2.1'i tam olarak burada verdi.
 
 > **Müşteri kısa yolu (14 Eki 2026):** `AppReview:CustomerPhone` numarası + kayıtlı ad eşleşince
 > `/api/auth/customer/otp/request` oturumu doğrudan döner, kod ekranı açılmaz (mobil 1.0.0+12, web).
-> Ad karşılaştırması aksan DUYARLIDIR: canlıdaki müşteri kaydının adı tam `Demo Müşteri` olmalı.
+> Ad karşılaştırması aksan DUYARLIDIR: canlıdaki müşteri kaydının adı tam `Demo Musteri` olmalı
+> (Türkçe karakter yok — denetçi İngilizce klavyeyle yazabilsin).
 > Kurucu, telefon zaten kayıtlıysa adı/e-postayı GÜNCELLEMEZ — numara eskiden farklı bir adla
 > açıldıysa adı panelden düzeltin.
 

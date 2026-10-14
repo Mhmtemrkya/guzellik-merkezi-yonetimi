@@ -114,7 +114,7 @@ public static class AppReviewAccountSeeder
         var slug = Slugify(app.Configuration["AppReview:TenantSlug"], DefaultSlug);
         var tenantName = Fallback(app.Configuration["AppReview:TenantName"], DefaultTenantName);
         var ownerName = Fallback(app.Configuration["AppReview:OwnerName"], "Demo Yönetici");
-        var customerName = Fallback(app.Configuration["AppReview:CustomerFullName"], "Demo Müşteri");
+        var customerName = Fallback(app.Configuration["AppReview:CustomerFullName"], "Demo Musteri");
         var customerPhone = app.Configuration["AppReview:CustomerPhone"]?.Trim();
         var customerEmail = app.Configuration["AppReview:CustomerEmail"]?.Trim();
 
