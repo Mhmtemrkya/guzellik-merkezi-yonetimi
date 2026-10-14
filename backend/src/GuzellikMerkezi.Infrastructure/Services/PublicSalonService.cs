@@ -437,11 +437,7 @@ public sealed class PublicSalonService : IPublicSalonService
             .ToList();
     }
 
-    private static string NormalizeName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return string.Empty;
-        return string.Join(' ', name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
-    }
+    private static string NormalizeName(string? name) => CustomerIdentityLookup.NormalizeName(name);
 }
 
 /// <summary>

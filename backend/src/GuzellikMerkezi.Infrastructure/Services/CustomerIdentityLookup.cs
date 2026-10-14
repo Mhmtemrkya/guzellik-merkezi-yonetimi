@@ -24,12 +24,34 @@ namespace GuzellikMerkezi.Infrastructure.Services;
 /// </summary>
 public static class CustomerIdentityLookup
 {
-    /// <summary>Ad soyad eşleştirme anahtarı: kırp, çoklu boşluğu teke indir, küçült.</summary>
+    private static readonly System.Globalization.CultureInfo Tr =
+        System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
+
+    /// <summary>
+    /// Ad soyad eşleştirme anahtarı: kırp, çoklu boşluğu teke indir, küçült ve TÜRKÇE HARFLERİ
+    /// KATLA (ı/i, ş/s, ğ/g, ü/u, ö/o, ç/c aynı sayılır).
+    /// <para>
+    /// Neden: kayıtta soyad Türkçe kültürle BÜYÜTÜLÜR (PersonNameFormatter: "yılmaz" → "YILMAZ",
+    /// "musteri" → "MUSTERİ"). Eskiden burada ToLowerInvariant kullanılıyordu: "YILMAZ" → "yilmaz",
+    /// "İ" → "i̇" (birleşik nokta) oluyor, adını DOĞRU yazan müşteri bile eşleşmiyordu. Ayrıca
+    /// İngilizce klavyeyle "Musteri" yazan biri "Müşteri" kaydıyla eşleşebilmeli. Bu bir güvenlik
+    /// gevşemesi değildir: kimliğin gerçek kanıtı telefon + e-posta kodudur, ad yalnız eşleştiricidir.
+    /// </para>
+    /// </summary>
     public static string NormalizeName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return string.Empty;
         var collapsed = string.Join(' ', name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        return collapsed.ToLowerInvariant();
+        var lower = collapsed.ToLower(Tr);
+        var sb = new System.Text.StringBuilder(lower.Length);
+        foreach (var ch in lower.Normalize(System.Text.NormalizationForm.FormD))
+        {
+            // Birleşik işaretler (ü'nün noktaları, ş'nin çengeli, İ'nin noktası) düşer.
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) ==
+                System.Globalization.UnicodeCategory.NonSpacingMark) continue;
+            sb.Append(ch == 'ı' ? 'i' : ch);
+        }
+        return sb.ToString();
     }
 
     /// <summary>E-posta eşleştirme anahtarı (büyük/küçük ve boşluk duyarsız).</summary>

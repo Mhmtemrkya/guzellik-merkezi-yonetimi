@@ -59,11 +59,7 @@ public sealed class CustomerPortalService : ICustomerPortalService
     private static bool TenantBookable(Tenant t) =>
         t.Status is TenantStatus.Active or TenantStatus.Trial && t.Slug != SystemTenant.IndividualSlug;
 
-    private static string NormalizeName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return string.Empty;
-        return string.Join(' ', name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
-    }
+    private static string NormalizeName(string? name) => CustomerIdentityLookup.NormalizeName(name);
 
     public async Task<Result<PortalProfileDto>> GetProfileAsync(Guid customerId, CancellationToken cancellationToken = default)
     {
