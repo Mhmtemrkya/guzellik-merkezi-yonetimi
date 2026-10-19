@@ -24,6 +24,7 @@ import '../features/customers/consultation_form_screen.dart';
 import '../features/customers/customer_detail_screen.dart';
 import '../features/customers/customers_screen.dart';
 import '../features/customers/treatment_journal_screen.dart';
+import '../features/explore/explore_screens.dart';
 import '../features/expense_categories/expense_categories_screen.dart';
 import '../features/expenses/expenses_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
@@ -54,6 +55,9 @@ import '../features/waitlist/waitlist_screen.dart';
 import '../features/whatsapp/whatsapp_screen.dart';
 import '../shared/widgets/app_shell.dart';
 
+bool _isExplore(String location) =>
+    location == '/explore' || location.startsWith('/explore/');
+
 class AppRouter {
   AppRouter({required this.auth, required this.api, required this.notifications}) {
     router = GoRouter(
@@ -69,7 +73,10 @@ class AppRouter {
           // tanım gereği giriş yapamaz. Listeye eklenmezse yönlendirme onu anında /login'e
           // geri atar ve sıfırlama ekranı hiç açılmaz.
           const anonymous = {'/login', '/register', '/forgot-password'};
-          return anonymous.contains(location) ? null : '/login';
+          // Salon vitrini (/explore) hesapsız gezilir — App Store 5.1.1(v): hesap yalnız
+          // randevu almak/yönetmek için istenir.
+          if (anonymous.contains(location) || _isExplore(location)) return null;
+          return '/login';
         }
         // Müşteri rolü: yalnızca /customer/ alanı.
         // NOT: prefix '/customer/' (sondaki / ile) — aksi halde personel '/customers' sayfasını da yakalardı.
@@ -85,6 +92,8 @@ class AppRouter {
           return location == '/change-password' ? null : '/change-password';
         }
         if (location == '/change-password') return null;
+        // Oturumlu kullanıcı vitrini de gezebilir; geri tuşu onu kendi alanına döndürür.
+        if (_isExplore(location)) return null;
         if (location == '/login' || location == '/splash' || location == '/') {
           return '/home';
         }
@@ -103,7 +112,25 @@ class AppRouter {
         GoRoute(path: '/splash', builder: (_, _) => const _SplashScreen()),
         GoRoute(
           path: '/login',
-          builder: (_, _) => LoginScreen(auth: auth),
+          builder: (_, state) => LoginScreen(
+            auth: auth,
+            initialMode: state.uri.queryParameters['mode'] == 'customer'
+                ? LoginMode.customer
+                : LoginMode.staff,
+          ),
+        ),
+        GoRoute(
+          path: '/explore',
+          builder: (_, _) => ExploreSalonsScreen(api: api),
+          routes: [
+            GoRoute(
+              path: 'salon/:slug',
+              builder: (_, state) => ExploreSalonDetailScreen(
+                api: api,
+                slug: state.pathParameters['slug'] ?? '',
+              ),
+            ),
+          ],
         ),
         GoRoute(
           path: '/register',

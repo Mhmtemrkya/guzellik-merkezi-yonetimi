@@ -14,8 +14,11 @@ import '../../core/theme/app_theme.dart';
 enum LoginMode { staff, customer }
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({required this.auth, super.key});
+  const LoginScreen({required this.auth, this.initialMode = LoginMode.staff, super.key});
   final AuthController auth;
+
+  /// Vitrindeki "Randevu Al" müşteri girişini açar (/login?mode=customer).
+  final LoginMode initialMode;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -23,7 +26,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final formKey = GlobalKey<FormState>();
-  LoginMode mode = LoginMode.staff;
+  late LoginMode mode = widget.initialMode;
 
   // Personel/yönetici
   final emailController = TextEditingController();
@@ -558,6 +561,21 @@ class _LoginScreenState extends State<LoginScreen> {
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: -.7,
                                   ),
+                            ),
+                            const SizedBox(height: 16),
+                            // HESAPSIZ ERİŞİM (App Store 5.1.1(v)): salon vitrini girişsiz gezilir;
+                            // hesap yalnız randevu ve işletme paneli için gerekir. İlk ekranda,
+                            // formun ÜSTÜNDE durur ki gözden kaçmasın.
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: loading ? null : () => context.push('/explore'),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                ),
+                                icon: const Icon(Icons.travel_explore_rounded),
+                                label: const Text('Giriş yapmadan salonları keşfet'),
+                              ),
                             ),
                             const SizedBox(height: 16),
                             // ---- Mod seçici: Personel/Yönetici | Müşteri ----
