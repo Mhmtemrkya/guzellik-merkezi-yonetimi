@@ -14,6 +14,11 @@ edition = "2021"
 name = "desktop_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Mac App Store derlemesi: sandbox uyumlu davranış (otomatik başlatma/güncelleyici/kiosk yok,
+# satın alma yüzeyleri kabukta kapalı). Bkz. tauri.appstore.conf.json + appstore/.
+appstore = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

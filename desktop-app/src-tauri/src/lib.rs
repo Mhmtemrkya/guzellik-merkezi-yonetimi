@@ -12,6 +12,7 @@ use tauri::{
 const MIN_SPLASH: Duration = Duration::from_millis(1200);
 // Pencere ilk gösterildikten sonra kısa süreli odak oynamaları (splash kapanması vb.)
 // oturum düşürmesin.
+#[cfg_attr(feature = "appstore", allow(dead_code))] // Store sürümünde kiosk odak kilidi yok
 const FOCUS_GRACE: Duration = Duration::from_secs(3);
 
 // Tepsiye küçülme / çıkış sırasında pencere odak kaybeder; bu sıradaki focus-lost
@@ -92,6 +93,33 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
+/// Store: panel dışındaki adresler uygulama penceresinde açılmasın — geri dönüş düğmesi yok,
+/// kullanıcı yabancı sitede kalır. Instagram/harita/telefon/WhatsApp sistemde açılır; ödeme
+/// sağlayıcısı hiç açılmaz (3.1.1: uygulama içinden IAP dışı satın alma yok).
+#[cfg(feature = "appstore")]
+fn store_navigation(webview: &tauri::Webview, url: &tauri::Url) -> bool {
+    let host = url.host_str().unwrap_or("");
+    match url.scheme() {
+        "tauri" | "asset" | "ipc" | "about" | "data" | "blob" => return true,
+        "http" | "https" => {
+            if host == "beautyasist.com"
+                || host.ends_with(".beautyasist.com")
+                || host == "localhost"
+                || host.ends_with(".localhost")
+            {
+                return true;
+            }
+            if host.ends_with("iyzipay.com") || host.ends_with("iyzico.com") {
+                return false;
+            }
+        }
+        _ => {}
+    }
+    use tauri_plugin_opener::OpenerExt;
+    let _ = webview.app_handle().opener().open_url(url.as_str(), None::<&str>);
+    false
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let started = Instant::now();
@@ -111,20 +139,40 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_autostart::init(
+        .plugin(tauri_plugin_notification::init());
+
+    // Mac App Store: izinsiz girişte başlatma (2.4.5) ve kendi kendini güncelleme yasak;
+    // güncellemeler mağazadan gelir. Splash, updater yokken kapıyı hemen açar.
+    #[cfg(not(feature = "appstore"))]
+    {
+        builder = builder.plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
         ));
+    }
 
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(feature = "appstore")))]
     {
         builder = builder
             .plugin(tauri_plugin_updater::Builder::new().build())
             .plugin(tauri_plugin_process::init());
     }
 
-    builder
+    // Uygulama yalnız işletme paneli: müşteri/tanıtım sayfalarını (ve Store'da satın almayı)
+    // kapatan betik — bkz. panel-shell.js.
+    let shell_js = format!(
+        "window.__BA_STORE__={};\n{}",
+        cfg!(feature = "appstore"),
+        include_str!("../panel-shell.js")
+    );
+    let shell = tauri::plugin::Builder::<tauri::Wry>::new("panel-shell").js_init_script(shell_js);
+    // Kiosk (doğrudan dağıtım) sürümünde dış adres sistem tarayıcısında açılırsa odak kaybı
+    // oturumu düşürür; bu yüzden sistemde açma yalnız Store sürümünde.
+    #[cfg(feature = "appstore")]
+    let shell = shell.on_navigation(store_navigation);
+    builder = builder.plugin(shell.build());
+
+    let app = builder
         .invoke_handler(tauri::generate_handler![
             set_screenshot_protection,
             hide_to_tray,
@@ -145,6 +193,7 @@ pub fn run() {
             }
 
             // Açılışta otomatik başlatmayı kaydet (idempotent) — PC açılınca tepside hazır olur.
+            #[cfg(not(feature = "appstore"))]
             {
                 use tauri_plugin_autostart::ManagerExt;
                 let _ = app.autolaunch().enable();
@@ -235,6 +284,16 @@ pub fn run() {
                         *guard = Some(Instant::now());
                     }
                 }
+                // Store: kırmızı düğme uygulamayı kapatmaz, pencereyi gizler; Dock'a ya da tepsiye
+                // tıklayınca geri gelir (macOS'un alışıldık davranışı). Gerçek çıkış Cmd+Q / tepsi.
+                #[cfg(feature = "appstore")]
+                WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+                // Kiosk: odak kaybında oturum düşer ve pencere öne çekilir. Store sürümünde yok —
+                // kullanıcının başka uygulamaya geçmesini engellemek mağaza kurallarına aykırı.
+                #[cfg(not(feature = "appstore"))]
                 WindowEvent::Focused(false) => {
                     if SUPPRESS_FOCUS_LOST.load(Ordering::SeqCst) {
                         return;
@@ -259,6 +318,14 @@ pub fn run() {
                 _ => {}
             }
         })
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("error while running tauri application");
+
+    app.run(|_app, _event| {
+        // Gizlenmiş pencere Dock simgesine tıklanınca geri gelsin.
+        #[cfg(all(target_os = "macos", feature = "appstore"))]
+        if let tauri::RunEvent::Reopen { .. } = _event {
+            show_main(_app);
+        }
+    });
 }
