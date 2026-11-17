@@ -118,7 +118,7 @@ export default function PlanlarPage() {
   const kpis: { label: string; value: ReactNode; delta?: string; icon: LucideIcon; spark?: number[] }[] = [
     { label: 'Aktif paket', value: <AnimatedNumber value={activeCount} />, delta: `${plans.length} toplam`, icon: Package, spark: [3, 4, 4, 5, 5, 5, 6, 5] },
     { label: 'Plana bağlı kurum', value: <AnimatedNumber value={totalTenants} />, delta: `${plans.length} pakette`, icon: Building2, spark: [6, 8, 7, 10, 12, 11, 14, 16] },
-    { label: 'Hesaplanan MRR', value: <AnimatedNumber value={totalRevenue} format={(n) => formatTL(Math.round(n))} />, delta: 'aktif kurum × paket fiyatı', icon: Wallet, spark: [4, 6, 5, 8, 7, 10, 12, 15] },
+    { label: 'Liste fiyatıyla MRR', value: <AnimatedNumber value={totalRevenue} format={(n) => formatTL(Math.round(n))} />, delta: 'KDV hariç · kesin tutar Faturalama\'da', icon: Wallet, spark: [4, 6, 5, 8, 7, 10, 12, 15] },
     { label: 'En popüler', value: topPlan?.name || '—', delta: topPlan && topPlan.tenantCount > 0 ? `${topPlan.tenantCount} kurum` : 'henüz veri yok', icon: BadgeCheck },
   ]
 
@@ -299,7 +299,7 @@ function PlanCard({
           ) : (
             <span className="font-display text-[34px] tabular-nums beautyasist-text-gradient">
               {formatTL(plan.monthlyPriceTRY)}
-              <span className="ml-1 text-[11px] font-mono uppercase tracking-widest text-[#9d7386]">/ay</span>
+              <span className="ml-1 text-[11px] font-mono uppercase tracking-widest text-[#9d7386]">/ay{plan.chargePerBranch ? ' · şube başına' : ''} + KDV</span>
             </span>
           )}
         </div>
@@ -341,7 +341,7 @@ function PlanCard({
         {/* Footer */}
         <div className="mt-auto flex items-center justify-between border-t border-[#f3e1e9] pt-3 text-[10px] font-mono uppercase tracking-widest text-[#9d7386]">
           <span>{plan.tenantCount} kurum</span>
-          <span className="text-[#7c6170]">{formatTL(Math.round(monthlyRevenue))} /ay</span>
+          <span className="text-[#7c6170]">{formatTL(Math.round(monthlyRevenue))} /ay{plan.chargePerBranch ? ' (şube başı, en az)' : ''}</span>
         </div>
 
         <div className="mt-3 flex gap-2">

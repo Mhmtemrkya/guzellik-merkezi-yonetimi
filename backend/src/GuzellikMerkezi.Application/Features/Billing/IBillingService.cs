@@ -40,7 +40,123 @@ public interface IBillingService
     /// aboneliği uzatır ve fatura üretir; başarısızsa denemeyi kaydeder (dunning sayacı artar).
     /// </summary>
     Task<Result<RenewalOutcomeDto>> ChargeRenewalAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Seçilen paket + dönem için kurumun GÜNCEL sayaçlarıyla (şube, müşteri, imzalı onam) teklif.
+    /// Ödeme ekranı ve paket sayfası tutarı buradan gösterir; tahsilat aynı hesabı yapar.
+    /// </summary>
+    Task<Result<Domain.Billing.SubscriptionQuote>> GetQuoteAsync(Guid tenantId, Guid subscriptionPlanId, BillingPeriod period, CancellationToken ct = default);
+
+    /// <summary>Yeni şube açılırsa bugün ne çekilir? Ücretsizse (deneme / şube başı olmayan paket) <c>ChargeRequired=false</c>.</summary>
+    Task<Result<BranchChargeQuoteDto>> GetBranchChargeQuoteAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>
+    /// ÜCRETLİ ŞUBE AÇMA — orantılı ücret iki yoldan biriyle HEMEN işlenir:
+    /// <list type="bullet">
+    /// <item><b>Card</b> (ödeme açık + kayıtlı kart): saklı karttan çekilir; şube ve ödenmiş fatura AYNI işlemde oluşur.
+    /// Sonucu kesinleşmeyen çekimde şube açılmaz, satır bekler (tekrar çekilmez); red kesin durdurur.</item>
+    /// <item><b>Invoice</b> (kart yok ya da ödeme altyapısı kapalı — platformun elle dönem açtığı kurum): şube ve
+    /// AÇIK (Sent) fatura aynı işlemde oluşur; tahsilatı platform yapar. Kart reddi/belirsizliği ASLA buraya düşmez.</item>
+    /// </list>
+    /// <paramref name="confirmedAmountTRY"/> kullanıcının onayladığı tutardır; güncel teklifle tutmazsa hiçbir şey yazılmaz.
+    /// </summary>
+    Task<Result<BranchPurchaseResultDto>> PurchaseBranchAsync(Guid tenantId, BranchPurchaseRequest request, decimal confirmedAmountTRY, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sonucu bekleyen EK ÜCRET ödemelerini (şube / onam kademesi) sağlayıcıya sorup sonuçlandırır
+    /// (başarılıysa şubeyi / kademeyi açar). Arka plan taraması çağırır.
+    /// </summary>
+    Task<int> ResolvePendingBranchChargesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// HACİM HAKKI (müşteri / dijital onam): sayaç, ödenmiş kapasite ve (kilitliyse ya da yaklaşıyorsa) bir
+    /// sonraki kademenin bedeli — "sınırı geçen ödemeden kullanamaz" kuralının kurum ekranı.
+    /// </summary>
+    Task<Result<TierAllowanceDto>> GetTierAllowanceAsync(Guid tenantId, Domain.Billing.TierDimension dimension, CancellationToken ct = default);
+
+    /// <summary>
+    /// KADEME YÜKSELTME (müşteri / dijital onam) — bir sonraki kademenin orantılı farkı. <b>Card</b>: karttan
+    /// çekilir, ödeme kesinleşince kademe açılır. <b>Invoice</b> (kart yok / ödeme kapalı / dönemsiz kurum):
+    /// açık fatura kesilir ve kademe ANCAK platform faturayı "Ödendi" yapınca açılır — ödenmeden kullanılamaz.
+    /// <paramref name="confirmedAmountTRY"/> güncel teklifle tutmazsa hiçbir şey yazılmaz.
+    /// </summary>
+    Task<Result<TierUpgradeResultDto>> PurchaseTierUpgradeAsync(Guid tenantId, Domain.Billing.TierDimension dimension, decimal confirmedAmountTRY, CancellationToken ct = default);
+
+    /// <summary>Dijital onam boyutu — <see cref="GetTierAllowanceAsync"/>.</summary>
+    Task<Result<TierAllowanceDto>> GetConsentAllowanceAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Dijital onam boyutu — <see cref="PurchaseTierUpgradeAsync"/>.</summary>
+    Task<Result<TierUpgradeResultDto>> PurchaseConsentUpgradeAsync(Guid tenantId, decimal confirmedAmountTRY, CancellationToken ct = default);
 }
+
+/// <param name="Dimension">Customers | ConsentDocuments.</param>
+/// <param name="Allowed">Bir kayıt daha eklenebilir / imzalanabilir mi?</param>
+/// <param name="Count">Sayaç: kayıtlı müşteri (silinmemiş) ya da kotaya giren imzalı evrak (silinmiş dahil).</param>
+/// <param name="Capacity">Ödenmiş kapasite; null = sınırsız.</param>
+/// <param name="PaidTierAbove">Bugünü kapsayan ödenmiş faturalardaki en yüksek kademe eşiği.</param>
+/// <param name="NextTierAbove">Satın alınabilecek bir sonraki kademenin eşiği; null = sınırsız.</param>
+/// <param name="CanPurchase">Yükseltme şu an istenebilir mi (bekleyen ödeme / açık fatura yok, dönem uygun)?</param>
+/// <param name="ChargeMethod">Card | Invoice | None (bkz. <see cref="BranchChargeMethods"/>).</param>
+/// <param name="OpenInvoiceNumber">Bu kademe için kesilmiş, henüz ÖDENMEMİŞ fatura (varsa).</param>
+public sealed record TierAllowanceDto(
+    string Dimension,
+    bool Allowed,
+    int Count,
+    int? Capacity,
+    int? PaidTierAbove,
+    int? NextTierAbove,
+    decimal? NextTierMonthlyFee,
+    bool CanPurchase,
+    string? Reason,
+    Domain.Billing.SubscriptionQuote? Quote,
+    string ChargeMethod,
+    string? CardMasked,
+    string? OpenInvoiceNumber,
+    DateTime? SubscriptionEndsAtUtc);
+
+public sealed record TierUpgradeRequest(decimal ConfirmedChargeTRY);
+
+/// <param name="Unlocked">Kademe ŞİMDİ açıldı mı? (Invoice yolunda ödeme gelene kadar false.)</param>
+/// <param name="Pending">Kart ödemesinin sonucu doğrulanıyor (tekrar ödeme yapılmaz).</param>
+public sealed record TierUpgradeResultDto(bool Unlocked, bool Pending, string Message, decimal AmountTRY, string? InvoiceNumber);
+
+/// <summary>Açılacak şubenin bilgisi — ödemeye anlık görüntü olarak yazılır (sonradan doğrulanan ödeme şubeyi bundan açar).</summary>
+public sealed record BranchPurchaseRequest(string Name, string City, bool IsDefault);
+
+/// <param name="ChargeRequired">Şube açmak bugün ücret gerektiriyor mu?</param>
+/// <param name="Reason">Ücretsizse nedeni (deneme süresi, şube başı olmayan paket…) ya da engel (bekleyen kart ödemesi).</param>
+/// <param name="CanPurchase">Ücret gerekiyorsa şu an işlenebilir mi (bekleyen şube ödemesi yok)?</param>
+/// <param name="ChargeMethod">
+/// <c>Card</c> = kayıtlı karttan çekilir; <c>Invoice</c> = açık fatura kesilir (kart yok / ödeme kapalı);
+/// <c>None</c> = ücret yok.
+/// </param>
+public sealed record BranchChargeQuoteDto(
+    bool ChargeRequired,
+    bool CanPurchase,
+    string? Reason,
+    Domain.Billing.SubscriptionQuote? Quote,
+    DateTime? SubscriptionEndsAtUtc,
+    string? CardMasked,
+    string ChargeMethod = BranchChargeMethods.None);
+
+/// <summary>Dönem ortası şube ücretinin işlenme yolu (<see cref="BranchChargeQuoteDto.ChargeMethod"/>).</summary>
+public static class BranchChargeMethods
+{
+    public const string None = "None";
+    public const string Card = "Card";
+    public const string Invoice = "Invoice";
+}
+
+/// <param name="Created">Şube açıldı mı? (false + <paramref name="Pending"/> = ödeme doğrulanıyor)</param>
+/// <param name="AwaitingInvoicePayment">Kartsız kurum: şube talebi faturalandı, şube FATURA ÖDENİNCE açılacak.</param>
+public sealed record BranchPurchaseResultDto(
+    bool Created,
+    bool Pending,
+    string Message,
+    Guid? BranchId,
+    decimal AmountTRY,
+    string? InvoiceNumber,
+    bool AwaitingInvoicePayment = false);
 
 public sealed record BillingSummaryDto(
     Guid TenantId,
@@ -53,7 +169,9 @@ public sealed record BillingSummaryDto(
     bool PaymentsEnabled,
     bool AutoRenewActive,
     StoredCardDto? Card,
-    IReadOnlyList<BillingInvoiceDto> RecentInvoices);
+    IReadOnlyList<BillingInvoiceDto> RecentInvoices,
+    /// <summary>Bir sonraki yenilemede GÜNCEL sayaçlarla ne çekileceği (ücretli abonelik yoksa null).</summary>
+    Domain.Billing.SubscriptionQuote? NextRenewalQuote = null);
 
 /// <summary>Kartın yalnızca gösterilebilir bilgileri — token/cüzdan anahtarı ASLA dönmez.</summary>
 public sealed record StoredCardDto(
@@ -77,7 +195,10 @@ public sealed record BillingInvoiceDto(
     string Status,
     DateTime IssuedAtUtc,
     DateTime DueDateUtc,
-    DateTime? PaidAtUtc);
+    DateTime? PaidAtUtc,
+    /// <summary>Tahsilat anındaki kalem dökümü (yoksa eski/elle kesilmiş fatura).</summary>
+    IReadOnlyList<Domain.Billing.QuoteLine>? Lines = null,
+    string? Notes = null);
 
 /// <param name="FormContent">Sayfaya gömülecek sağlayıcı formu (varsa).</param>
 /// <param name="RedirectUrl">Yönlendirme tercih edilirse kullanılacak adres.</param>

@@ -4,6 +4,7 @@ using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Application.Features.Notifications;
 using GuzellikMerkezi.Application.Features.PlatformMessaging;
 using GuzellikMerkezi.Application.Features.Usage;
+using GuzellikMerkezi.Application.Features.WhatsApp;
 using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
@@ -162,11 +163,33 @@ public sealed class NotificationService : INotificationService
         if (template.Status != NotificationTemplateStatus.Active)
             return Result<SendNotificationResultDto>.Failure(Error.Conflict("Sadece aktif şablonlar gönderilebilir."));
 
+        // KİTLE GÖNDERİMİ (tüm müşteriler / doğum günü haftası) paketin "toplu gönderim" özelliğidir.
+        // Seçili müşterilere gönderim ve otomatik taramalar (müşteri listesi + zaman kovası taşır)
+        // bu kapıya takılmaz. Kapı yalnız arayüzdeydi; doğrudan API çağrısı paketi aşabiliyordu.
+        if (req.CustomerIds is not { Count: > 0 }
+            && !await _features.IsFeatureAllowedAsync(tenantId, FeatureCatalog.NotificationsBulk, ct))
+            return Result<SendNotificationResultDto>.Failure(Error.Conflict(
+                "Tüm müşterilere toplu gönderim paketinizde yok. Müşteri seçerek gönderebilir ya da üst pakete geçebilirsiniz."));
+
         // Aylık kota kontrolü — gönderim ÖNCESİ. SMS ve E-posta metrelidir (kota dolmuşsa 409 döner).
+        //
+        // SMS artık kota bitince MESAJ KREDİSİNDEN devam edebilir (kurum izin verdiyse); ön kontrol
+        // bu yüzden düz kota değil "şu an HİÇ SMS gidebilir mi?" sorusudur. Alıcı başına karar
+        // (kota / kredi / tavan) aşağıda, her mesajın kendi kaydında verilir.
+        IWhatsAppBillingService? smsBilling = null;
+        var smsLive = false;
         if (template.Channel == NotificationChannel.Sms)
         {
-            var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Sms, ct);
-            if (limit.IsFailure) return Result<SendNotificationResultDto>.Failure(limit.Error);
+            // PAKET KAPISI (WhatsApp'taki kuralın aynısı). Eskiden SMS'i yalnız plan kotası
+            // sınırlıyordu ve SMS'siz pakette kota 0'dı; kredi gelince kotası 0 olan paket krediyle
+            // SMS gönderebilir hâle gelirdi. Özellik kapalıysa kredi olsa da gönderilmez.
+            if (!await _features.IsFeatureAllowedAsync(tenantId, FeatureCatalog.NotificationsSms, ct))
+                return Result<SendNotificationResultDto>.Failure(Error.Conflict("SMS gönderimi paketinizde yok. Üst pakete geçerek kullanabilirsiniz."));
+            smsBilling = _services.GetRequiredService<IWhatsAppBillingService>();
+            var blocked = await smsBilling.SmsAvailabilityBlockReasonAsync(tenantId, ct);
+            if (blocked is not null) return Result<SendNotificationResultDto>.Failure(Error.Conflict(blocked));
+            // Kendi SMS hesabı etkin kurum, platform hattı kapalı olsa da gerçekten gönderir.
+            smsLive = await smsBilling.IsSmsLiveForTenantAsync(tenantId, ct);
         }
         else if (template.Channel == NotificationChannel.Email)
         {
@@ -181,12 +204,16 @@ public sealed class NotificationService : INotificationService
 
         var now = DateTime.UtcNow;
         var sent = 0; var failed = 0; var skipped = 0;
+        // Kurumun kendi SMS hesabı — kimlik bilgisi toplu gönderimde BİR KEZ çözülür (alıcı başına değil).
+        SmsAccountCredentials? ownSms = null;
+        var ownSmsResolved = false;
         var logsCreated = new List<NotificationLog>();
+        var render = await BuildRenderContextAsync(tenantId, template.Trigger, customers, ct);
 
         foreach (var c in customers)
         {
             var recipient = template.Channel == NotificationChannel.Email ? (c.Email ?? string.Empty) : (c.Phone ?? string.Empty);
-            var body = RenderBody(template.Body, c);
+            var body = render.Render(template.Body, c);
             // Otomatik gönderimin tekilleştirme anahtarı (H9). Elle gönderimde boştur.
             var dedupeKey = string.IsNullOrWhiteSpace(req.DedupeBucket)
                 ? null
@@ -222,6 +249,37 @@ public sealed class NotificationService : INotificationService
             }
             // Bayat rezervasyon devralınmış olabilir; sonuç DEVRALINAN satıra yazılır.
             log = reserved;
+
+            // SMS ÜCRETİ — dış etkiden ve gönderim damgasından ÖNCE.
+            //
+            // Rezervasyon damgadan ÖNCE yazılır: arada çöken satır damgasız kalır, kurtarma onu
+            // "sağlayıcıya hiç gidilmemiş" sayıp devralır ve AYNI rezervasyonla gönderir
+            // (ReserveSmsAsync bağlı rezervasyonu tanır, ikinci kez ayırmaz). Sonra yazılsaydı
+            // rezerv ile damga arasında çöken satır "gidildi" görünür, SMS bir daha hiç gönderilmezdi.
+            // Parça, şablon değişkenleri DOLDURULMUŞ metinden sayılır (sağlayıcıya giden budur).
+            // Engellenen gönderim (kota/kredi/tavan) sağlayıcıya hiç gitmez; sebep satıra yazılır.
+            if (smsBilling is not null)
+            {
+                var decision = await smsBilling.ReserveSmsAsync(tenantId, log, SmsSegments.Count(body), smsLive, ct);
+                if (!decision.Allowed)
+                {
+                    log.MarkFailed(decision.BlockReason ?? "SMS gönderilemedi.");
+                    logsCreated.Add(log);
+                    failed++;
+                    if (log.DedupeKey is not null)
+                    {
+                        try
+                        {
+                            await _db.SaveChangesAsync(ct);
+                        }
+                        catch (DbUpdateException)
+                        {
+                            // Yazılamadıysa satır Queued kalır ve bayatlama yolundan kurtarılır.
+                        }
+                    }
+                    continue;
+                }
+            }
 
             // DIŞ ETKİDEN ÖNCE İZ BIRAK.
             //
@@ -273,7 +331,24 @@ public sealed class NotificationService : INotificationService
             {
                 case NotificationChannel.Sms:
                 {
-                    (ok, error) = Judge(await _messaging.SendSmsAsync(recipient, body, ct));
+                    // GÖNDERİM YOLU REZERVASYON KARARINDAN OKUNUR (satırın ücret kaynağı), ikinci bir
+                    // sorgudan değil: kendi hesaba bağlanmış satır kendi hesaptan gider; bağlantı bu
+                    // arada kaldırıldıysa başarısız yazılır, platforma (krediye) DÜŞÜLMEZ.
+                    if (log.BillingSource == WhatsAppBillingSource.OwnAccount)
+                    {
+                        if (!ownSmsResolved)
+                        {
+                            ownSms = await _services.GetRequiredService<ITenantSmsConnectionService>().ResolveActiveAsync(tenantId, ct);
+                            ownSmsResolved = true;
+                        }
+                        (ok, error) = ownSms is null
+                            ? (false, OwnSmsAccountGoneError)
+                            : Judge(await _messaging.SendSmsWithAccountAsync(ownSms, recipient, body, ct));
+                    }
+                    else
+                    {
+                        (ok, error) = Judge(await _messaging.SendSmsAsync(recipient, body, ct));
+                    }
                     break;
                 }
                 case NotificationChannel.Email:
@@ -311,6 +386,13 @@ public sealed class NotificationService : INotificationService
             else log.MarkFailed(error ?? "Bilinmeyen hata");
             if (ok) { sent++; template.RecordSent(now); }
             else { failed++; }
+
+            // SMS KREDİSİ SONUÇLANIR: kabul → kesinleşir, red/simülasyon → iade. Krediden karşılanan
+            // satırda gönderim durumu cüzdanla AYNI kayıtta yazılır; kota/simülasyon satırında hiçbir
+            // şey yapmaz (durum aşağıdaki olağan kayıtla yazılır). Burada çökülürse satır kredisi
+            // askıda kalır ve süpürme onu satırın durumuna göre kesinleştirir ya da iade eder.
+            if (smsBilling is not null)
+                await smsBilling.SettleSmsAsync(log, ok, ct);
 
             // SONUÇ HEMEN KALICI OLUR (anahtarlı = otomatik gönderim).
             //
@@ -490,9 +572,66 @@ public sealed class NotificationService : INotificationService
     /// </summary>
     public static readonly TimeSpan StaleReservationTimeout = TimeSpan.FromMinutes(15);
 
+    /// <summary>Kendi SMS hesabına bağlanmış mesaj, gönderim anında bağlantı artık etkin değilse.</summary>
+    public const string OwnSmsAccountGoneError =
+        "SMS hesabı bağlantınız kapatıldı ya da kaldırıldı — mesaj gönderilmedi (BeautyAsist hattından da gönderilmez).";
+
+    public async Task<Result<NotificationSendEstimateDto>> EstimateAsync(Guid tenantId, SendNotificationRequest req, CancellationToken ct = default)
+    {
+        var template = await _db.NotificationTemplates.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == req.TemplateId, ct);
+        if (template is null) return Result<NotificationSendEstimateDto>.Failure(Error.NotFound("Şablon bulunamadı."));
+
+        // Gönderimle AYNI kitle ve AYNI metin kuralı — tahmin ile gerçek gönderim ayrışmasın.
+        var customers = await ResolveAudienceAsync(tenantId, req, ct);
+        var render = await BuildRenderContextAsync(tenantId, template.Trigger, customers, ct);
+        var reachable = customers
+            .Where(c => template.Channel == NotificationChannel.Email
+                ? !string.IsNullOrWhiteSpace(c.Email)
+                : !string.IsNullOrWhiteSpace(c.Phone))
+            .ToList();
+        var units = template.Channel == NotificationChannel.Sms
+            ? reachable.Select(c => Math.Max(1, SmsSegments.Count(render.Render(template.Body, c)))).ToList()
+            : reachable.Select(_ => 1).ToList();
+
+        // WhatsApp faturalama sınıfı gönderimdekiyle aynı: hatırlatma ve ödeme bildirimi işlemsel, gerisi kampanya.
+        var marketing = template.Trigger is not (NotificationTrigger.AppointmentReminder or NotificationTrigger.PaymentDue);
+        var billing = _services.GetRequiredService<IWhatsAppBillingService>();
+        var cost = await billing.EstimateCostAsync(tenantId, template.Channel, marketing, units, ct);
+
+        // Gönderimdeki paket kapılarının aynısı: tahmin "gider" demesin, gönderim reddetsin.
+        var channelFeature = template.Channel switch
+        {
+            NotificationChannel.Sms => FeatureCatalog.NotificationsSms,
+            NotificationChannel.WhatsApp => FeatureCatalog.NotificationsWhatsApp,
+            _ => FeatureCatalog.NotificationsEmail,
+        };
+        if (!await _features.IsFeatureAllowedAsync(tenantId, channelFeature, ct))
+        {
+            var label = template.Channel switch { NotificationChannel.Sms => "SMS", NotificationChannel.WhatsApp => "WhatsApp", _ => "E-posta" };
+            cost = cost with { ExpectedToSend = 0, Warnings = new[] { $"{label} gönderimi paketinizde yok — üst pakete geçerek kullanabilirsiniz." } };
+        }
+        else if (req.CustomerIds is not { Count: > 0 } && !await _features.IsFeatureAllowedAsync(tenantId, FeatureCatalog.NotificationsBulk, ct))
+        {
+            cost = cost with { ExpectedToSend = 0, Warnings = cost.Warnings.Prepend("Tüm müşterilere toplu gönderim paketinizde yok — müşteri seçerek gönderebilirsiniz.").ToList() };
+        }
+
+        var sample = reachable.FirstOrDefault() ?? customers.FirstOrDefault();
+        return Result<NotificationSendEstimateDto>.Success(new NotificationSendEstimateDto(
+            template.Channel, marketing, customers.Count, reachable.Count,
+            template.Channel == NotificationChannel.Sms ? units.Sum() : 0,
+            template.Channel == NotificationChannel.Sms && units.Count > 0 ? units.Max() : 0,
+            cost.QuotaRemaining, cost.QuotaCovered, cost.CreditMessages, cost.CreditsNeeded, cost.AvailableCredits,
+            cost.CostPerUnit, cost.ExpectedToSend, cost.Live, cost.Warnings,
+            sample is null ? template.Body : render.Render(template.Body, sample),
+            sample?.FullName,
+            cost.OwnAccount));
+    }
+
     private async Task<List<Customer>> ResolveAudienceAsync(Guid tenantId, SendNotificationRequest req, CancellationToken ct)
     {
-        // Explicit ID listesi gelirse onları kullan
+        // Explicit ID listesi gelirse onları kullan (kullanıcının bilerek seçtiği kişiler — kara liste
+        // dahil; seçimi kullanıcı yaptı).
         if (req.CustomerIds is { Count: > 0 })
         {
             var ids = req.CustomerIds.ToHashSet();
@@ -500,8 +639,10 @@ public sealed class NotificationService : INotificationService
                 .Where(x => ids.Contains(x.Id)).ToList();
         }
 
+        // KİTLE GÖNDERİMİ KARA LİSTEYİ ATLAR: "tüm müşterilere" duyuru, kurumun hizmet vermediği
+        // müşterilere gitmemeli (geri kazanım/seans yenileme hedefleri de aynı kuralı uygular).
         var audience = (req.Audience ?? "all").ToLowerInvariant();
-        var customers = await _db.Customers.Where(x => x.TenantId == tenantId).ToListAsync(ct);
+        var customers = await _db.Customers.Where(x => x.TenantId == tenantId && !x.IsBlacklisted).ToListAsync(ct);
 
         return audience switch
         {
@@ -519,18 +660,86 @@ public sealed class NotificationService : INotificationService
         };
     }
 
-    private static string RenderBody(string body, Customer c)
+    /// <summary>
+    /// Şablon değişkenlerini dolduran bağlam — kanal, kitle ve tetikleyiciden bağımsız TEK kural.
+    ///
+    /// <para>
+    /// RANDEVU HATIRLATMASINDA {{tarih}}/{{saat}}/{{hizmet}} RANDEVUNUN KENDİSİNDEN gelir. Eskiden
+    /// her şablon gönderim ANINI (üstelik UTC) basıyordu: SMS/e-posta hatırlatması "yarın 14:00"
+    /// randevusu için "bugün 11:00" yazıyor, müşteriye yanlış saat gidiyordu. Saatler Türkiye
+    /// saatidir (UTC+3) — kodun geri kalanındaki randevu metinleriyle aynı kural.
+    /// </para>
+    /// </summary>
+    private sealed class RenderContext
     {
-        // Token sözlüğü — eksik anahtarlar boş bırakılır.
-        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        private readonly IReadOnlyDictionary<Guid, (DateTime StartUtc, string? Service)> _upcoming;
+        private readonly IReadOnlyDictionary<Guid, string> _branchNames;
+        private readonly string _tenantName;
+
+        public RenderContext(IReadOnlyDictionary<Guid, (DateTime StartUtc, string? Service)> upcoming,
+            IReadOnlyDictionary<Guid, string> branchNames, string tenantName)
         {
-            ["ad"] = c.FullName,
-            ["isim"] = c.FullName,
-            ["telefon"] = c.Phone ?? string.Empty,
-            ["tarih"] = DateTime.UtcNow.ToString("dd.MM.yyyy"),
-            ["saat"] = DateTime.UtcNow.ToString("HH:mm"),
-        };
-        return Regex.Replace(body, @"\{\{\s*(\w+)\s*\}\}", m => dict.TryGetValue(m.Groups[1].Value, out var v) ? v : string.Empty);
+            _upcoming = upcoming;
+            _branchNames = branchNames;
+            _tenantName = tenantName;
+        }
+
+        public string Render(string body, Customer c)
+        {
+            var hasAppointment = _upcoming.TryGetValue(c.Id, out var appt);
+            var when = (hasAppointment ? appt.StartUtc : DateTime.UtcNow).AddHours(3);
+            var salon = c.BranchId is { } bid && _branchNames.TryGetValue(bid, out var branchName) && !string.IsNullOrWhiteSpace(branchName)
+                ? branchName
+                : _tenantName;
+
+            // Eksik anahtarlar boş bırakılır.
+            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["ad"] = c.FullName,
+                ["isim"] = c.FullName,
+                ["telefon"] = c.Phone ?? string.Empty,
+                ["tarih"] = when.ToString("dd.MM.yyyy"),
+                ["saat"] = when.ToString("HH:mm"),
+                ["hizmet"] = hasAppointment ? appt.Service ?? string.Empty : string.Empty,
+                ["salon"] = salon,
+            };
+            return Regex.Replace(body, @"\{\{\s*(\w+)\s*\}\}", m => dict.TryGetValue(m.Groups[1].Value, out var v) ? v : string.Empty);
+        }
+    }
+
+    private async Task<RenderContext> BuildRenderContextAsync(Guid tenantId, NotificationTrigger trigger, IReadOnlyCollection<Customer> customers, CancellationToken ct)
+    {
+        var upcoming = new Dictionary<Guid, (DateTime StartUtc, string? Service)>();
+        if (trigger == NotificationTrigger.AppointmentReminder && customers.Count > 0)
+        {
+            // Hatırlatma penceresi 24 saattir; 7 gün geniş bir güvenlik payıdır. Müşteri filtresi
+            // BELLEKTE uygulanır — yerel Guid listesiyle .Contains() MySQL sağlayıcısında 500 verir.
+            var nowUtc = DateTime.UtcNow;
+            var until = nowUtc.AddDays(7);
+            var wanted = customers.Select(c => c.Id).ToHashSet();
+            var rows = await _db.Appointments.AsNoTracking()
+                .Where(a => a.TenantId == tenantId && a.StartUtc > nowUtc && a.StartUtc <= until
+                         && a.Status != AppointmentStatus.Completed && a.Status != AppointmentStatus.Cancelled)
+                .OrderBy(a => a.StartUtc)
+                .Select(a => new { a.CustomerId, a.StartUtc, Service = a.ServiceDefinition != null ? a.ServiceDefinition.Name : null })
+                .ToListAsync(ct);
+            foreach (var r in rows)
+            {
+                // En YAKIN randevu: sıralı listede ilk görülen kazanır.
+                if (wanted.Contains(r.CustomerId) && !upcoming.ContainsKey(r.CustomerId))
+                    upcoming[r.CustomerId] = (r.StartUtc, r.Service);
+            }
+        }
+
+        var branchNames = (await _db.Branches.IgnoreQueryFilters().AsNoTracking()
+                .Where(b => b.TenantId == tenantId)
+                .Select(b => new { b.Id, b.Name })
+                .ToListAsync(ct))
+            .ToDictionary(b => b.Id, b => b.Name);
+        var tenantName = await _db.Tenants.IgnoreQueryFilters().AsNoTracking()
+            .Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct) ?? "Salonumuz";
+
+        return new RenderContext(upcoming, branchNames, tenantName);
     }
 
     // ---------------- Ödeme (vadesi geçen taksit) hatırlatma ----------------
@@ -664,5 +873,86 @@ public sealed class NotificationService : INotificationService
 
     private static NotificationLogDto ToDto(NotificationLog l, string? templateName, string? customerName) => new(
         l.Id, l.TenantId, l.BranchId, l.TemplateId, templateName, l.CustomerId, customerName, l.Channel, l.Recipient, l.Body,
-        l.Status, l.ErrorMessage, l.SentAtUtc, l.CreatedAtUtc);
+        l.Status, l.ErrorMessage, l.SentAtUtc, l.CreatedAtUtc,
+        l.Purpose, l.BillingSource, l.ChargedCredits, l.SmsParts);
+
+    // ---------------- Şablonsuz sistem SMS'i ----------------
+
+    /// <inheritdoc />
+    public async Task<SystemSmsOutcome> SendSystemSmsAsync(SystemSmsRequest request, CancellationToken ct = default)
+    {
+        var body = (request.Body ?? string.Empty).Trim();
+        var parts = SmsSegments.Count(body);
+        if (parts == 0)
+            return new SystemSmsOutcome(SystemSmsStatus.Failed, body, 0, 0m, false, "Boş mesaj gönderilmez.");
+        if (string.IsNullOrWhiteSpace(request.Phone))
+            return new SystemSmsOutcome(SystemSmsStatus.Blocked, body, parts, 0m, false, "Müşterinin telefon numarası yok.");
+        // Paket kapısı (şablonlu SMS ile aynı kural): özellik kapalıysa kredi olsa da gönderilmez.
+        if (!await _features.IsFeatureAllowedAsync(request.TenantId, FeatureCatalog.NotificationsSms, ct))
+            return new SystemSmsOutcome(SystemSmsStatus.Blocked, body, parts, 0m, false, "SMS gönderimi paketinizde yok.");
+
+        var billing = _services.GetRequiredService<IWhatsAppBillingService>();
+        var live = await billing.IsSmsLiveForTenantAsync(request.TenantId, ct);
+
+        // 1) KAYIT SAĞLAYICIDAN ÖNCE (şablonlu gönderimle aynı protokol, bkz. TryReserveAsync).
+        //    Anahtarlı istekte benzersiz indeks ikinci denemeyi eler: iş kuyruğu yeniden denese
+        //    bile müşteriye aynı SMS iki kez gitmez.
+        var log = new NotificationLog(request.TenantId, request.BranchId, templateId: null, request.CustomerId,
+            NotificationChannel.Sms, request.Phone, body, NotificationLogStatus.Queued, null,
+            request.DedupeKey, request.Purpose);
+        var reserved = await TryReserveAsync(log, ct);
+        if (reserved is null)
+            return new SystemSmsOutcome(SystemSmsStatus.AlreadyHandled, body, parts, 0m, false, null);
+        log = reserved;
+
+        // 2) KOTA / KREDİ — dış etkiden ve gönderim damgasından ÖNCE (bkz. SendAsync'teki not).
+        var decision = await billing.ReserveSmsAsync(request.TenantId, log, parts, live, ct);
+        if (!decision.Allowed)
+        {
+            var reason = decision.BlockReason ?? "SMS gönderilemedi.";
+            log.MarkFailed(reason);
+            await _db.SaveChangesAsync(ct);
+            return new SystemSmsOutcome(SystemSmsStatus.Blocked, body, parts, 0m, false, reason);
+        }
+
+        // 3) DIŞ ETKİDEN ÖNCE İZ: anahtarlı gönderimde "sağlayıcıya gidiliyor" damgası commit edilir.
+        //    Anahtarsız (elle) gönderimde satır yukarıdaki kayıtlarla zaten yazıldı; damga yine
+        //    basılır ki çökme sonrası satır "sonucu bilinmiyor" olarak kapansın, körlemesine tekrar
+        //    gönderilmesin.
+        log.MarkDispatching();
+        await _db.SaveChangesAsync(ct);
+
+        // 4) Gönderim. Simülasyon teslimat DEĞİLDİR: başarılı dönse de "gönderilmedi" sayılır.
+        //    Yol rezervasyon kararından okunur (bkz. SendAsync): kendi hesaba bağlanan satır platforma düşmez.
+        MessagingTestResult result;
+        if (log.BillingSource == WhatsAppBillingSource.OwnAccount)
+        {
+            var own = await _services.GetRequiredService<ITenantSmsConnectionService>().ResolveActiveAsync(request.TenantId, ct);
+            result = own is null
+                ? new MessagingTestResult(false, false, null, OwnSmsAccountGoneError)
+                : await _messaging.SendSmsWithAccountAsync(own, request.Phone, body, ct);
+        }
+        else
+        {
+            result = await _messaging.SendSmsAsync(request.Phone, body, ct);
+        }
+        var ok = result.Success && !result.Simulated;
+        var error = ok
+            ? null
+            : result.Error ?? (result.Simulated
+                ? "SMS sağlayıcısı yapılandırılmamış (simülasyon) — mesaj gönderilmedi."
+                : "Bilinmeyen hata");
+
+        if (ok) log.MarkSent();
+        else log.MarkFailed(error!);
+
+        // 5) Kredi: kabul → kesinleşir, red → iade; gönderim durumu ile AYNI kayıtta yazılır.
+        //    Krediden karşılanmayan (kota/simülasyon) satırda ayar yapmaz; durum aşağıda yazılır.
+        await billing.SettleSmsAsync(log, ok, ct);
+        await _db.SaveChangesAsync(ct);
+
+        return new SystemSmsOutcome(
+            ok ? SystemSmsStatus.Sent : SystemSmsStatus.Failed,
+            body, parts, ok ? decision.Credits : 0m, result.Simulated, error);
+    }
 }

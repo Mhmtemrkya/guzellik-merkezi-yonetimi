@@ -7,7 +7,8 @@ namespace GuzellikMerkezi.Domain;
 ///
 /// Yeni özellik eklerken:
 /// 1) Aşağıda const + FeatureItem ekle
-/// 2) Plan seed'lerine (DatabaseBootstrap.SeedSubscriptionPlansAsync) hangi paketlere dahil olacağını yaz
+/// 2) Tek paket (DatabaseBootstrap.SinglePlanKey) yeni kurulumda TÜM özellikleri alır; MEVCUT kurulumlarda
+///    özelliği pakete platform Plan Kataloğu'ndan (ya da bir veri migration'ıyla) ekle — seed var olan paketi değiştirmez
 /// 3) Frontend useFeature('key') ile UI gating yap
 /// </summary>
 public static class FeatureCatalog

@@ -3,19 +3,18 @@ using GuzellikMerkezi.Domain.Exceptions;
 namespace GuzellikMerkezi.Domain.Entities;
 
 /// <summary>
-/// Platform admin'in tanımladığı satın alınabilir kontör paketi (ek bakiye). Kurum yöneticisi ana
-/// aboneliğinin dışında bu paketlerden alarak cüzdanına ₺ kontör ekler. PriceTry ödenen tutar,
-/// GrantsTry cüzdana eklenen tutar (bonus için farklı olabilir: 149 öde, 160 kazan).
-/// EstimatedUtilityMessages sadece kurumun gördüğü tahmini gösterim (mevcut Utility fiyatından türetilir).
+/// Platform admin'in tanımladığı satın alınabilir MESAJ KREDİSİ paketi. Kurum yöneticisi ana
+/// aboneliğinin dışında bu paketlerden alarak cüzdanına kredi ekler. PriceTry ödenen tutar (₺),
+/// GrantsCredits cüzdana eklenen kredi (bonus paketlerde birim fiyat düşer: 2.500 kredi ₺350).
 /// </summary>
 public sealed class WhatsAppCreditPackage : Entity
 {
     private WhatsAppCreditPackage() { }
 
-    public WhatsAppCreditPackage(string name, decimal priceTry, decimal grantsTry, int displayOrder = 0, string? description = null)
+    public WhatsAppCreditPackage(string name, decimal priceTry, decimal grantsCredits, int displayOrder = 0, string? description = null)
     {
         Rename(name);
-        SetAmounts(priceTry, grantsTry);
+        SetAmounts(priceTry, grantsCredits);
         DisplayOrder = displayOrder;
         Description = Clean(description);
         IsActive = true;
@@ -27,7 +26,13 @@ public sealed class WhatsAppCreditPackage : Entity
     /// <summary>Kurumun ödediği tutar (₺).</summary>
     public decimal PriceTry { get; private set; }
 
-    /// <summary>Cüzdana eklenen kontör tutarı (₺). Bonus için PriceTry'den büyük olabilir.</summary>
+    /// <summary>Cüzdana eklenen kredi.</summary>
+    public decimal GrantsCredits { get; private set; }
+
+    /// <summary>
+    /// ESKİ ₺ kontör hakkı (12 Kas 2026 kredi dönüşümü öncesi). Donmuş geçmiş — yeni paketlerde 0,
+    /// faturalama bunu OKUMAZ.
+    /// </summary>
     public decimal GrantsTry { get; private set; }
 
     public int DisplayOrder { get; private set; }
@@ -41,12 +46,12 @@ public sealed class WhatsAppCreditPackage : Entity
         Touch();
     }
 
-    public void SetAmounts(decimal priceTry, decimal grantsTry)
+    public void SetAmounts(decimal priceTry, decimal grantsCredits)
     {
         if (priceTry < 0) throw new DomainException("Fiyat negatif olamaz.");
-        if (grantsTry <= 0) throw new DomainException("Kontör tutarı pozitif olmalı.");
+        if (grantsCredits <= 0) throw new DomainException("Kredi miktarı pozitif olmalı.");
         PriceTry = decimal.Round(priceTry, 2);
-        GrantsTry = decimal.Round(grantsTry, 2);
+        GrantsCredits = decimal.Round(grantsCredits, 2);
         Touch();
     }
 

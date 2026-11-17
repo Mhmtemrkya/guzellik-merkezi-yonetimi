@@ -27,6 +27,17 @@ public static class PlatformOpsEndpoints
         invoices.MapGet("/", async (string? status, string? search, IPlatformOpsService svc, HttpContext http, CancellationToken ct) =>
             (await svc.ListInvoicesAsync(status, search, ct)).ToHttpResult(http));
 
+        // Faturalama ekranı özeti: KPI'lar + abonelikler (sonraki yenileme teklifi) + tahsilat denemeleri.
+        invoices.MapGet("/overview", async (IPlatformOpsService svc, HttpContext http, CancellationToken ct) =>
+            (await svc.GetBillingOverviewAsync(ct)).ToHttpResult(http));
+
+        // Sonucu bekleyen ek şube ödemelerini ŞİMDİ sağlayıcıya sor (arka plan taramasını beklemeden).
+        invoices.MapPost("/resolve-pending", async (GuzellikMerkezi.Application.Features.Billing.IBillingService billing, HttpContext http, CancellationToken ct) =>
+        {
+            var opened = await billing.ResolvePendingBranchChargesAsync(ct);
+            return Results.Json(GuzellikMerkezi.Application.Common.ApiResponse<object>.Ok(new { opened }, http.TraceIdentifier));
+        });
+
         invoices.MapPost("/", async (CreateInvoiceRequest request, IPlatformOpsService svc, HttpContext http, CancellationToken ct) =>
             (await svc.CreateInvoiceAsync(request, ct)).ToHttpResult(http));
 

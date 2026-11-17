@@ -18,7 +18,7 @@ public sealed class WhatsAppMessage : Entity
         Guid? waitlistEntryId = null,
         WhatsAppMessageCategory category = WhatsAppMessageCategory.Utility,
         WhatsAppBillingSource billingSource = WhatsAppBillingSource.None,
-        decimal chargedAmountTry = 0m,
+        decimal chargedCredits = 0m,
         string? providerChannelId = null)
     {
         ProviderChannelId = string.IsNullOrWhiteSpace(providerChannelId) ? null : providerChannelId.Trim();
@@ -37,7 +37,7 @@ public sealed class WhatsAppMessage : Entity
         WaitlistEntryId = waitlistEntryId;
         Category = category;
         BillingSource = billingSource;
-        ChargedAmountTry = decimal.Round(chargedAmountTry, 4);
+        ChargedCredits = decimal.Round(chargedCredits, 4);
         if (status is WhatsAppMessageStatus.Delivered or WhatsAppMessageStatus.Read or WhatsAppMessageStatus.Simulated)
             DeliveredAtUtc = DateTime.UtcNow;
     }
@@ -75,10 +75,16 @@ public sealed class WhatsAppMessage : Entity
     /// <summary>Meta faturalama kategorisi (fiyat bundan çözülür).</summary>
     public WhatsAppMessageCategory Category { get; private set; } = WhatsAppMessageCategory.Utility;
 
-    /// <summary>Ücretin kaynağı: kota / kontör / simülasyon.</summary>
+    /// <summary>Ücretin kaynağı: kota / kredi cüzdanı / simülasyon.</summary>
     public WhatsAppBillingSource BillingSource { get; private set; } = WhatsAppBillingSource.None;
 
-    /// <summary>Kontörden rezerve/kesilen tutar (₺). Kota veya simülasyon ise 0.</summary>
+    /// <summary>Krediden rezerve/kesilen miktar. Kota veya simülasyon ise 0.</summary>
+    public decimal ChargedCredits { get; private set; }
+
+    /// <summary>
+    /// ESKİ ₺ ücret (12 Kas 2026 kredi dönüşümü öncesi). Donmuş geçmiş — yeni kod okumaz ve yazmaz;
+    /// dönüşüm, bekleyen rezervasyonları <see cref="ChargedCredits"/>'e taşıdı.
+    /// </summary>
     public decimal ChargedAmountTry { get; private set; }
 
     /// <summary>Meta webhook "delivered" (veya simülasyon) zamanı — kotayı ve kesinleşmeyi bu tetikler.</summary>
@@ -127,10 +133,10 @@ public sealed class WhatsAppMessage : Entity
         return true;
     }
 
-    /// <summary>Kontör iade edildikten sonra çağrılır (tekrar iade edilmesin diye kaynak sıfırlanır).</summary>
+    /// <summary>Kredi iade edildikten sonra çağrılır (tekrar iade edilmesin diye kaynak sıfırlanır).</summary>
     public void ClearCharge()
     {
-        ChargedAmountTry = 0m;
+        ChargedCredits = 0m;
         BillingSource = WhatsAppBillingSource.None;
     }
 }

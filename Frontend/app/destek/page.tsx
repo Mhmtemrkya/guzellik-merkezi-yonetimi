@@ -67,7 +67,7 @@ const FAQS: Faq[] = [
   },
   {
     q: 'WhatsApp hatırlatmaları nasıl çalışıyor?',
-    a: 'Randevudan önce müşterinize otomatik hatırlatma gider ve müşteri “Evet/Hayır” yazarak randevusunu onaylayabilir ya da iptal edebilir. İptal olan slot bekleme listesindeki sıradaki kişiye teklif edilir. WhatsApp gönderimleri kontör ile çalışır; kontör bakiyenizi panelden görürsünüz.',
+    a: 'Randevudan önce müşterinize otomatik hatırlatma gider ve müşteri “Evet/Hayır” yazarak randevusunu onaylayabilir ya da iptal edebilir. İptal olan slot bekleme listesindeki sıradaki kişiye teklif edilir. WhatsApp ve SMS gönderimleri önce paketinizdeki aylık kotadan, kota bitince ortak mesaj kredisinden düşer (1 kredi = 1 WhatsApp hatırlatma); kredi bakiyenizi panelden görürsünüz.',
   },
   {
     q: 'Birden fazla şubem var, hepsini tek hesapta yönetebilir miyim?',

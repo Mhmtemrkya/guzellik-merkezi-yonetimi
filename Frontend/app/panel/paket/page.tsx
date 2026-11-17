@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import PaymentBadges, { LegalLinkRow } from '@/components/legal/PaymentBadges'
 // Kurumsal e-posta TEK KAYNAKTAN gelir: adres burada sabit yazılıydı ve `beautyasist.app`
@@ -12,20 +12,37 @@ import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import { adminApi } from '@/lib/apiClient'
+import { adminApi, ApiClientError } from '@/lib/apiClient'
+import { idempotencyKey, newIdempotencySalt } from '@/lib/idempotency'
 import { formatTL, guidOrUndefined, normalizeSubscriptionPlan, normalizeTenant, normalizeTenantUsage } from '@/lib/apiMappers'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import {
-  AlertCircle, AlertTriangle, Building2, Calendar, CheckCircle2, Crown, CreditCard, Gem, Loader2,
-  MailPlus, MessageSquare, Sparkles, Star, TrendingUp, Users, UsersRound, type LucideIcon,
+  AlertCircle, AlertTriangle, Building2, Calendar, CheckCircle2, Crown, CreditCard, FileSignature, Gem, Loader2,
+  Lock, MailPlus, MessageSquare, Sparkles, Star, TrendingUp, Users, UsersRound, type LucideIcon,
 } from 'lucide-react'
-import type { ApiSubscriptionPlan, ApiTenant, ApiTenantUsage, SubscriptionPlan, UsageMetric } from '@/lib/types'
+import type {
+  ApiSubscriptionPlan, ApiTenant, ApiTenantUsage, SubscriptionPlan, SubscriptionQuote, TierAllowance, TierUpgradeResult, UsageMetric,
+} from '@/lib/types'
 
 const cardVariant: Variants = {
   hidden: { opacity: 0, y: 16 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } },
 }
 const gridVariant: Variants = { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } }
+
+const limitOf = (n: number) => (n < 0 ? Number.POSITIVE_INFINITY : n)
+const LIMIT_KEYS = ['maxBranches', 'maxStaff', 'maxCustomers', 'maxMonthlyAppointments'] as const
+
+/** `candidate`, `current`'ın tüm özelliklerini kapsıyor ve ondan fazlasını (özellik ya da limit) veriyor mu? */
+function isUpgradeOf(candidate: SubscriptionPlan, current: SubscriptionPlan): boolean {
+  if (!current.features.every((f) => candidate.features.includes(f))) return false
+  if (LIMIT_KEYS.some((k) => limitOf(candidate[k]) < limitOf(current[k]))) return false
+  return candidate.features.length > current.features.length ||
+    LIMIT_KEYS.some((k) => limitOf(candidate[k]) > limitOf(current[k]))
+}
+
+/** Fatura ve tahsilat tutarları KURUŞLU gösterilir (₺580,64 → ₺581 yuvarlaması faturayla çelişir). */
+const tlExact = (n: number) => `₺${Number(n ?? 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const metricIcons: Record<string, LucideIcon> = {
   branches: Building2, staff: UsersRound, customers: Users, appointments: Calendar, sms: MessageSquare,
@@ -89,6 +106,8 @@ interface BillingInvoice {
   status: string
   issuedAtUtc: string
   paidAtUtc?: string | null
+  /** Faturanın neye ait olduğu (ör. "BeautyAsist · Ek şube · Kadıköy (ödenince açılacak)"). */
+  notes?: string | null
 }
 
 interface BillingSummary {
@@ -97,11 +116,42 @@ interface BillingSummary {
   subscriptionEndsAtUtc?: string | null
   card?: StoredCard | null
   recentInvoices: BillingInvoice[]
+  /** Bir sonraki yenilemede GÜNCEL sayaçlarla (şube, müşteri, onam) çekilecek tutar — sunucu hesabı. */
+  nextRenewalQuote?: SubscriptionQuote | null
 }
 
 interface CheckoutStarted { checkoutToken: string; formContent?: string | null; redirectUrl?: string | null; amountTRY: number }
 
-interface PaketData { plans: ApiSubscriptionPlan[]; usage: ApiTenantUsage; tenant: ApiTenant; billing: BillingSummary | null }
+interface PaketData {
+  plans: ApiSubscriptionPlan[]
+  usage: ApiTenantUsage
+  tenant: ApiTenant
+  billing: BillingSummary | null
+  /** Kayıtlı müşteri hakkı (yetkisiz / uç yoksa null — sayfanın kalanı etkilenmez). */
+  customers: TierAllowance | null
+  /** Dijital onam hakkı (yetkisiz / uç yoksa null — sayfanın kalanı etkilenmez). */
+  consent: TierAllowance | null
+}
+
+type TierKind = 'customers' | 'consent'
+
+/** Kademe kartının boyuta göre dili — para kodu tek, yalnız metin ayrışır. */
+const TIER_TEXT: Record<TierKind, {
+  title: string; icon: LucideIcon; countLabel: string; unit: string; lockedBadge: string; lockedText: string; footnote: string; name: string
+}> = {
+  customers: {
+    title: 'Kayıtlı Müşteri', icon: Users, countLabel: 'kayıtlı müşteri', unit: 'müşteri',
+    lockedBadge: 'Yeni müşteri eklenemiyor',
+    lockedText: 'Ödenmiş müşteri kapasitesi doldu — bu kademenin bedeli ödenmeden yeni müşteri eklenemez; online kayıt da durur.',
+    footnote: 'Silinen müşteri sayaçtan düşer.', name: 'Müşteri kademesi',
+  },
+  consent: {
+    title: 'Dijital Onam Evrakı', icon: FileSignature, countLabel: 'imzalı evrak', unit: 'evrak',
+    lockedBadge: 'Yeni onam imzalatılamıyor',
+    lockedText: 'Ödenmiş onam kapasitesi doldu — bu kademenin bedeli ödenmeden yeni onam imzalatılamaz.',
+    footnote: 'Silinen imzalı evrak da sayılır.', name: 'Onam kademesi',
+  },
+}
 
 export default function PaketPage() {
   const { selectedInstitutionId, selectedInstitution } = useBranch()
@@ -130,29 +180,76 @@ export default function PaketPage() {
 
   const { data, loading, error, reload } = useApiQuery<PaketData>(
     async () => {
-      const [plans, usage, tenant, billing] = await Promise.all([
+      const [plans, usage, tenant, billing, customers, consent] = await Promise.all([
         adminApi.subscriptionPlans<ApiSubscriptionPlan>(),
         adminApi.currentTenantUsage<ApiTenantUsage>(tenantId),
         adminApi.currentTenant<ApiTenant>(tenantId),
         // Ödeme altyapısı kapalıysa ya da kullanıcı yetkili değilse bu uç hata döner;
         // paket sayfasının kalanı bundan etkilenmemeli.
         adminApi.billingSummary<BillingSummary>(tenantId).catch(() => null),
+        adminApi.customerAllowance<TierAllowance>(tenantId).catch(() => null),
+        adminApi.consentAllowance<TierAllowance>(tenantId).catch(() => null),
       ])
-      return { plans, usage, tenant, billing }
+      return { plans, usage, tenant, billing, customers, consent }
     },
     [tenantId, refreshKey],
     { initialData: null },
   )
 
   const billing = data?.billing ?? null
+  const tiers: Record<TierKind, TierAllowance | null> = { customers: data?.customers ?? null, consent: data?.consent ?? null }
+
+  // KADEME YÜKSELTME (müşteri / onam) — para yazar: anahtar İÇERİKTEN türer (tuz + boyut + kademe + tutar).
+  // Sonucu bilinmeyen deneme aynı anahtarla tekrarlanır (ikinci ücret / fatura yazılmaz); kesin yanıtta tuz döner.
+  const tierSaltRef = useRef<Record<TierKind, string>>({ customers: newIdempotencySalt(), consent: newIdempotencySalt() })
+  const [tierBusy, setTierBusy] = useState<TierKind | null>(null)
+  const handleTierUpgrade = useCallback(async (kind: TierKind) => {
+    const allowance = kind === 'customers' ? data?.customers : data?.consent
+    if (!allowance?.quote || allowance.nextTierAbove == null) return
+    const text = TIER_TEXT[kind]
+    const total = allowance.quote.total
+    const tier = `${allowance.nextTierAbove.toLocaleString('tr-TR')} üzeri ${text.unit}`
+    const question = allowance.chargeMethod === 'Card'
+      ? `${text.name} (${tier}) açılacak. Bugün ${tlExact(total)} (KDV dahil, dönem sonuna kadar orantılı) kayıtlı kartınızdan${allowance.cardMasked ? ` (${allowance.cardMasked})` : ''} çekilecek. Onaylıyor musunuz?`
+      : `${text.name} (${tier}) için ${tlExact(total)} (KDV dahil) tutarında fatura kesilecek. Kademe, ödeme alındığında açılır. Onaylıyor musunuz?`
+    if (!confirm(question)) return
+    const key = idempotencyKey(tierSaltRef.current[kind], `${kind}-upgrade`, allowance.nextTierAbove, total)
+    setTierBusy(kind); setActionMsg(null); setActionErr(null)
+    try {
+      // Tip argümanı YAZILMAZ: idempotency konvansiyon kapısı çağrıyı düz metinle (ad + açılan parantez) arar.
+      const r = (kind === 'customers'
+        ? await adminApi.purchaseCustomerUpgrade(total, tenantId, key)
+        : await adminApi.purchaseConsentUpgrade(total, tenantId, key)) as TierUpgradeResult | null
+      tierSaltRef.current[kind] = newIdempotencySalt()
+      setActionMsg(r?.message || 'İşlem tamamlandı.')
+      setRefreshKey((k) => k + 1)
+      await reload()
+    } catch (e) {
+      if (e instanceof ApiClientError && e.status > 0 && e.status < 500) tierSaltRef.current[kind] = newIdempotencySalt()
+      setActionErr(e instanceof Error ? e.message : `${text.name} yükseltilemedi.`)
+      setRefreshKey((k) => k + 1)
+    } finally {
+      setTierBusy(null)
+    }
+  }, [data?.customers, data?.consent, tenantId, reload])
 
   const handleChangePlan = useCallback(async (plan: SubscriptionPlan) => {
     const price = upgradePeriod === 'Yearly' ? plan.yearlyPriceTRY : plan.monthlyPriceTRY
     const periodText = upgradePeriod === 'Yearly' ? 'yıllık' : 'aylık'
     const isPaid = price > 0
 
+    // TUTAR SUNUCUDAN: şube sayısı, müşteri / onam kademeleri ve KDV dahil — ödeme sayfası aynı
+    // tutarı çeker. Teklif alınamazsa birim fiyat "+ KDV" olarak söylenir.
+    let amountText = `${formatTL(price)} + KDV`
+    if (isPaid) {
+      try {
+        const q = await adminApi.billingQuote<SubscriptionQuote>(plan.id, upgradePeriod === 'Yearly' ? 'Yearly' : 'Monthly', tenantId)
+        amountText = `${formatTL(q.total)} (KDV dahil${q.branches > 1 ? ` · ${q.branches} şube` : ''})`
+      } catch { /* birim fiyatla devam */ }
+    }
+
     const question = isPaid
-      ? `"${plan.name}" paketine ${periodText} dönemle geçiyorsun. Tutar: ${formatTL(price)}. Güvenli ödeme sayfasına yönlendirileceksin. Devam edilsin mi?`
+      ? `"${plan.name}" paketine ${periodText} dönemle geçiyorsun. Tutar: ${amountText}. Güvenli ödeme sayfasına yönlendirileceksin. Devam edilsin mi?`
       : `"${plan.name}" paketine ${periodText} dönemle geçeceksin. Bu paket için ödeme alınmıyor. Devam edilsin mi?`
     if (!confirm(question)) return
 
@@ -204,14 +301,39 @@ export default function PaketPage() {
     .sort((a, b) => a.displayOrder - b.displayOrder || a.monthlyPriceTRY - b.monthlyPriceTRY)
 
   const currentPlan = plans.find((p) => p.id === usage.subscriptionPlanId)
-  const currentIndex = currentPlan ? plans.findIndex((p) => p.id === currentPlan.id) : -1
-  const upgradePath = currentIndex >= 0 ? plans.slice(currentIndex + 1) : plans
-  // Önerilen: mevcut üstündeki ilk ücretli plan, yoksa en yüksek ücretli (mevcut hariç) standart plan.
-  const recommendedPlan =
-    upgradePath.find((p) => p.monthlyPriceTRY > 0) ??
-    plans.filter((p) => p.monthlyPriceTRY > 0 && p.id !== currentPlan?.id).sort((a, b) => b.monthlyPriceTRY - a.monthlyPriceTRY)[0]
+  // "Üst paket" = mevcut paketin her şeyini kapsayıp FAZLASINI veren paket: daha çok özellik ya da
+  // aynı özelliklerle daha geniş limit (-1 = sınırsız). Vitrin sırası / liste fiyatı ölçüt değil:
+  // tüm özellikleri açan şube başı paket sırada başta durur ve birim fiyatı düşük görünür; eski
+  // kural ona Başlangıç'ı "önerilen üst paket" diye gösteriyordu. Ucuzdan pahalıya sıralı.
+  const upgradePath = currentPlan ? plans.filter((p) => p.id !== currentPlan.id && isUpgradeOf(p, currentPlan))
+    .sort((a, b) => a.monthlyPriceTRY - b.monthlyPriceTRY) : plans
+  // Önerilen: üst paketlerin en uygun ücretlisi; paket atanmamışsa en kapsamlı ücretli paket.
+  const recommendedPlan = currentPlan
+    ? upgradePath.find((p) => p.monthlyPriceTRY > 0)
+    : plans.filter((p) => p.monthlyPriceTRY > 0).sort((a, b) => b.features.length - a.features.length || a.monthlyPriceTRY - b.monthlyPriceTRY)[0]
+  // Faturalanan şube sayısı sunucu teklifinden (yenileme tutarıyla aynı sayaç); yoksa kullanım sayacı.
+  const branchesUsed = billing?.nextRenewalQuote?.branches ?? usage.metrics.find((m) => m.key === 'branches')?.used ?? 0
+  const perBranch = currentPlan?.chargePerBranch === true
+  // Aylık toplam SUNUCU TEKLİFİNDEN (şube × birim + müşteri / onam kademeleri): birim × şube tek
+  // başına 10 bin üstü müşterisi olan kurumun ödediğini eksik gösterirdi. Teklif yoksa (ödeme
+  // altyapısı kapalı / yıllık dönem) yalnız şube ücreti olduğu açıkça yazılır.
+  const monthlyQuote = billing?.nextRenewalQuote?.period === 'Monthly' ? billing.nextRenewalQuote : null
+  const quoteHasTiers = monthlyQuote?.lines.some((l) => l.code === 'customers' || l.code === 'consent') ?? false
+  const billedBranches = Math.max(1, branchesUsed)
+  const priceSub = usage.planMonthlyPriceTRY === 0
+    ? 'Teklifle fiyatlanır'
+    : monthlyQuote
+      ? `Aylık toplam ${tlExact(monthlyQuote.subtotal)} + KDV · ${monthlyQuote.branches} şube${quoteHasTiers ? ' + kademe' : ''}`
+      : perBranch
+        ? `Şube ücreti: ${billedBranches} şube · ${tlExact(usage.planMonthlyPriceTRY * billedBranches)} + KDV / ay`
+        : 'KDV hariç · aylık'
 
-  const topMetric = usage.metrics.reduce<UsageMetric | undefined>((a, b) => (!a || b.percent > a.percent ? b : a), undefined)
+  // Müşteri metriği ödenmiş kademe kapasitesiyle (bkz. withTierCapacity) — özet kart, uyarı rozeti ve ızgara AYNI diziden.
+  const metrics = usage.metrics.map((m) => (m.key === 'customers' ? withTierCapacity(m, tiers.customers) : m))
+  const topMetric = metrics.reduce<UsageMetric | undefined>((a, b) => (!a || b.percent > a.percent ? b : a), undefined)
+  const maxPercent = Math.max(usage.maxPercent ?? 0, topMetric?.percent ?? 0)
+  const hasOverflow = usage.hasOverflow || metrics.some((m) => m.isOver)
+  const hasWarning = !hasOverflow && (usage.hasWarning || metrics.some((m) => m.isWarning))
 
   // Trial uyarısı
   const trialEndsAt = tenantModel?.trialEndsAt
@@ -292,27 +414,35 @@ export default function PaketPage() {
           <StatCard icon={Crown} label="Mevcut paket"
             value={<span className="font-display text-[26px] leading-none tracking-tight">{usage.planName || 'Atanmamış'}</span>}
             badge={{ text: isTrial ? 'Deneme' : 'Aktif', tone: isTrial ? 'amber' : 'emerald' }} decoration="crown" />
-          <StatCard icon={CreditCard} label="Aylık fiyat"
+          <StatCard icon={CreditCard} label={perBranch ? 'Aylık fiyat · şube başına' : 'Aylık fiyat'}
             value={<AnimatedNumber value={usage.planMonthlyPriceTRY} format={(n) => (n === 0 ? 'Özel' : formatTL(Math.round(n)))} />}
-            sub="Aylık faturalandırılır" />
-          <StatCard icon={TrendingUp} label="En yüksek metrik" value={`%${usage.maxPercent}`}
+            sub={priceSub} />
+          <StatCard icon={TrendingUp} label="En yüksek metrik" value={`%${maxPercent}`}
             sub={topMetric ? metricLabel[topMetric.key] || topMetric.label : 'kullanım'}
-            badge={{ text: usage.hasOverflow ? 'limit aşıldı' : usage.hasWarning ? 'sınıra yakın' : `%${usage.maxPercent} kullanıldı`, tone: usage.hasOverflow ? 'rose' : usage.hasWarning ? 'amber' : 'emerald' }} />
+            badge={{ text: hasOverflow ? 'limit aşıldı' : hasWarning ? 'sınıra yakın' : `%${maxPercent} kullanıldı`, tone: hasOverflow ? 'rose' : hasWarning ? 'amber' : 'emerald' }} />
           <StatCard icon={Star} label="Üst paketler" value={<AnimatedNumber value={upgradePath.length} />}
             badge={recommendedPlan ? { text: `${recommendedPlan.name} (Önerilen)`, tone: 'rose' } : undefined}
-            sub={recommendedPlan ? undefined : 'en üst paktesin'} decoration="sparkle" />
+            sub={recommendedPlan ? undefined : 'en kapsamlı paketi kullanıyorsun'} decoration="sparkle" />
         </motion.section>
 
-        {/* ÖDEME: kayıtlı kart + faturalar. Ödeme altyapısı kapalıysa hiç gösterilmez. */}
-        {billing?.paymentsEnabled && (
+        {/* ÖDEME: kayıtlı kart + faturalar. Ödeme altyapısı kapalıyken kart / ödeme bandı gizlenir ama
+            kesilmiş faturalar (ör. kartsız şube eklemenin AÇIK faturası) yine görünür — kurum onayladığı
+            borcu görebilmeli. */}
+        {billing && (billing.paymentsEnabled || billing.recentInvoices.length > 0) && (
           <motion.section variants={cardVariant} initial="hidden" animate="visible"
             className="rounded-[18px] border border-[#EAD8DF] bg-white p-5 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
             <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">
-              <CreditCard className="h-3.5 w-3.5" /> Ödeme ve Faturalar
+              <CreditCard className="h-3.5 w-3.5" /> {billing.paymentsEnabled ? 'Ödeme ve Faturalar' : 'Faturalar'}
             </div>
+            {!billing.paymentsEnabled && billing.recentInvoices.some((i) => i.status === 'Sent' || i.status === 'Overdue') && (
+              <div className="mt-2 text-[11.5px] text-[#74616A]">
+                Ödeme bekleyen faturalarınız için ekibimiz sizinle iletişime geçer; ödeme alındığında durum &quot;Ödendi&quot; olur.
+              </div>
+            )}
 
-            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,340px)_1fr]">
+            <div className={`mt-4 grid gap-4 ${billing.paymentsEnabled ? 'lg:grid-cols-[minmax(0,340px)_1fr]' : ''}`}>
               {/* Kayıtlı kart */}
+              {billing.paymentsEnabled && (
               <div className="rounded-[14px] border border-[#EAD8DF] bg-[#fff7fa] p-4">
                 {billing.card ? (
                   <>
@@ -337,6 +467,15 @@ export default function PaketPage() {
                       <div className="mt-2 text-[11.5px] text-[#3E343A]">
                         <Calendar className="mr-1 inline h-3 w-3" />
                         Sonraki tahsilat: {new Date(billing.subscriptionEndsAtUtc).toLocaleDateString('tr-TR')}
+                        {billing.nextRenewalQuote && <> · <b className="tabular-nums">{tlExact(billing.nextRenewalQuote.total)}</b> (KDV dahil)</>}
+                      </div>
+                    )}
+                    {billing.nextRenewalQuote && (
+                      <div className="mt-2 space-y-0.5 rounded-[10px] border border-[#EAD8DF] bg-white px-2.5 py-2 text-[11px] text-[#5A4B53]">
+                        {billing.nextRenewalQuote.lines.map((l) => (
+                          <div key={l.code + l.label} className="flex justify-between gap-2"><span className="truncate">{l.label}</span><span className="tabular-nums">{tlExact(l.net)}</span></div>
+                        ))}
+                        <div className="flex justify-between gap-2 border-t border-[#f2dfe7] pt-0.5 text-[#74616A]"><span>KDV (%{Math.round(billing.nextRenewalQuote.vatRate * 100)})</span><span className="tabular-nums">{tlExact(billing.nextRenewalQuote.vat)}</span></div>
                       </div>
                     )}
                     <button type="button" onClick={handleRemoveCard} disabled={cardBusy}
@@ -354,6 +493,7 @@ export default function PaketPage() {
                   </>
                 )}
               </div>
+              )}
 
               {/* Faturalar */}
               <div className="min-w-0">
@@ -377,16 +517,26 @@ export default function PaketPage() {
                       <tbody className="text-[#3E343A]">
                         {billing.recentInvoices.map((inv) => (
                           <tr key={inv.id} className="border-t border-[#f2dfe7]">
-                            <td className="py-2 font-mono text-[11.5px]">{inv.number}</td>
-                            <td className="py-2">{new Date(inv.periodStartUtc).toLocaleDateString('tr-TR')}</td>
-                            <td className="py-2 text-right">{formatTL(inv.netAmountTRY)}</td>
-                            <td className="py-2 text-right">{formatTL(inv.vatAmountTRY)}</td>
-                            <td className="py-2 text-right font-semibold text-[#2A2027]">{formatTL(inv.amountTRY)}</td>
+                            <td className="py-2 pr-3">
+                              <span className="font-mono text-[11.5px]">{inv.number}</span>
+                              {/* Neye ait olduğu (dönem / ek şube / kademe) — "ödenince açılacak" şube talebi burada görünür. */}
+                              {inv.notes && <span className="mt-0.5 block max-w-[320px] text-[11px] leading-snug text-[#74616A]">{inv.notes}</span>}
+                            </td>
+                            <td className="py-2 tabular-nums">
+                              {new Date(inv.periodStartUtc).toLocaleDateString('tr-TR')} – {new Date(inv.periodEndUtc).toLocaleDateString('tr-TR')}
+                            </td>
+                            <td className="py-2 text-right tabular-nums">{tlExact(inv.netAmountTRY)}</td>
+                            <td className="py-2 text-right tabular-nums">{tlExact(inv.vatAmountTRY)}</td>
+                            <td className="py-2 text-right font-semibold tabular-nums text-[#2A2027]">{tlExact(inv.amountTRY)}</td>
                             <td className="py-2 text-right">
                               {inv.status === 'Paid' ? (
                                 <span className="rounded-full border border-emerald-300/40 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">Ödendi</span>
+                              ) : inv.status === 'Cancelled' ? (
+                                <span className="rounded-full border border-[#e6d3db] bg-[#faf4f6] px-2 py-0.5 text-[10px] text-[#74616A]">İptal</span>
                               ) : (
-                                <span className="rounded-full border border-amber-300/40 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">{inv.status}</span>
+                                <span className="rounded-full border border-amber-300/40 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
+                                  {inv.status === 'Overdue' ? 'Gecikmiş' : inv.status === 'Draft' ? 'Taslak' : 'Ödeme bekliyor'}
+                                </span>
                               )}
                             </td>
                           </tr>
@@ -401,6 +551,7 @@ export default function PaketPage() {
             {/* ÖDEME NOKTASINDA BİLGİLENDİRME.
                 Kabul edilen kartlar, ödeme kuruluşu ve satış koşulları ödemenin yapıldığı
                 ekranda görünür olmalı (mesafeli satış mevzuatı + iyzico üye iş yeri kriteri). */}
+            {billing.paymentsEnabled && (
             <div className="mt-4 flex flex-col gap-2.5 border-t border-[#f2dfe7] pt-4">
               <PaymentBadges />
               <p className="text-[11.5px] leading-relaxed text-[#4a3a44]">
@@ -416,6 +567,7 @@ export default function PaketPage() {
               </p>
               <LegalLinkRow className="text-[#74616A]" />
             </div>
+            )}
           </motion.section>
         )}
 
@@ -424,17 +576,27 @@ export default function PaketPage() {
           className="rounded-[18px] border border-[#EAD8DF] bg-white p-5 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75"><Sparkles className="h-3.5 w-3.5" /> Bu Ayki Kullanım</div>
-            {(usage.hasOverflow || usage.hasWarning) && (
-              <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[9px] font-mono uppercase tracking-widest ${usage.hasOverflow ? 'border-rose-300/40 bg-rose-50 text-rose-700' : 'border-amber-300/40 bg-amber-50 text-amber-700'}`}>
-                <AlertTriangle className="h-3 w-3" /> {usage.hasOverflow ? 'kritik' : 'sınıra yakın'}
+            {(hasOverflow || hasWarning) && (
+              <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[9px] font-mono uppercase tracking-widest ${hasOverflow ? 'border-rose-300/40 bg-rose-50 text-rose-700' : 'border-amber-300/40 bg-amber-50 text-amber-700'}`}>
+                <AlertTriangle className="h-3 w-3" /> {hasOverflow ? 'kritik' : 'sınıra yakın'}
               </span>
             )}
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            {usage.metrics.map((m) => <UsageCell key={m.key} metric={m} icon={metricIcons[m.key]} />)}
-            {!usage.metrics.length && <div className="col-span-full text-[12px] text-[#74616A]">Kullanım verisi alınamadı.</div>}
+            {metrics.map((m) => <UsageCell key={m.key} metric={m} icon={metricIcons[m.key]} />)}
+            {!metrics.length && <div className="col-span-full text-[12px] text-[#74616A]">Kullanım verisi alınamadı.</div>}
           </div>
         </motion.section>
+
+        {/* MÜŞTERİ + DİJİTAL ONAM — "sınırı geçen ödemeden kullanamaz": kapasite yalnız ÖDENMİŞ kademeden gelir. */}
+        {(['customers', 'consent'] as const).map((kind) => {
+          const allowance = tiers[kind]
+          if (!allowance || (allowance.capacity == null && allowance.allowed)) return null
+          return (
+            <TierAllowanceCard key={kind} kind={kind} allowance={allowance} busy={tierBusy === kind}
+              onUpgrade={() => void handleTierUpgrade(kind)} />
+          )
+        })}
 
         {/* YÜKSELTME YOLU */}
         <motion.section variants={cardVariant} initial="hidden" animate="visible">
@@ -508,6 +670,25 @@ function StatCard({
   )
 }
 
+/**
+ * Müşteri metriğinin sınırı paket alanından (çoğu pakette sınırsız) değil ÖDENMİŞ müşteri kademesinden gelir —
+ * "∞" yazan hücre yanında "yeni müşteri eklenemiyor" kartı çelişirdi.
+ */
+function withTierCapacity(metric: UsageMetric, allowance: TierAllowance | null): UsageMetric {
+  if (!allowance || allowance.capacity == null) return metric
+  const capacity = allowance.capacity
+  const percent = capacity > 0 ? Math.min(100, Math.round((allowance.count / capacity) * 100)) : 100
+  return {
+    ...metric,
+    used: allowance.count,
+    limit: capacity,
+    percent,
+    isUnlimited: false,
+    isOver: !allowance.allowed,
+    isWarning: allowance.allowed && percent >= 90,
+  }
+}
+
 function UsageCell({ metric, icon: Icon }: { metric: UsageMetric; icon?: LucideIcon }) {
   const { used, limit, percent, isUnlimited, isOver, isWarning, label } = metric
   const tone = isOver ? 'text-rose-700' : isWarning ? 'text-amber-700' : 'text-[#A5556E]'
@@ -523,6 +704,100 @@ function UsageCell({ metric, icon: Icon }: { metric: UsageMetric; icon?: LucideI
       </div>
       <div className="mt-1.5 text-right text-[10px] font-mono text-[#74616A]">{isUnlimited ? 'sınırsız' : `%${percent}`}</div>
     </div>
+  )
+}
+
+/**
+ * KADEME KARTI (kayıtlı müşteri / dijital onam) — sayaç / ödenmiş kapasite, kilit durumu ve bir sonraki kademe.
+ * Kapasite YALNIZ ödenmiş faturadaki kademeden gelir: fatura yolunda kilit, ödeme alınınca kalkar.
+ */
+function TierAllowanceCard({ kind, allowance, busy, onUpgrade }: {
+  kind: TierKind; allowance: TierAllowance; busy: boolean; onUpgrade: () => void
+}) {
+  const text = TIER_TEXT[kind]
+  const Icon = text.icon
+  const capacity = allowance.capacity ?? null
+  const percent = capacity ? Math.min(100, Math.round((allowance.count / capacity) * 100)) : 6
+  const locked = !allowance.allowed
+  const near = !locked && capacity != null && percent >= 90
+  const bar = locked ? 'from-rose-400 to-rose-300' : near ? 'from-amber-400 to-amber-300' : 'from-[#e0617f] to-[#f3a3bf]'
+  const total = allowance.quote?.total ?? 0
+  const canBuy = allowance.canPurchase && total > 0 && allowance.nextTierAbove != null
+  return (
+    <motion.section variants={cardVariant} initial="hidden" animate="visible"
+      className={`rounded-[18px] border bg-white p-5 shadow-[0_22px_54px_-38px_rgba(150,78,104,0.46)] ${locked ? 'border-rose-200' : 'border-[#EAD8DF]'}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">
+          <Icon className="h-3.5 w-3.5" /> {text.title}
+        </div>
+        {locked ? (
+          <span className="inline-flex items-center gap-1 rounded-md border border-rose-300/40 bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-700">
+            <Lock className="h-3 w-3" /> {text.lockedBadge}
+          </span>
+        ) : near ? (
+          <span className="inline-flex items-center gap-1 rounded-md border border-amber-300/40 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">
+            <AlertTriangle className="h-3 w-3" /> sınıra yakın
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <div>
+          <div className="flex items-baseline gap-2">
+            <span className="font-display text-[30px] leading-none tracking-tight text-[#2A2027] tabular-nums">{allowance.count.toLocaleString('tr-TR')}</span>
+            <span className="text-[13px] text-[#5A4B53]">/ {capacity != null ? capacity.toLocaleString('tr-TR') : '∞'} {text.countLabel}</span>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#f7e9ee]">
+            <motion.div initial={{ width: 0 }} animate={{ width: `${percent}%` }} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+              className={`h-full rounded-full bg-gradient-to-r ${bar}`} />
+          </div>
+          <p className="mt-2 text-[11.5px] leading-relaxed text-[#5A4B53]">
+            {allowance.paidTierAbove != null
+              ? `Ödenmiş kademe: ${allowance.paidTierAbove.toLocaleString('tr-TR')} üzeri ${text.unit}.`
+              : 'Ücretsiz bölüm kullanılıyor.'}{' '}
+            {text.footnote}
+          </p>
+        </div>
+
+        <div className={`rounded-[14px] border p-4 ${locked ? 'border-rose-200 bg-rose-50/60' : 'border-[#EAD8DF] bg-[#fff7fa]'}`}>
+          {locked && <p className="text-[12px] font-semibold text-rose-700">{text.lockedText}</p>}
+          {allowance.nextTierAbove != null && (
+            <p className={`${locked ? 'mt-1.5' : ''} text-[12px] text-[#3E343A]`}>
+              Sonraki kademe: <b>{allowance.nextTierAbove.toLocaleString('tr-TR')} üzeri {text.unit}</b>
+              {allowance.nextTierMonthlyFee != null && <> · {tlExact(allowance.nextTierMonthlyFee)} / ay + KDV</>}
+            </p>
+          )}
+          {allowance.openInvoiceNumber && (
+            <p className="mt-1.5 text-[11.5px] text-amber-700">
+              {allowance.openInvoiceNumber} numaralı fatura ödeme bekliyor; ödeme alındığında kademe açılır.
+            </p>
+          )}
+          {!allowance.canPurchase && allowance.reason && !allowance.openInvoiceNumber && (
+            <p className="mt-1.5 text-[11.5px] text-[#74616A]">{allowance.reason}</p>
+          )}
+          {canBuy && (
+            <>
+              {allowance.quote && (
+                <div className="mt-2 space-y-0.5 text-[11px] text-[#5A4B53]">
+                  {allowance.quote.lines.map((l) => (
+                    <div key={l.code + l.label} className="flex justify-between gap-2"><span className="truncate">{l.label}</span><span className="tabular-nums">{tlExact(l.net)}</span></div>
+                  ))}
+                  <div className="flex justify-between gap-2 text-[#74616A]"><span>KDV (%{Math.round(allowance.quote.vatRate * 100)})</span><span className="tabular-nums">{tlExact(allowance.quote.vat)}</span></div>
+                </div>
+              )}
+              <button type="button" onClick={onUpgrade} disabled={busy}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#A5556E] px-4 py-2 text-[12px] font-semibold text-white transition hover:bg-[#8C4460] disabled:opacity-60">
+                {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {allowance.chargeMethod === 'Card' ? `${tlExact(total)} öde ve kademeyi aç` : `${tlExact(total)} faturayı onayla`}
+              </button>
+              {allowance.chargeMethod !== 'Card' && (
+                <p className="mt-1.5 text-[10.5px] text-[#74616A]">Fatura kesilir; kademe ödeme alındığında açılır.</p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </motion.section>
   )
 }
 
@@ -577,7 +852,7 @@ function PlanCard({
         ) : (
           <div className="flex items-end gap-1">
             <span className={`font-display text-4xl tabular-nums tracking-tight ${isCurrent ? 'text-white' : 'text-[#A5556E]'}`}>{formatTL(plan.monthlyPriceTRY)}</span>
-            <span className={`mb-1 text-[12px] ${isCurrent ? 'text-white/60' : 'text-[#74616A]'}`}>/ay</span>
+            <span className={`mb-1 text-[12px] ${isCurrent ? 'text-white/60' : 'text-[#74616A]'}`}>/ay{plan.chargePerBranch ? ' · şube başına' : ''} + KDV</span>
           </div>
         )}
       </div>

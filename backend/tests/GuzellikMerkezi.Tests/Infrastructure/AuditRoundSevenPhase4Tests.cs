@@ -300,9 +300,9 @@ public sealed class AuditRoundSevenPhase4Tests
         async Task<int> SweepAsync()
         {
             await using var db = database.NewContext();
-            // IServiceProvider yalnız WhatsApp kanalında kullanılır (IWhatsAppService çalışma anında
-            // çözülür); bu testler SMS kanalını sürdüğü için boş bir vekil yeterli.
-            var service = new NotificationService(db, new AlwaysAllowUsageService(), new AllowAllFeatureService(), messaging, Substitute.For<IServiceProvider>());
+            // SMS kanalı kota/kredi kararını faturalama servisinden alır (çalışma anında
+            // çözülür); gerçek servis, test edilen servisle AYNI DbContext üzerinden verilir.
+            var service = new NotificationService(db, new AlwaysAllowUsageService(), new AllowAllFeatureService(), messaging, NotificationTestServices.WithBilling(db));
             var result = await service.SendAsync(tenantId,
                 new SendNotificationRequest(templateId, new[] { customerId }, null, bucket));
             return result.IsSuccess ? result.Value!.Sent : 0;
@@ -362,9 +362,9 @@ public sealed class AuditRoundSevenPhase4Tests
         async Task<int> SendAsync()
         {
             await using var db = database.NewContext();
-            // IServiceProvider yalnız WhatsApp kanalında kullanılır (IWhatsAppService çalışma anında
-            // çözülür); bu testler SMS kanalını sürdüğü için boş bir vekil yeterli.
-            var service = new NotificationService(db, new AlwaysAllowUsageService(), new AllowAllFeatureService(), messaging, Substitute.For<IServiceProvider>());
+            // SMS kanalı kota/kredi kararını faturalama servisinden alır (çalışma anında
+            // çözülür); gerçek servis, test edilen servisle AYNI DbContext üzerinden verilir.
+            var service = new NotificationService(db, new AlwaysAllowUsageService(), new AllowAllFeatureService(), messaging, NotificationTestServices.WithBilling(db));
             var result = await service.SendAsync(tenantId,
                 new SendNotificationRequest(templateId, new[] { customerId }, null));
             return result.IsSuccess ? result.Value!.Sent : 0;

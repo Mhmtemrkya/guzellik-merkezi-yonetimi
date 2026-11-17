@@ -243,6 +243,12 @@ public sealed class ConsentService : IConsentService
     /// </summary>
     public async Task<Result<ConsentFormDto>> StartSessionAsync(Guid tenantId, Guid id, StartConsentSessionRequest request, CancellationToken cancellationToken = default)
     {
+        // ONAM KOTASI — ÖN KONTROL: müşteri tablette formu doldurup imzaya geldiğinde reddedilmesin diye
+        // kilitli kurum formu tablete hiç gönderemez. KESİN kapı imzadadır (SignAsync, kilit altında).
+        var entitlement = await ConsentEntitlementQuery.EvaluateAsync(_db, tenantId, DateTime.UtcNow, cancellationToken);
+        if (!entitlement.Allowed)
+            return Result<ConsentFormDto>.Failure(Error.ConsentLimitReached(ConsentEntitlementQuery.LimitMessage(entitlement)));
+
         var relational = _db.Database.IsRelational();
         await using var tx = relational && _db.Database.CurrentTransaction is null
             ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
@@ -339,6 +345,12 @@ public sealed class ConsentService : IConsentService
     /// aynı forma iki farklı imza/beyan düşer, hangisinin geçerli olduğu belirsizleşirdi. Onam
     /// formu hukuki bir kayıttır; belirsizlik kabul edilemez.
     /// </para>
+    /// <para>
+    /// ONAM KOTASI — KESİN KAPI: bir sonraki evrak bedeli ÖDENMEMİŞ bir kademeye düşüyorsa imza yazılmaz
+    /// ("sınırı geçen ödemeden kullanamaz"). Sayım KURUM SATIRI KİLİTLİYKEN yapılır: kilitsiz "say, sonra
+    /// yaz" iki eşzamanlı imzayı sınırın bir eksiğinde ikisini birden geçirirdi. Kilit sırası
+    /// (<see cref="RowLock.TableOrder"/>): tenants → customer_consent_forms.
+    /// </para>
     /// </summary>
     public async Task<Result<ConsentFormDto>> SignAsync(Guid tenantId, Guid sessionToken, SignConsentFormRequest request, CancellationToken cancellationToken = default)
     {
@@ -346,6 +358,8 @@ public sealed class ConsentService : IConsentService
         await using var tx = relational && _db.Database.CurrentTransaction is null
             ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
             : null;
+
+        if (relational) await RowLock.LockRowAsync(_db, "tenants", tenantId, cancellationToken);
 
         var form = await _db.CustomerConsentForms.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.SessionToken == sessionToken, cancellationToken);
         if (form is null) return Result<ConsentFormDto>.Failure(Error.NotFound("İmza oturumu bulunamadı ya da kullanılmış."));
@@ -360,6 +374,11 @@ public sealed class ConsentService : IConsentService
             if (form.IsSigned)
                 return Result<ConsentFormDto>.Failure(Error.Conflict("Bu form az önce imzalandı."));
         }
+
+        // KOTA (kurum satırı kilitliyken sayılır — kilidi bekleyen taraf öncekinin imzasını görür).
+        var entitlement = await ConsentEntitlementQuery.EvaluateAsync(_db, tenantId, DateTime.UtcNow, cancellationToken);
+        if (!entitlement.Allowed)
+            return Result<ConsentFormDto>.Failure(Error.ConsentLimitReached(ConsentEntitlementQuery.LimitMessage(entitlement)));
 
         // Zorunlu onay maddelerinin TAMAMI işaretlenmeden imza kabul edilmez.
         var required = Deserialize(form.CheckItemsJson);

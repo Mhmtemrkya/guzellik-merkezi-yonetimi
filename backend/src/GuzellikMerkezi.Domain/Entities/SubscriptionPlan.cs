@@ -45,9 +45,38 @@ public sealed class SubscriptionPlan : Entity
     public string PlanKey { get; private set; } = string.Empty;
     public string Name { get; private set; } = string.Empty;
     public string? Description { get; private set; }
+    /// <summary>
+    /// Aylık fiyat (₺, <b>KDV HARİÇ</b>). <see cref="ChargePerBranch"/> açıksa ŞUBE BAŞINA birim fiyattır.
+    /// KDV tahsilatta eklenir (bkz. <c>SubscriptionPricing</c>).
+    /// </summary>
     public decimal MonthlyPriceTRY { get; private set; }
-    /// <summary>Yıllık abonelik fiyatı (₺). 0 ise "özel/teklif" olarak değerlendirilir.</summary>
+    /// <summary>Yıllık fiyat (₺, KDV HARİÇ; şube başınaysa birim). 0 ise "özel/teklif" olarak değerlendirilir.</summary>
     public decimal YearlyPriceTRY { get; private set; }
+
+    // ---- Fiyatlama modeli (bkz. SubscriptionPricing) ----
+
+    /// <summary>Fiyat şube başına mı? Açıkken tutar = şube sayısı × birim fiyat; dönem ortası eklenen şube orantılı ücretlenir.</summary>
+    public bool ChargePerBranch { get; private set; }
+    /// <summary>Müşteri sayısı kademeleri (JSON, KDV hariç aylık ek ücret). Boş = kademe yok.</summary>
+    public string? CustomerTiersJson { get; private set; }
+    /// <summary>İmzalı dijital onam formu sayısı kademeleri (JSON, KDV hariç aylık ek ücret). Boş = kademe yok.</summary>
+    public string? ConsentTiersJson { get; private set; }
+    /// <summary>Yıllık dönemde kademe ücreti = aylık ücret × bu çarpan (ör. 10 = yıllıkta 2 ay indirim).</summary>
+    public decimal YearlyTierMultiplier { get; private set; } = 10m;
+
+    public IReadOnlyList<Billing.PricingTier> CustomerTiers => Billing.PricingTier.Parse(CustomerTiersJson);
+    public IReadOnlyList<Billing.PricingTier> ConsentTiers => Billing.PricingTier.Parse(ConsentTiersJson);
+
+    public void SetPricingModel(bool chargePerBranch, IEnumerable<Billing.PricingTier>? customerTiers,
+        IEnumerable<Billing.PricingTier>? consentTiers, decimal yearlyTierMultiplier)
+    {
+        if (yearlyTierMultiplier is <= 0 or > 12) throw new DomainException("Yıllık kademe çarpanı 0'dan büyük ve en fazla 12 olmalı.");
+        ChargePerBranch = chargePerBranch;
+        CustomerTiersJson = Billing.PricingTier.Serialize(Billing.PricingTier.Normalize(customerTiers));
+        ConsentTiersJson = Billing.PricingTier.Serialize(Billing.PricingTier.Normalize(consentTiers));
+        YearlyTierMultiplier = decimal.Round(yearlyTierMultiplier, 2);
+        Touch();
+    }
 
     // Limitler (-1 = sınırsız)
     public int MaxBranches { get; private set; }
@@ -64,7 +93,13 @@ public sealed class SubscriptionPlan : Entity
     /// <summary>Pakete dahil aylık WhatsApp Marketing (kampanya/doğum günü) kotası. Genelde 0 — kontörle alınır.</summary>
     public int MaxMonthlyWhatsAppMarketing { get; private set; }
 
-    /// <summary>Aylık kontör harcama tavanı (₺) önerisi — bu paketteki kurumlar için varsayılan. 0/null = platform varsayılanı.</summary>
+    /// <summary>
+    /// Aylık mesaj kredisi harcama tavanı önerisi (WhatsApp + SMS) — bu paketteki kurumlar için
+    /// varsayılan. 0 = platform varsayılanı.
+    /// </summary>
+    public decimal DefaultSpendCapCredits { get; private set; }
+
+    /// <summary>ESKİ ₺ tavan önerisi (12 Kas 2026 kredi dönüşümü öncesi). Faturalama OKUMAZ.</summary>
     public decimal DefaultWhatsAppSpendCapTry { get; private set; }
 
     /// <summary>Bayrak feature'ları CSV: "Reports,Notifications,AdvancedAnalytics,APIAccess".</summary>
@@ -121,9 +156,9 @@ public sealed class SubscriptionPlan : Entity
         Touch();
     }
 
-    public void SetDefaultWhatsAppSpendCap(decimal capTry)
+    public void SetDefaultSpendCapCredits(decimal capCredits)
     {
-        DefaultWhatsAppSpendCapTry = capTry < 0 ? 0 : decimal.Round(capTry, 2);
+        DefaultSpendCapCredits = capCredits < 0 ? 0 : decimal.Round(capCredits, 2);
         Touch();
     }
 

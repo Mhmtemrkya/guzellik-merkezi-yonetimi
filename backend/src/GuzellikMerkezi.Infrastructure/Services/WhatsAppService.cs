@@ -102,9 +102,30 @@ public sealed class WhatsAppService : IWhatsAppService
             _db.WhatsAppSettings.Add(s);
         }
         s.UpdateContent(request.ReminderTemplate);
-        s.UpdateBillingPreferences(request.MarketingEnabled, request.AllowWalletOverage, request.MonthlySpendCapTry);
-        s.UpdateTemplateBindings(request.KvkkTemplateName, request.ReminderTemplateName, request.TemplateLanguageCode,
-            request.WaitlistOfferTemplateName, request.WaitlistActivatedTemplateName, request.RatingTemplateName);
+        // ESKİ İSTEMCİ TAVANI SİLMESİN: kredi tavanını bilmeyen sürüm alanı hiç göndermez (null gelir);
+        // birim işareti yoksa mevcut tavan korunur. Yeni istemci "Credits" ile boş gönderirse silinir.
+        var capCredits = string.Equals(request.SpendCapUnit, "Credits", StringComparison.OrdinalIgnoreCase)
+            ? request.MonthlySpendCapCredits
+            : s.MonthlySpendCapCredits;
+        s.UpdateBillingPreferences(request.MarketingEnabled, request.AllowWalletOverage, capCredits);
+        // Meta şablon adları BURADA GÜNCELLENMEZ: platform yönetir (BindConnectionAsync). UpdateTemplateBindings
+        // altı alanı birden yazar — kurum kaydından çağrılsaydı her kayıt platformun girdiği adları silerdi.
+
+        // Kanal alanı GELMEDİYSE mevcut seçim korunur: kanalları bilmeyen eski istemci (mağazadaki
+        // mobil sürüm) ayarları kaydettiğinde kurumun SMS tercihi sessizce WhatsApp'a dönmesin.
+        // Geçersiz kanal (ör. e-posta) 400 döner — varsayılana düşürülmez.
+        try
+        {
+            s.UpdateChannelPreferences(
+                request.RatingLinkChannel ?? s.RatingLinkChannel,
+                request.WaitlistActivatedChannel ?? s.WaitlistActivatedChannel,
+                request.KvkkChannel ?? s.KvkkChannel);
+        }
+        catch (Domain.Exceptions.DomainException ex)
+        {
+            return Result<WhatsAppSettingsDto>.Failure(Error.Validation(ex.Message));
+        }
+
         await _db.SaveChangesAsync(ct);
         return Result<WhatsAppSettingsDto>.Success(BuildSettingsDto(s));
     }
@@ -128,13 +149,7 @@ public sealed class WhatsAppService : IWhatsAppService
         var list = tenants.Select(t =>
         {
             byTenant.TryGetValue(t.Id, out var s);
-            return new WhatsAppConnectionDto(
-                t.Id, t.Name, t.PlanName,
-                s?.PhoneNumberId, s?.BusinessAccountId, s?.DisplayPhoneNumber,
-                (s?.ConnectionStatus ?? WhatsAppConnectionStatus.NotConnected).ToString(),
-                s?.IsConnected ?? false,
-                !string.IsNullOrWhiteSpace(s?.AccessTokenEncrypted),
-                webhookUrl);
+            return ToConnectionDto(t.Id, t.Name, t.PlanName, s, webhookUrl);
         }).OrderBy(x => x.TenantName).ToList();
 
         return Result<IReadOnlyCollection<WhatsAppConnectionDto>>.Success(list);
@@ -170,14 +185,39 @@ public sealed class WhatsAppService : IWhatsAppService
             var enc = string.IsNullOrWhiteSpace(request.AccessTokenOverride) ? null : _encryption.Encrypt(request.AccessTokenOverride.Trim());
             s.SetAccessTokenOverride(enc);
         }
+        // Meta onaylı şablon adları (platform yönetir). null = MEVCUT korunur, boş metin = temizle:
+        // UpdateTemplateBindings altı alanı birden yazar; alanları göndermeyen kayıt şablonları silmesin.
+        s.UpdateTemplateBindings(
+            request.KvkkTemplateName ?? s.KvkkTemplateName,
+            request.ReminderTemplateName ?? s.ReminderTemplateName,
+            request.TemplateLanguageCode ?? s.TemplateLanguageCode,
+            request.WaitlistOfferTemplateName ?? s.WaitlistOfferTemplateName,
+            request.WaitlistActivatedTemplateName ?? s.WaitlistActivatedTemplateName,
+            request.RatingTemplateName ?? s.RatingTemplateName);
         await _db.SaveChangesAsync(ct);
 
-        return Result<WhatsAppConnectionDto>.Success(new WhatsAppConnectionDto(
-            tenant.Id, tenant.Name, tenant.SubscriptionPlan?.Name,
-            s.PhoneNumberId, s.BusinessAccountId, s.DisplayPhoneNumber,
-            s.ConnectionStatus.ToString(), s.IsConnected,
-            !string.IsNullOrWhiteSpace(s.AccessTokenEncrypted), BuildWebhookUrl()));
+        return Result<WhatsAppConnectionDto>.Success(
+            ToConnectionDto(tenant.Id, tenant.Name, tenant.SubscriptionPlan?.Name, s, BuildWebhookUrl()));
     }
+
+    /// <summary>
+    /// Platform bağlantı satırı — liste ve bağlama yanıtı AYNI eşleyiciden geçer (şablon adları dahil);
+    /// biri eksik kalsaydı pencere yalnız durumu değiştirmek için açıldığında şablonları boş görüp silerdi.
+    /// </summary>
+    private static WhatsAppConnectionDto ToConnectionDto(Guid tenantId, string tenantName, string? planName, WhatsAppSettings? s, string webhookUrl) =>
+        new(
+            tenantId, tenantName, planName,
+            s?.PhoneNumberId, s?.BusinessAccountId, s?.DisplayPhoneNumber,
+            (s?.ConnectionStatus ?? WhatsAppConnectionStatus.NotConnected).ToString(),
+            s?.IsConnected ?? false,
+            !string.IsNullOrWhiteSpace(s?.AccessTokenEncrypted),
+            webhookUrl,
+            s?.KvkkTemplateName,
+            s?.ReminderTemplateName,
+            s?.TemplateLanguageCode ?? "tr",
+            s?.WaitlistOfferTemplateName,
+            s?.WaitlistActivatedTemplateName,
+            s?.RatingTemplateName);
 
     public async Task<Result<ReminderResultDto>> SendTestMessageAsync(Guid tenantId, SendTestMessageRequest request, CancellationToken ct = default)
     {
@@ -365,7 +405,7 @@ public sealed class WhatsAppService : IWhatsAppService
         var q = _db.WhatsAppMessages.AsNoTracking().Where(m => m.TenantId == tenantId);
         if (appointmentId.HasValue) q = q.Where(m => m.AppointmentId == appointmentId.Value);
         var rows = await q.OrderByDescending(m => m.CreatedAtUtc).Take(50)
-            .Select(m => new WhatsAppMessageDto(m.Id, m.AppointmentId, m.CustomerId, m.Direction, m.Phone, m.Body, m.Status, m.Intent, m.ProviderMessageId, m.ErrorMessage, m.CreatedAtUtc, m.Category, m.BillingSource, m.ChargedAmountTry))
+            .Select(m => new WhatsAppMessageDto(m.Id, m.AppointmentId, m.CustomerId, m.Direction, m.Phone, m.Body, m.Status, m.Intent, m.ProviderMessageId, m.ErrorMessage, m.CreatedAtUtc, m.Category, m.BillingSource, m.ChargedCredits))
             .ToListAsync(ct);
         if (IsStaffViewer) rows = rows.Select(r => r with { Phone = PhoneMask.Mask(r.Phone) }).ToList();
         return Result<IReadOnlyCollection<WhatsAppMessageDto>>.Success(rows);
@@ -870,7 +910,7 @@ public sealed class WhatsAppService : IWhatsAppService
                 tenantId, branchId, appointmentId, customerId, WhatsAppMessageDirection.Outbound,
                 toPhone, body, WhatsAppMessageStatus.Queued, templateName: templateName,
                 waitlistEntryId: waitlistEntryId,
-                category: decision.Category, billingSource: decision.Source, chargedAmountTry: decision.AmountTry);
+                category: decision.Category, billingSource: decision.Source, chargedCredits: decision.Credits);
             _db.WhatsAppMessages.Add(msg);
             await _db.SaveChangesAsync(ct);
             if (writeTx is not null) await writeTx.CommitAsync(ct);
@@ -1318,6 +1358,10 @@ public sealed class WhatsAppService : IWhatsAppService
                 }
             }
 
+            // Alıcı "+" ve ülke koduyla gider: "+"sız numaranın önüne Meta işletmenin ülke kodunu
+            // ekler ("0532…" → "+90 0532…" = yanlış numara). Saklanan numara rakam olarak kalır.
+            var to = WhatsAppRecipient.Format(toPhone);
+
             object payload;
             if (template is not null)
             {
@@ -1342,7 +1386,7 @@ public sealed class WhatsAppService : IWhatsAppService
                 {
                     messaging_product = "whatsapp",
                     recipient_type = "individual",
-                    to = toPhone,
+                    to,
                     type = "template",
                     template = new
                     {
@@ -1358,14 +1402,14 @@ public sealed class WhatsAppService : IWhatsAppService
                 {
                     messaging_product = "whatsapp",
                     recipient_type = "individual",
-                    to = toPhone,
+                    to,
                     type = "document",
                     document = new { id = mediaId, filename = attachment.FileName, caption = Truncate(body, 1024) },
                 };
             }
             else
             {
-                payload = new { messaging_product = "whatsapp", recipient_type = "individual", to = toPhone, type = "text", text = new { preview_url = true, body } };
+                payload = new { messaging_product = "whatsapp", recipient_type = "individual", to, type = "text", text = new { preview_url = true, body } };
             }
             using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(payload) };
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
@@ -1382,6 +1426,7 @@ public sealed class WhatsAppService : IWhatsAppService
                 using var d = JsonDocument.Parse(raw);
                 if (d.RootElement.TryGetProperty("messages", out var m) && m.GetArrayLength() > 0 && m[0].TryGetProperty("id", out var id))
                     messageId = id.GetString();
+                WhatsAppRecipient.LogAccepted(_logger, d.RootElement, to, messageId);
             }
             catch (JsonException) { /* id parse edilemese de gönderim başarılı */ }
             return new WhatsAppSendOutcome(true, messageId, null);
@@ -1402,9 +1447,10 @@ public sealed class WhatsAppService : IWhatsAppService
         return new WhatsAppSettingsDto(
             s.Enabled, s.PhoneNumberId, s.DisplayPhoneNumber, s.ConnectionStatus.ToString(), s.IsConnected,
             s.BusinessAccountId, s.ReminderTemplate, s.Provider, webhookUrl,
-            s.MarketingEnabled, s.AllowWalletOverage, s.MonthlySpendCapTry,
+            s.MarketingEnabled, s.AllowWalletOverage, s.MonthlySpendCapCredits,
             s.KvkkTemplateName, s.ReminderTemplateName, s.TemplateLanguageCode,
-            s.WaitlistOfferTemplateName, s.WaitlistActivatedTemplateName, s.RatingTemplateName);
+            s.WaitlistOfferTemplateName, s.WaitlistActivatedTemplateName, s.RatingTemplateName,
+            s.RatingLinkChannel, s.WaitlistActivatedChannel, s.KvkkChannel);
     }
 
     private string BuildWebhookUrl()

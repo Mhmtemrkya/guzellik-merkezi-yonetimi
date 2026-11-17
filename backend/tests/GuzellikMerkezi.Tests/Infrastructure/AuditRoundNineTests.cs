@@ -4,6 +4,7 @@ using GuzellikMerkezi.Api.Middleware;
 using GuzellikMerkezi.Api.Realtime;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.Notifications;
 using GuzellikMerkezi.Application.Features.PendingOperations;
 using GuzellikMerkezi.Application.Features.WhatsApp;
 using GuzellikMerkezi.Domain;
@@ -453,6 +454,22 @@ public sealed class AuditRoundNineTests
         return stub;
     }
 
+    /// <summary>
+    /// Kurumun KVKK kanal tercihi. Kanal AÇIKÇA verilir: NSubstitute'un enum varsayılanı Sms (0)
+    /// olduğu için verilmezse WhatsApp testleri sessizce SMS yolunu sınardı.
+    /// </summary>
+    private static ICustomerSmsService SmsStub(
+        NotificationChannel channel, WhatsAppDispatchReport? smsReport = null)
+    {
+        var stub = Substitute.For<ICustomerSmsService>();
+        stub.ResolveChannelAsync(Arg.Any<Guid>(), Arg.Any<OneWayMessageKind>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(channel));
+        if (smsReport is { } r)
+            stub.SendKvkkInfoAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(r));
+        return stub;
+    }
+
     private static string KvkkPayload() =>
         System.Text.Json.JsonSerializer.Serialize(new KvkkConsentJob(Guid.CreateVersion7(), Guid.CreateVersion7()));
 
@@ -464,12 +481,31 @@ public sealed class AuditRoundNineTests
     [Fact]
     public async Task KvkkJob_WhenProviderRejects_ThrowsSoQueueRetries()
     {
-        var handler = new KvkkConsentJobHandler(WhatsAppStub(WhatsAppDispatchReport.Failed("Meta 400")));
+        var handler = new KvkkConsentJobHandler(
+            WhatsAppStub(WhatsAppDispatchReport.Failed("Meta 400")), SmsStub(NotificationChannel.WhatsApp));
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => handler.ExecuteAsync(KvkkPayload(), CancellationToken.None));
 
         Assert.Contains("Meta 400", ex.Message);
+    }
+
+    /// <summary>
+    /// Kurum KVKK için SMS seçtiyse WhatsApp'a HİÇ gidilmez ve SMS'in gerçek reddi de iş kuyruğuna
+    /// istisna olarak döner — kanal değişti diye "gönderilemeyen mesaj başarılı iş" kuralı gevşemez.
+    /// </summary>
+    [Fact]
+    public async Task KvkkJob_WhenTenantChoseSms_UsesSmsAndRetriesOnRejection()
+    {
+        var whatsApp = WhatsAppStub(WhatsAppDispatchReport.Sent);
+        var handler = new KvkkConsentJobHandler(
+            whatsApp, SmsStub(NotificationChannel.Sms, WhatsAppDispatchReport.Failed("Verimor 400")));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => handler.ExecuteAsync(KvkkPayload(), CancellationToken.None));
+
+        Assert.Contains("Verimor 400", ex.Message);
+        await whatsApp.DidNotReceive().SendKvkkConsentRequestAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -479,7 +515,7 @@ public sealed class AuditRoundNineTests
     [Fact]
     public async Task KvkkJob_WhenSkipped_CompletesSuccessfully()
     {
-        var handler = new KvkkConsentJobHandler(WhatsAppStub(WhatsAppDispatchReport.Skipped));
+        var handler = new KvkkConsentJobHandler(WhatsAppStub(WhatsAppDispatchReport.Skipped), SmsStub(NotificationChannel.WhatsApp));
 
         await handler.ExecuteAsync(KvkkPayload(), CancellationToken.None);
     }
@@ -488,7 +524,7 @@ public sealed class AuditRoundNineTests
     [Fact]
     public async Task KvkkJob_WhenSent_CompletesSuccessfully()
     {
-        var handler = new KvkkConsentJobHandler(WhatsAppStub(WhatsAppDispatchReport.Sent));
+        var handler = new KvkkConsentJobHandler(WhatsAppStub(WhatsAppDispatchReport.Sent), SmsStub(NotificationChannel.WhatsApp));
 
         await handler.ExecuteAsync(KvkkPayload(), CancellationToken.None);
     }

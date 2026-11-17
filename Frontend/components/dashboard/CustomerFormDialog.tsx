@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
+import Link from 'next/link'
+import { ApiClientError } from '@/lib/apiClient'
 import {
   Dialog,
   DialogContent,
@@ -110,6 +112,8 @@ export default function CustomerFormDialog({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  /** Ödenmiş müşteri kapasitesi doldu (409 CustomerLimitReached) — sunucu mesajı NÖTR; yükseltme yolu burada. */
+  const [limitReached, setLimitReached] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
   /**
    * "Eski müşterim" anahtarı. Kapalıyken kayıt tarihi HİÇ gönderilmez (sunucu kayıt anını yazar);
@@ -156,6 +160,7 @@ export default function CustomerFormDialog({
     }
     setSaving(true)
     setError('')
+    setLimitReached(false)
     try {
       await onSubmit({
         ...values,
@@ -167,6 +172,7 @@ export default function CustomerFormDialog({
       setTimeout(() => setOpen(false), 1100)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Kayıt tamamlanamadı.')
+      setLimitReached(e instanceof ApiClientError && e.code === 'CustomerLimitReached')
     } finally {
       setSaving(false)
     }
@@ -379,6 +385,13 @@ export default function CustomerFormDialog({
               {error && (
                 <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">
                   {error}
+                  {limitReached && (
+                    <span className="mt-1 block text-[11.5px] font-normal text-rose-700/90">
+                      Kurum yöneticisi{' '}
+                      <Link href="/panel/paket" className="font-semibold underline underline-offset-2">Paketim</Link>
+                      {' '}sayfasındaki “Kayıtlı Müşteri” kartından bir sonraki kademeyi açabilir.
+                    </span>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

@@ -125,6 +125,9 @@ public sealed class PlatformOpsService : IPlatformOpsService
         return Result<IReadOnlyCollection<TenantInvoiceDto>>.Success(rows.Select(i => ToDto(i)).ToArray());
     }
 
+    public Task<Result<PlatformBillingOverviewDto>> GetBillingOverviewAsync(CancellationToken ct = default) =>
+        PlatformBillingOverview.BuildAsync(_db, ct);
+
     public async Task<Result<TenantInvoiceDto>> CreateInvoiceAsync(CreateInvoiceRequest request, CancellationToken ct = default)
     {
         var tenant = await _db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == request.TenantId, ct);
@@ -151,6 +154,16 @@ public sealed class PlatformOpsService : IPlatformOpsService
         return Result<TenantInvoiceDto>.Success(ToDto(invoice, tenant.Name));
     }
 
+    /// <summary>
+    /// ELLE FATURALANAN kurumlar için bu ayın taslak faturaları — fiyatlama motoruyla (şube × birim +
+    /// kademeler + KDV), kalem dökümüyle.
+    ///
+    /// <para>
+    /// KARTLA FATURALANANLAR ATLANIR: saklı kartlı aboneliğe yenileme zaten ödenmiş "BA-" faturası
+    /// keser; burada ikinci (INV-) fatura üretmek kurumu aynı dönem için iki kez faturalardı. Yıllık
+    /// elle faturalanan kurum da atlanır (yıllık fatura elle kesilir; aylık taslak yanlış tutar olurdu).
+    /// </para>
+    /// </summary>
     public async Task<Result<GenerateInvoicesResultDto>> GenerateCurrentPeriodInvoicesAsync(CancellationToken ct = default)
     {
         var now = DateTime.UtcNow;
@@ -167,18 +180,29 @@ public sealed class PlatformOpsService : IPlatformOpsService
             .Select(i => i.TenantId)
             .ToListAsync(ct);
         var existing = existingTenantIds.ToHashSet();
+        var cardTenants = (await _db.TenantPaymentMethods.AsNoTracking().Where(c => c.IsActive).Select(c => c.TenantId).ToListAsync(ct)).ToHashSet();
+        var counts = await BillingCountsQuery.CountManyAsync(_db, tenants.Select(t => t.Id).ToList(), ct);
 
         int created = 0, skipped = 0;
         foreach (var tenant in tenants)
         {
-            if (existing.Contains(tenant.Id)) { skipped++; continue; }
             var plan = tenant.SubscriptionPlan!;
-            // Yıllık abonelikte aylık eşdeğer tutar yazılır (yıllık fiyat / 12); yıllık fiyat yoksa aylık.
-            var amount = tenant.SubscriptionPeriod == BillingPeriod.Yearly && plan.YearlyPriceTRY > 0
-                ? Math.Round(plan.YearlyPriceTRY / 12m, 2)
-                : plan.MonthlyPriceTRY;
-            _db.TenantInvoices.Add(new TenantInvoice(tenant.Id, await NextNumberAsync(ct), periodStart, periodEnd, amount,
-                $"{now:MMMM yyyy} dönemi · {plan.Name}"));
+            var cardBilled = cardTenants.Contains(tenant.Id) && tenant.SubscriptionPeriod.HasValue;
+            if (existing.Contains(tenant.Id) || cardBilled || tenant.SubscriptionPeriod == BillingPeriod.Yearly
+                || Domain.Billing.SubscriptionPricing.UnitPrice(plan, BillingPeriod.Monthly) <= 0)
+            {
+                skipped++;
+                continue;
+            }
+
+            var quote = Domain.Billing.SubscriptionPricing.Quote(plan, BillingPeriod.Monthly, counts[tenant.Id]);
+            var invoice = new TenantInvoice(tenant.Id, await NextNumberAsync(ct), periodStart, periodEnd, quote.Total,
+                $"{now:MMMM yyyy} dönemi · {plan.Name}");
+            invoice.ApplyQuote(quote);
+            // ONAM / MÜŞTERİ HAKKI: taslak ÖDENDİ işaretlendiğinde ay boyunca bu kademeler açılır (açıkken açmaz).
+            invoice.CoverConsentTier(Domain.Billing.PricingTier.Applicable(plan.ConsentTiers, quote.ConsentDocuments)?.Above);
+            invoice.CoverCustomerTier(Domain.Billing.PricingTier.Applicable(plan.CustomerTiers, quote.Customers)?.Above);
+            _db.TenantInvoices.Add(invoice);
             await _db.SaveChangesAsync(ct); // numara sıralaması için tek tek
             created++;
         }
@@ -188,10 +212,23 @@ public sealed class PlatformOpsService : IPlatformOpsService
         return Result<GenerateInvoicesResultDto>.Success(new GenerateInvoicesResultDto(created, skipped));
     }
 
+    /// <summary>
+    /// Fatura durumu. "Ödendi" yapılan fatura ÖDEME BEKLEYEN ŞUBE TALEBİ taşıyorsa şube AYNI kayıtta açılır ve
+    /// talep tüketilir: fatura satırı kilitlenir, bilgi kilit altında tazelenir — iki yöneticinin eşzamanlı
+    /// "Ödendi"si ya da Ödendi→Gönderildi→Ödendi gidip gelmesi ikinci şube açamaz. (Onam / müşteri kademesi
+    /// ayrıca bir şey gerektirmez: kapılar hakkı doğrudan ödenmiş faturadan okur.)
+    /// </summary>
     public async Task<Result<TenantInvoiceDto>> UpdateInvoiceStatusAsync(Guid invoiceId, UpdateInvoiceStatusRequest request, CancellationToken ct = default)
     {
+        var relational = _db.Database.IsRelational();
+        await using var tx = relational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct)
+            : null;
+        if (relational) await RowLock.LockRowAsync(_db, "tenant_invoices", invoiceId, ct);
+
         var invoice = await _db.TenantInvoices.Include(i => i.Tenant).FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
         if (invoice is null) return Result<TenantInvoiceDto>.Failure(Error.NotFound("Fatura bulunamadı."));
+        if (relational) await _db.Entry(invoice).ReloadAsync(ct);
         try
         {
             invoice.ChangeStatus(request.Status);
@@ -200,10 +237,44 @@ public sealed class PlatformOpsService : IPlatformOpsService
         {
             return Result<TenantInvoiceDto>.Failure(Error.Validation(ex.Message));
         }
+
+        Branch? opened = null;
+        if (invoice.Status == "Paid" && invoice.TakePendingBranch() is { } branchJson)
+        {
+            var payload = ReadBranchRequest(branchJson);
+            if (payload is not null)
+            {
+                // Varsayılan şube işareti tüm şubelerde doğru güncellensin diye kapsam filtresi dışı yüklenir.
+                var tenant = await _db.Tenants.IgnoreQueryFilters()
+                    .Include(t => t.Branches.Where(b => !b.IsDeleted))
+                    .FirstAsync(t => t.Id == invoice.TenantId, ct);
+                opened = tenant.AddBranch(payload.Name, payload.City, payload.IsDefault);
+                // Gezinme koleksiyonuna eklenen yeni nesneyi EF "var olan" sanıp UPDATE üretmesin (bkz. BranchService).
+                _db.Branches.Add(opened);
+            }
+        }
+
         await _db.SaveChangesAsync(ct);
+        if (tx is not null) await tx.CommitAsync(ct);
         await _audit.LogAsync(null, null, "Platform.InvoiceStatusChanged", "TenantInvoice", invoice.Id,
             $"{invoice.Number} durumu {request.Status} yapıldı.", null, ct);
+        if (opened is not null)
+        {
+            await _audit.LogAsync(invoice.TenantId, opened.Id, "BranchOpenedOnPayment", "Branch", opened.Id,
+                $"Ek şube ödeme alındığı için açıldı: {opened.Name} · fatura {invoice.Number}",
+                new { invoice.Number, branchId = opened.Id }, ct);
+        }
         return Result<TenantInvoiceDto>.Success(ToDto(invoice));
+    }
+
+    private sealed record BranchRequest(string Name, string City, bool IsDefault);
+
+    private static readonly System.Text.Json.JsonSerializerOptions BranchJson = new(System.Text.Json.JsonSerializerDefaults.Web);
+
+    private static BranchRequest? ReadBranchRequest(string json)
+    {
+        try { return System.Text.Json.JsonSerializer.Deserialize<BranchRequest>(json, BranchJson); }
+        catch (System.Text.Json.JsonException) { return null; }
     }
 
     public async Task<Result> DeleteInvoiceAsync(Guid invoiceId, CancellationToken ct = default)
@@ -227,6 +298,15 @@ public sealed class PlatformOpsService : IPlatformOpsService
     }
 
     private static TenantInvoiceDto ToDto(TenantInvoice i, string? tenantName = null) => new(
-        i.Id, i.TenantId, tenantName ?? i.Tenant?.Name ?? "—", i.Number, i.PeriodStartUtc, i.PeriodEndUtc,
-        i.AmountTRY, i.Status, i.IssuedAtUtc, i.DueDateUtc, i.PaidAtUtc, i.Notes);
+        i.Id, i.TenantId, tenantName ?? i.Tenant?.Name ?? "—", i.Number, Utc(i.PeriodStartUtc), Utc(i.PeriodEndUtc),
+        i.AmountTRY, i.Status, Utc(i.IssuedAtUtc), Utc(i.DueDateUtc), i.PaidAtUtc is { } paid ? Utc(paid) : null, i.Notes,
+        i.NetAmountTRY, i.VatAmountTRY, i.VatRate, i.PaymentReference,
+        Domain.Billing.SubscriptionQuote.FromJson(i.LinesJson)?.Lines,
+        string.IsNullOrWhiteSpace(i.PaymentReference) ? "Manual" : "Card",
+        i.ConsentTierAbove,
+        i.CustomerTierAbove,
+        i.PendingBranchJson is { } pending ? ReadBranchRequest(pending)?.Name : null);
+
+    /// <summary>MySQL'den okunan DateTime Kind=Unspecified döner; 'Z'siz JSON istemcide 3 saat kayardı.</summary>
+    private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 }

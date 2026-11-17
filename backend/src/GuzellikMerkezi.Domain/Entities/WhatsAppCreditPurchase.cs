@@ -4,7 +4,7 @@ using GuzellikMerkezi.Domain.Exceptions;
 namespace GuzellikMerkezi.Domain.Entities;
 
 /// <summary>
-/// Kurumun ek kontör satın alma talebi. İki yoldan onaylanabilir:
+/// Kurumun ek mesaj kredisi satın alma talebi. İki yoldan onaylanabilir:
 /// <list type="bullet">
 ///   <item><b>Havale/elden:</b> PENDING talep oluşur, platform admin onaylayınca bakiye eklenir.
 ///         Bu onay adımı platformun her yüklemeyi denetlemesini sağlar.</item>
@@ -20,16 +20,16 @@ public sealed class WhatsAppCreditPurchase : Entity
 
     /// <param name="provider">Kart ödemesinde sağlayıcı adı ("Iyzico"/"Simulation"); havalede null.</param>
     /// <param name="conversationId">Kart ödemesinde sağlayıcı işlem anahtarı; havalede null.</param>
-    public WhatsAppCreditPurchase(Guid tenantId, Guid? creditPackageId, string packageName, decimal priceTry, decimal grantsTry, Guid? requestedByUserId,
+    public WhatsAppCreditPurchase(Guid tenantId, Guid? creditPackageId, string packageName, decimal priceTry, decimal grantsCredits, Guid? requestedByUserId,
         string? provider = null, string? conversationId = null)
     {
         TenantId = tenantId;
         CreditPackageId = creditPackageId;
-        PackageName = string.IsNullOrWhiteSpace(packageName) ? "Kontör" : packageName.Trim();
+        PackageName = string.IsNullOrWhiteSpace(packageName) ? "Mesaj kredisi" : packageName.Trim();
         if (priceTry < 0) throw new DomainException("Fiyat negatif olamaz.");
-        if (grantsTry <= 0) throw new DomainException("Kontör tutarı pozitif olmalı.");
+        if (grantsCredits <= 0) throw new DomainException("Kredi miktarı pozitif olmalı.");
         PriceTry = decimal.Round(priceTry, 2);
-        GrantsTry = decimal.Round(grantsTry, 2);
+        GrantsCredits = decimal.Round(grantsCredits, 2);
         RequestedByUserId = requestedByUserId;
         Provider = string.IsNullOrWhiteSpace(provider) ? null : provider.Trim();
         ConversationId = string.IsNullOrWhiteSpace(conversationId) ? null : conversationId.Trim();
@@ -39,8 +39,18 @@ public sealed class WhatsAppCreditPurchase : Entity
     public Guid TenantId { get; private set; }
     public Guid? CreditPackageId { get; private set; }
     public string PackageName { get; private set; } = string.Empty;
+    /// <summary>Kurumun ödediği / ödeyeceği tutar (₺). Kart dönüşü bu tutarla doğrulanır.</summary>
     public decimal PriceTry { get; private set; }
+
+    /// <summary>Onayda cüzdana eklenecek kredi.</summary>
+    public decimal GrantsCredits { get; private set; }
+
+    /// <summary>
+    /// ESKİ ₺ kontör hakkı (12 Kas 2026 kredi dönüşümü öncesi talepler). Donmuş geçmiş — dönüşüm,
+    /// karşılığını <see cref="GrantsCredits"/>'e yazdı; yeni taleplerde 0.
+    /// </summary>
     public decimal GrantsTry { get; private set; }
+
     public CreditPurchaseStatus Status { get; private set; }
     public Guid? RequestedByUserId { get; private set; }
     public Guid? ProcessedByUserId { get; private set; }

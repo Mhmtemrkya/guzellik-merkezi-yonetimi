@@ -80,6 +80,9 @@ public static class RowLock
         "customer_consent_forms",
         // Değerlendirme jetonu: aynı gerekçe (tek kullanımlık, kontrol ile yazma ayrı adımlar).
         "appointment_ratings",
+        // Platform faturası: "Ödendi" ödeme bekleyen şube talebini açar ve tüketir — iki yöneticinin eşzamanlı
+        // işaretlemesi iki şube açmasın. Zincirin SONUNDA durur: bu yol başka satır kilidi almaz.
+        "tenant_invoices",
     ];
 
     /// <summary>Tek bir satırı kilitler; satır yoksa false döner.</summary>

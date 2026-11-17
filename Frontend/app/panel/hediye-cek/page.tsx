@@ -10,7 +10,7 @@ import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, isPendingApprovalResult } from '@/lib/apiClient'
 import { apiItems, formatTL, guidOrUndefined, normalizeGiftCard, normalizePackage, normalizeProduct, normalizeService } from '@/lib/apiMappers'
-import type { ApiGiftCard, ApiProduct, ApiService, ApiServicePackage, GiftCard, GiftCardKind } from '@/lib/types'
+import type { ApiGiftCard, ApiProduct, ApiService, ApiServicePackage, ApiSmsSendResult, GiftCard, GiftCardKind } from '@/lib/types'
 import GiftCardShareModal from '@/components/dashboard/GiftCardShareModal'
 import CustomerPicker, { customerSearchProvider, type CustomerPickerItem } from '@/components/dashboard/CustomerPicker'
 import CatalogPicker, { type PickerItem } from '@/components/dashboard/CatalogPicker'
@@ -524,6 +524,7 @@ Bu kartı ${assignCustomer.name} adlı müşteriye devretmek istiyor musunuz?`)
   const featureAllowed = useFeature('marketing.giftcards')
   /** WhatsApp gönderimi ayrı bir paket özelliği — kapalıysa gönder düğmesi hiç çizilmez. */
   const canWhatsApp = useFeature('notifications.whatsapp')
+  const canSms = useFeature('notifications.sms')
   if (!featureAllowed) {
     return (
       <>
@@ -869,6 +870,22 @@ Bu kartı ${assignCustomer.name} adlı müşteriye devretmek istiyor musunuz?`)
                   )
                   // Onaya düştüyse modal "gönderildi" değil "onaya gönderildi" der.
                   return isPendingApprovalResult(res)
+                }
+              : undefined
+          }
+          /* SMS'te kart görseli gitmez, kod gider. Paket SMS özelliği yoksa seçenek çizilmez. */
+          onSendSms={
+            canSms && shareCard
+              ? async (phone) => {
+                  const res = await adminApi.sendGiftCardSms<ApiSmsSendResult>(
+                    { giftCardId: shareCard.id, phone: phone || null },
+                    tenantId,
+                  )
+                  if (isPendingApprovalResult(res)) return 'Gönderim ONAYA GÖNDERİLDİ. Yönetici onayladıktan sonra iletilecek.'
+                  if (res.simulated) return `SMS sağlayıcısı henüz bağlı olmadığı için mesaj gerçekten gönderilmedi (simülasyon · ${res.parts} parça).`
+                  return res.chargedCredits > 0
+                    ? `Hediye çeki SMS ile gönderildi · ${res.parts} parça · ${res.chargedCredits.toLocaleString('tr-TR')} kredi.`
+                    : `Hediye çeki SMS ile gönderildi · ${res.parts} parça · paketinizdeki SMS kotasından düştü.`
                 }
               : undefined
           }

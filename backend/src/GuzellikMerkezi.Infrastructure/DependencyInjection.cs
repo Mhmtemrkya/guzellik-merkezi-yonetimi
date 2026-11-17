@@ -169,6 +169,11 @@ public static class DependencyInjection
         services.AddScoped<IApprovalRequesterScope, ApprovalRequesterScope>();
         services.AddScoped<IPendingOperationService, PendingOperationService>();
         services.AddScoped<INotificationService, NotificationService>();
+        // Tek yönlü linkli SMS'ler (puanlama, bekleme listesi, KVKK linki, hediye çeki) — gönderimi
+        // NotificationService.SendSystemSmsAsync'e bırakır (kota/kredi protokolü orada).
+        services.AddScoped<ICustomerSmsService, CustomerSmsService>();
+        // Kurumun kendi SMS hesabı (Verimor/Netgsm): bağla → test SMS'iyle doğrula → SMS'ler o hesaptan gider.
+        services.AddScoped<ITenantSmsConnectionService, TenantSmsConnectionService>();
         services.AddScoped<ISubscriptionPlanService, SubscriptionPlanService>();
         services.AddScoped<IUsageService, UsageService>();
         services.AddScoped<IFeatureService, FeatureService>();

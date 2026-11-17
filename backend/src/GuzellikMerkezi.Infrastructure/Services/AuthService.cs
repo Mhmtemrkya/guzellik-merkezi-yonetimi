@@ -476,6 +476,14 @@ public sealed class AuthService : IAuthService
 
         if (customer is null)
         {
+            // ÜCRETLİ MÜŞTERİ KADEMESİ — savunma katmanı: kayıt bugün yalnız SİSTEM kurumuna ("bireysel müşteriler")
+            // yazılır ve o kurum kademeden MUAFTIR, yani bu kontrol şu an hep geçer. Salonun asıl kapısı randevuda
+            // açılan gölge müşteridir (CustomerPortalService). Salona doğrudan kayıt eklenirse kapı hazır kalsın.
+            // Mesaj SALONUN MÜŞTERİSİNE gösterilir — faturalama içeriği yok.
+            var tier = await TierEntitlementQuery.EvaluateAsync(_db, tenantId, Domain.Billing.TierDimension.Customers, DateTime.UtcNow, cancellationToken);
+            if (!tier.Allowed)
+                return Result<LoginResponse>.Failure(Error.CustomerLimitReached(TierEntitlementQuery.PublicCustomerLimitMessage));
+
             customer = new Customer(tenantId, branchId, name, request.Phone.Trim(), request.Email ?? verifiedEmail);
             // Onay KULLANICININ beyanıdır (yukarıda zorunlu tutuldu) — sabit true yazılmaz.
             customer.UpdateProfile(request.BirthDate, request.Gender, request.KvkkConsent, notes: null);

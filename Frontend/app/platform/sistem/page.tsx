@@ -101,7 +101,7 @@ const settings: SettingsCard[] = [
     icon: SlidersHorizontal,
     chip: { tone: 'active', label: 'Canlı' },
     bullets: [
-      'Varsayılan plan: Profesyonel · Deneme süresi 14 gün',
+      'Varsayılan plan: BeautyAsist (tek paket) · Deneme süresi 14 gün',
       'Kullanıcı tavanı 25 · Müşteri tavanı 5.000',
       'Depolama tavanı 50 GB · Aşım: blokla ve uyar',
       'Tenant override: yalnız Platform Admin onayıyla',
@@ -110,8 +110,8 @@ const settings: SettingsCard[] = [
       {
         label: 'Varsayılan plan',
         type: 'select',
-        value: 'Profesyonel',
-        options: ['Başlangıç', 'Profesyonel', 'Premium', 'AI Klinik', 'Enterprise'],
+        value: 'BeautyAsist',
+        options: ['BeautyAsist'],
       },
       { label: 'Kullanıcı limiti', type: 'number', value: 25 },
       { label: 'Müşteri limiti', type: 'number', value: 5000 },

@@ -89,6 +89,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<WhatsAppCreditPackage> WhatsAppCreditPackages => Set<WhatsAppCreditPackage>();
     public DbSet<WhatsAppBillingSettings> WhatsAppBillingSettings => Set<WhatsAppBillingSettings>();
     public DbSet<TenantMessagingWallet> TenantMessagingWallets => Set<TenantMessagingWallet>();
+    public DbSet<TenantSmsConnection> TenantSmsConnections => Set<TenantSmsConnection>();
     public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
     public DbSet<WhatsAppCreditPurchase> WhatsAppCreditPurchases => Set<WhatsAppCreditPurchase>();
     public DbSet<ProviderPaymentClaim> ProviderPaymentClaims => Set<ProviderPaymentClaim>();
@@ -294,6 +295,11 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
             nameof(NotificationLog.Body));
         Opt(typeof(NotificationLog), nameof(NotificationLog.ErrorMessage));
 
+        // Kurumun kendi SMS hesabı: abone numarası + API parolası — sağlayıcı hesabına tam erişim verir.
+        Req(typeof(TenantSmsConnection),
+            nameof(TenantSmsConnection.Username),
+            nameof(TenantSmsConnection.Password));
+
         // Audit log şifrelemesi — kullanıcı adı + özet + payload PII içerebilir.
         Opt(typeof(AuditLog), nameof(AuditLog.ActorName), nameof(AuditLog.Summary), nameof(AuditLog.DataJson));
 
@@ -315,6 +321,13 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         plan.Property(x => x.Features).HasColumnType("LONGTEXT");
         plan.Property(x => x.MonthlyPriceTRY).HasPrecision(18, 2);
         plan.Property(x => x.YearlyPriceTRY).HasPrecision(18, 2);
+        // Fiyatlama modeli. Eski paketler: şube başı DEĞİL, kademesiz → tahsil tutarları değişmez.
+        plan.Property(x => x.ChargePerBranch).HasDefaultValue(false);
+        plan.Property(x => x.CustomerTiersJson).HasMaxLength(1000);
+        plan.Property(x => x.ConsentTiersJson).HasMaxLength(1000);
+        plan.Property(x => x.YearlyTierMultiplier).HasPrecision(5, 2).HasDefaultValue(10m);
+        plan.Ignore(x => x.CustomerTiers);
+        plan.Ignore(x => x.ConsentTiers);
         plan.HasIndex(x => x.PlanKey).IsUnique();
         plan.HasQueryFilter(x => !x.IsDeleted);
     }
@@ -341,8 +354,16 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         log.Property(x => x.Channel).HasConversion<string>().HasMaxLength(20).IsRequired();
         log.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         log.Property(x => x.DedupeKey).HasMaxLength(200); // düz metin — tekilleştirme eşitliği için
+        log.Property(x => x.Purpose).HasMaxLength(40);
+        // SMS kredi ücreti. CLR varsayılanı (None) = veritabanı varsayılanı → eski satırlar ücretsiz sayılır.
+        log.Property(x => x.BillingSource).HasConversion<string>().HasMaxLength(16).IsRequired()
+            .HasDefaultValue(WhatsAppBillingSource.None);
+        log.Property(x => x.ChargedCredits).HasPrecision(18, 4).HasDefaultValue(0m);
+        log.Property(x => x.SmsParts).HasDefaultValue(0);
         log.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
         log.HasIndex(x => x.TemplateId);
+        // Askıda kalan SMS kredisi süpürmesi: kesinleşmemiş cüzdan ücretlerini tarar.
+        log.HasIndex(x => new { x.BillingSource, x.ChargeCapturedAtUtc });
         // OTOMATİK GÖNDERİM TEKİLLEŞTİRMESİ VERİTABANINDA ZORLANIR (H9): satır sağlayıcı
         // çağrısından ÖNCE yazılır, ikinci deneme buraya çarpar. NULL anahtarlı (elle) gönderimler
         // kısıtlamaya girmez — yönetici aynı mesajı bilerek tekrar gönderebilmelidir.
@@ -1000,6 +1021,12 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         i.HasIndex(x => new { x.TenantId, x.PeriodStartUtc });
         i.Property(x => x.VatRate).HasPrecision(5, 4);
         i.Property(x => x.PaymentReference).HasMaxLength(64);
+        // Teklif dökümü (tahsilat anındaki anlık görüntü) + aynen saklanan net/KDV.
+        i.Property(x => x.QuotedNetTRY).HasPrecision(18, 2);
+        i.Property(x => x.QuotedVatTRY).HasPrecision(18, 2);
+        i.Property(x => x.LinesJson).HasColumnType("LONGTEXT");
+        // Ödeme bekleyen şube talebi (ad/şehir/varsayılan) — kısa JSON; şube ödenince açılıp temizlenir.
+        i.Property(x => x.PendingBranchJson).HasMaxLength(1000);
         i.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         // Platform faturası tenant kapsam filtresine girmez; yalnızca soft-delete süzülür.
         i.HasQueryFilter(x => !x.IsDeleted);
@@ -1033,6 +1060,11 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         sp.Property(x => x.ErrorCode).HasMaxLength(64);
         sp.Property(x => x.ErrorMessage).HasMaxLength(512);
         sp.Property(x => x.AmountTRY).HasPrecision(18, 2);
+        // Tür: eski satırlar abonelik sayılır (yenileme/checkout yalnız bunları işler).
+        sp.Property(x => x.Kind).HasMaxLength(16).IsRequired().HasDefaultValue(SubscriptionPayment.KindSubscription);
+        sp.Property(x => x.BreakdownJson).HasColumnType("LONGTEXT");
+        sp.Property(x => x.PayloadJson).HasMaxLength(1000);
+        sp.HasIndex(x => new { x.TenantId, x.Kind, x.Status });
         // ÇİFT ÇEKİM KORUMASI (DB seviyesinde): aynı işlem anahtarı ikinci kez yazılamaz.
         // Yenileme job'ı ile elle tetiklenen bir tahsilat aynı dönem için yarışırsa biri elenir.
         sp.HasIndex(x => x.ConversationId).IsUnique();
@@ -1099,10 +1131,32 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         s.Property(x => x.ReminderTemplate).HasMaxLength(1000);
         s.Property(x => x.Provider).HasMaxLength(32).IsRequired();
         s.Property(x => x.MonthlySpendCapTry).HasPrecision(18, 2);
+        s.Property(x => x.MonthlySpendCapCredits).HasPrecision(18, 2);
+        // Tek yönlü bildirim kanalları. HasDefaultValue BİLEREK YOK: enum'un CLR varsayılanı Sms (0),
+        // veritabanı varsayılanı WhatsApp. EF, CLR varsayılanındaki değeri "atanmamış" sayıp INSERT'te
+        // göndermez; yeni satırda bilerek seçilmiş SMS sessizce WhatsApp'a dönerdi. Eski satırların
+        // 'WhatsApp' varsayılanı yalnız migration'da verilir.
+        s.Property(x => x.RatingLinkChannel).HasConversion<string>().HasMaxLength(16).IsRequired();
+        s.Property(x => x.WaitlistActivatedChannel).HasConversion<string>().HasMaxLength(16).IsRequired();
+        s.Property(x => x.KvkkChannel).HasConversion<string>().HasMaxLength(16).IsRequired();
         s.HasIndex(x => x.TenantId).IsUnique();
         s.HasIndex(x => x.PhoneNumberId); // webhook tenant çözümü
         // Kuruma özel (tek satır). Webhook'ta IgnoreQueryFilters ile aşılır.
         s.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
+
+        // Kurumun kendi SMS hesabı (Verimor/Netgsm). Kurum başına tek satır; bağlantı kaldırılınca
+        // satır GERÇEKTEN silinir (şifreli kimlik bilgisi tabloda kalmasın, yeniden bağlamada
+        // benzersiz indeks çakışmasın). Username/Password şifreleme kaydında (LONGTEXT).
+        var sms = modelBuilder.Entity<TenantSmsConnection>();
+        sms.ToTable("tenant_sms_connections");
+        sms.HasKey(x => x.Id);
+        sms.Property(x => x.Provider).HasMaxLength(16).IsRequired();
+        sms.Property(x => x.UsernameHint).HasMaxLength(16).IsRequired();
+        sms.Property(x => x.Sender).HasMaxLength(16).IsRequired();
+        sms.Property(x => x.LastError).HasMaxLength(500);
+        sms.HasIndex(x => x.TenantId).IsUnique();
+        // Gönderim yolu (arka plan işleri dahil) IgnoreQueryFilters + açık TenantId ile okur.
+        sms.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
 
         var m = modelBuilder.Entity<WhatsAppMessage>();
         m.ToTable("whatsapp_messages");
@@ -1114,7 +1168,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
             .HasDefaultValue(WhatsAppMessageCategory.Utility); // eski satırlar Utility varsayılır
         m.Property(x => x.BillingSource).HasConversion<string>().HasMaxLength(16).IsRequired()
             .HasDefaultValue(WhatsAppBillingSource.None); // eski satırlar ücretlendirilmemiş sayılır
-        m.Property(x => x.ChargedAmountTry).HasPrecision(18, 4).HasDefaultValue(0m);
+        m.Property(x => x.ChargedAmountTry).HasPrecision(18, 4).HasDefaultValue(0m); // eski ₺ (donmuş)
+        m.Property(x => x.ChargedCredits).HasPrecision(18, 4).HasDefaultValue(0m);
         m.Property(x => x.Phone).HasMaxLength(32).IsRequired();
         m.Property(x => x.Body).HasColumnType("TEXT");
         m.Property(x => x.TemplateName).HasMaxLength(128);
@@ -1153,7 +1208,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         pr.HasKey(x => x.Id);
         pr.Property(x => x.Category).HasConversion<string>().HasMaxLength(16).IsRequired();
         pr.Property(x => x.MetaUsdPrice).HasPrecision(18, 6);
-        pr.Property(x => x.SellPriceTry).HasPrecision(18, 4);
+        pr.Property(x => x.SellPriceTry).HasPrecision(18, 4); // eski ₺ (donmuş)
+        pr.Property(x => x.CreditCost).HasPrecision(18, 2);
         pr.Property(x => x.Note).HasMaxLength(256);
         pr.HasIndex(x => new { x.Category, x.EffectiveFromUtc });
         pr.HasQueryFilter(x => !x.IsDeleted); // platform geneli
@@ -1164,24 +1220,35 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         cp.Property(x => x.Name).HasMaxLength(80).IsRequired();
         cp.Property(x => x.Description).HasMaxLength(256);
         cp.Property(x => x.PriceTry).HasPrecision(18, 2);
-        cp.Property(x => x.GrantsTry).HasPrecision(18, 2);
+        cp.Property(x => x.GrantsTry).HasPrecision(18, 2); // eski ₺ (donmuş)
+        cp.Property(x => x.GrantsCredits).HasPrecision(18, 2);
         cp.HasQueryFilter(x => !x.IsDeleted); // platform geneli
 
         var bs = modelBuilder.Entity<WhatsAppBillingSettings>();
         bs.ToTable("whatsapp_billing_settings");
         bs.HasKey(x => x.Id);
         bs.Property(x => x.UsdTryRate).HasPrecision(18, 4);
-        bs.Property(x => x.LowBalanceThresholdTry).HasPrecision(18, 2);
-        bs.Property(x => x.DefaultMonthlySpendCapTry).HasPrecision(18, 2);
+        bs.Property(x => x.LowBalanceThresholdTry).HasPrecision(18, 2);   // eski ₺ (donmuş)
+        bs.Property(x => x.DefaultMonthlySpendCapTry).HasPrecision(18, 2); // eski ₺ (donmuş)
+        bs.Property(x => x.LowBalanceThresholdCredits).HasPrecision(18, 2);
+        bs.Property(x => x.DefaultMonthlySpendCapCredits).HasPrecision(18, 2);
+        bs.Property(x => x.SmsCreditsPerPart).HasPrecision(18, 2);
+        bs.Property(x => x.CreditUnitPriceTry).HasPrecision(18, 4);
         // Singleton, platform geneli — query filter yok.
 
         var w = modelBuilder.Entity<TenantMessagingWallet>();
         w.ToTable("tenant_messaging_wallets");
         w.HasKey(x => x.Id);
+        // Eski ₺ alanlar (dönüşüm öncesi değer, donmuş denetim izi).
         w.Property(x => x.BalanceTry).HasPrecision(18, 4);
         w.Property(x => x.ReservedTry).HasPrecision(18, 4);
         w.Property(x => x.LifetimeTopUpTry).HasPrecision(18, 4);
         w.Property(x => x.LifetimeSpentTry).HasPrecision(18, 4);
+        // Mesaj kredisi — bakiyenin TEK kaynağı.
+        w.Property(x => x.BalanceCredits).HasPrecision(18, 4);
+        w.Property(x => x.ReservedCredits).HasPrecision(18, 4);
+        w.Property(x => x.LifetimeTopUpCredits).HasPrecision(18, 4);
+        w.Property(x => x.LifetimeSpentCredits).HasPrecision(18, 4);
         w.HasIndex(x => x.TenantId).IsUnique();
         w.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
 
@@ -1190,9 +1257,13 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         wt.HasKey(x => x.Id);
         wt.Property(x => x.Type).HasConversion<string>().HasMaxLength(16).IsRequired();
         wt.Property(x => x.Category).HasConversion<string>().HasMaxLength(16);
-        wt.Property(x => x.AmountTry).HasPrecision(18, 4);
-        wt.Property(x => x.BalanceAfterTry).HasPrecision(18, 4);
-        wt.Property(x => x.ReservedAfterTry).HasPrecision(18, 4);
+        // Birim satırın kendisinde: eski satırlar 'Try' (CLR varsayılanı = veritabanı varsayılanı).
+        wt.Property(x => x.Unit).HasConversion<string>().HasMaxLength(16).IsRequired()
+            .HasDefaultValue(WalletUnit.Try);
+        wt.Property(x => x.Amount).HasPrecision(18, 4);
+        wt.Property(x => x.BalanceAfter).HasPrecision(18, 4);
+        wt.Property(x => x.ReservedAfter).HasPrecision(18, 4);
+        wt.Property(x => x.Channel).HasConversion<string>().HasMaxLength(16);
         wt.Property(x => x.Description).HasMaxLength(256);
         wt.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
         wt.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
@@ -1203,7 +1274,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         cpu.Property(x => x.PackageName).HasMaxLength(80).IsRequired();
         cpu.Property(x => x.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
         cpu.Property(x => x.PriceTry).HasPrecision(18, 2);
-        cpu.Property(x => x.GrantsTry).HasPrecision(18, 2);
+        cpu.Property(x => x.GrantsTry).HasPrecision(18, 2); // eski ₺ (donmuş)
+        cpu.Property(x => x.GrantsCredits).HasPrecision(18, 2);
         cpu.Property(x => x.Note).HasMaxLength(256);
         cpu.Property(x => x.Provider).HasMaxLength(32);
         cpu.Property(x => x.ConversationId).HasMaxLength(64);

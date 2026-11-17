@@ -27,6 +27,8 @@ Future<void> showGiftCardShareSheet(
   Uint8List? logoBytes,
   String defaultPhone = '',
   bool canWhatsApp = true,
+  /// SMS ile gönderim (kart görseli gitmez; kod + son kullanma tarihi gider).
+  bool canSms = true,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -42,6 +44,7 @@ Future<void> showGiftCardShareSheet(
       logoBytes: logoBytes,
       defaultPhone: defaultPhone,
       canWhatsApp: canWhatsApp,
+      canSms: canSms,
     ),
   );
 }
@@ -56,6 +59,7 @@ class _GiftCardShareSheet extends StatefulWidget {
     required this.logoBytes,
     required this.defaultPhone,
     required this.canWhatsApp,
+    required this.canSms,
   });
 
   final ApiClient api;
@@ -66,6 +70,7 @@ class _GiftCardShareSheet extends StatefulWidget {
   final Uint8List? logoBytes;
   final String defaultPhone;
   final bool canWhatsApp;
+  final bool canSms;
 
   @override
   State<_GiftCardShareSheet> createState() => _GiftCardShareSheetState();
@@ -78,6 +83,8 @@ class _GiftCardShareSheetState extends State<_GiftCardShareSheet> {
   String? _error;
   String? _notice;
   bool _sendOpen = false;
+  /// Gönderim kutusunun kanalı: 'whatsapp' (PDF) ya da 'sms' (kod).
+  String _sendChannel = 'whatsapp';
   late final TextEditingController _phone = TextEditingController(text: widget.defaultPhone);
 
   /// Karta bağlı müşteri varsa numara zorunlu değil — sunucu kayıtlı numarayı kullanır.
@@ -199,9 +206,57 @@ class _GiftCardShareSheetState extends State<_GiftCardShareSheet> {
     }
   }
 
+  /// SMS ile gönderim — kart görseli GİTMEZ; kod ve son kullanma tarihi gider. Paket SMS
+  /// kotasından, kota bitince mesaj kredisinden düşer (web'deki "SMS ile gönder" karşılığı).
+  Future<void> _sendSms() async {
+    final phone = _phone.text.trim();
+    if (phone.isEmpty && !_hasLinkedCustomer) {
+      setState(() => _error = 'Gönderilecek telefon numarasını yazın.');
+      return;
+    }
+    setState(() { _busy = true; _error = null; _notice = null; });
+    try {
+      final result = await widget.api.post('/api/admin/sms/gift-card', {
+        'giftCardId': '${widget.card['id']}',
+        'phone': phone.isEmpty ? null : phone,
+      });
+      if (mounted) {
+        final r = result is Map ? result : const {};
+        final parts = r['parts'] ?? 1;
+        final credits = r['chargedCredits'] is num ? r['chargedCredits'] as num : 0;
+        setState(() {
+          _notice = r['pendingApproval'] == true
+              ? 'Gönderim onaya gönderildi. Yönetici onayladıktan sonra iletilecek.'
+              : r['simulated'] == true
+                  ? 'SMS sağlayıcısı henüz bağlı olmadığı için mesaj gerçekten gönderilmedi (simülasyon · $parts parça).'
+                  : credits > 0
+                      ? 'Hediye çeki SMS ile gönderildi · $parts parça · $credits kredi.'
+                      : 'Hediye çeki SMS ile gönderildi · $parts parça · paket SMS kotasından düştü.';
+          _sendOpen = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _toggleSend(String channel) => setState(() {
+        _error = null;
+        _notice = null;
+        if (_sendOpen && _sendChannel == channel) {
+          _sendOpen = false;
+        } else {
+          _sendChannel = channel;
+          _sendOpen = true;
+        }
+      });
+
   @override
   Widget build(BuildContext context) {
     final code = valueOf(widget.card, const ['code'], fallback: '—');
+    final isSms = _sendChannel == 'sms';
     return DraggableScrollableSheet(
       initialChildSize: .9,
       minChildSize: .5,
@@ -314,8 +369,8 @@ class _GiftCardShareSheetState extends State<_GiftCardShareSheet> {
                     ),
                   ],
 
-                  // Gönderim kutusu — numara sorulmadan kontör harcanmaz.
-                  if (_sendOpen && widget.canWhatsApp) ...[
+                  // Gönderim kutusu — numara sorulmadan kota/kredi harcanmaz.
+                  if (_sendOpen && (isSms ? widget.canSms : widget.canWhatsApp)) ...[
                     const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(14),
@@ -327,6 +382,9 @@ class _GiftCardShareSheetState extends State<_GiftCardShareSheet> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Text(isSms ? 'SMS ile gönder' : "WhatsApp'tan gönder",
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 8),
                           TextField(
                             controller: _phone,
                             keyboardType: TextInputType.phone,
@@ -348,8 +406,10 @@ class _GiftCardShareSheetState extends State<_GiftCardShareSheet> {
                               ),
                               const SizedBox(width: 8),
                               FilledButton.icon(
-                                style: FilledButton.styleFrom(backgroundColor: AppColors.success),
-                                onPressed: _busy ? null : _sendWhatsApp,
+                                style: FilledButton.styleFrom(
+                                    backgroundColor: isSms ? const Color(0xFF2F6FB5) : AppColors.success,
+                                    minimumSize: const Size(0, 44)),
+                                onPressed: _busy ? null : (isSms ? _sendSms : _sendWhatsApp),
                                 icon: _busy
                                     ? const SizedBox(
                                         width: 16, height: 16,
@@ -362,7 +422,7 @@ class _GiftCardShareSheetState extends State<_GiftCardShareSheet> {
                           const SizedBox(height: 6),
                           Text(
                             '${_hasLinkedCustomer && _phone.text.trim().isEmpty ? 'Boş bırakırsanız karta bağlı müşterinin kayıtlı numarasına gönderilir. ' : ''}'
-                            'Kart PDF olarak gönderilir ve kurumunuzun WhatsApp kontöründen düşer.',
+                            '${isSms ? "SMS'te kart görseli gitmez; kart kodu ve son kullanma tarihi gider. Paket SMS kotasından, kota bitince mesaj kredisinden düşer (kendi SMS hesabınız bağlıysa ücreti sağlayıcınız keser)." : 'Kart PDF olarak gönderilir; paket WhatsApp kotasından, kota bitince mesaj kredisinden düşer.'}',
                             style: const TextStyle(fontSize: 10.5, color: AppColors.muted),
                           ),
                         ],
@@ -390,21 +450,36 @@ class _GiftCardShareSheetState extends State<_GiftCardShareSheet> {
                       ),
                     ],
                   ),
-                  if (widget.canWhatsApp) ...[
+                  if (widget.canWhatsApp || widget.canSms) ...[
                     const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.success,
-                          minimumSize: const Size(0, 48),
-                        ),
-                        onPressed: _busy || _images == null
-                            ? null
-                            : () => setState(() { _error = null; _notice = null; _sendOpen = !_sendOpen; }),
-                        icon: const Icon(Icons.send_rounded, size: 18),
-                        label: const Text("WhatsApp'tan gönder"),
-                      ),
+                    Row(
+                      children: [
+                        if (widget.canSms)
+                          Expanded(
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF2F6FB5),
+                                minimumSize: const Size(0, 48),
+                              ),
+                              onPressed: _busy ? null : () => _toggleSend('sms'),
+                              icon: const Icon(Icons.sms_rounded, size: 18),
+                              label: const Text('SMS ile gönder', overflow: TextOverflow.ellipsis),
+                            ),
+                          ),
+                        if (widget.canSms && widget.canWhatsApp) const SizedBox(width: 10),
+                        if (widget.canWhatsApp)
+                          Expanded(
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppColors.success,
+                                minimumSize: const Size(0, 48),
+                              ),
+                              onPressed: _busy || _images == null ? null : () => _toggleSend('whatsapp'),
+                              icon: const Icon(Icons.send_rounded, size: 18),
+                              label: const Text("WhatsApp'tan gönder", overflow: TextOverflow.ellipsis),
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ],

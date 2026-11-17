@@ -44,6 +44,57 @@ public static class BillingEndpoints
             return (await svc.StartCheckoutAsync(t, payload.SubscriptionPlanId, ParsePeriod(payload.BillingPeriod), callbackUrl, ct)).ToHttpResult(http);
         });
 
+        // TEKLİF: seçilen paket + dönem için kurumun güncel sayaçlarıyla (şube, müşteri, imzalı onam)
+        // kalem kalem tutar. Ödeme ekranı bunu gösterir; tahsilat aynı hesabı yapar.
+        group.MapGet("/quote", async (Guid planId, string? period, Guid? tenantId, ICurrentUser cu, IBillingService svc, HttpContext http, CancellationToken ct) =>
+        {
+            if (Forbidden(cu, http) is { } denied) return denied;
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await svc.GetQuoteAsync(t, planId, ParsePeriod(period), ct)).ToHttpResult(http);
+        });
+
+        // YENİ ŞUBE TEKLİFİ: şube açmak bugün ücret gerektiriyor mu, ne kadar? Şube formu onay için gösterir.
+        group.MapGet("/branch-quote", async (Guid? tenantId, ICurrentUser cu, IBillingService svc, HttpContext http, CancellationToken ct) =>
+        {
+            if (Forbidden(cu, http) is { } denied) return denied;
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await svc.GetBranchChargeQuoteAsync(t, ct)).ToHttpResult(http);
+        });
+
+        // DİJİTAL ONAM HAKKI: imzalı evrak, ödenmiş kapasite ve bir sonraki kademenin bedeli.
+        group.MapGet("/consent-allowance", async (Guid? tenantId, ICurrentUser cu, IBillingService svc, HttpContext http, CancellationToken ct) =>
+        {
+            if (Forbidden(cu, http) is { } denied) return denied;
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await svc.GetConsentAllowanceAsync(t, ct)).ToHttpResult(http);
+        });
+
+        // ONAM KADEMESİ YÜKSELTME — PARA YAZAR: istemci Idempotency-Key göndermeli ve onaylanan tutarı taşır.
+        group.MapPost("/consent-upgrade", async (TierUpgradeRequest request, Guid? tenantId, ICurrentUser cu, IBillingService svc, HttpContext http, CancellationToken ct) =>
+        {
+            if (Forbidden(cu, http) is { } denied) return denied;
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await svc.PurchaseConsentUpgradeAsync(t, request.ConfirmedChargeTRY, ct)).ToHttpResult(http);
+        });
+
+        // MÜŞTERİ KADEMESİ: kayıtlı müşteri, ödenmiş kapasite ve bir sonraki kademenin bedeli.
+        group.MapGet("/customer-allowance", async (Guid? tenantId, ICurrentUser cu, IBillingService svc, HttpContext http, CancellationToken ct) =>
+        {
+            if (Forbidden(cu, http) is { } denied) return denied;
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http)
+                : (await svc.GetTierAllowanceAsync(t, Domain.Billing.TierDimension.Customers, ct)).ToHttpResult(http);
+        });
+
+        // MÜŞTERİ KADEMESİ YÜKSELTME — PARA YAZAR: Idempotency-Key + onaylanan tutar.
+        group.MapPost("/customer-upgrade", async (TierUpgradeRequest request, Guid? tenantId, ICurrentUser cu, IBillingService svc, HttpContext http, CancellationToken ct) =>
+        {
+            if (Forbidden(cu, http) is { } denied) return denied;
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http)
+                : (await svc.PurchaseTierUpgradeAsync(t, Domain.Billing.TierDimension.Customers, request.ConfirmedChargeTRY, ct)).ToHttpResult(http);
+        });
+
         group.MapDelete("/card", async (Guid? tenantId, ICurrentUser cu, IBillingService svc, HttpContext http, CancellationToken ct) =>
         {
             if (Forbidden(cu, http) is { } denied) return denied;

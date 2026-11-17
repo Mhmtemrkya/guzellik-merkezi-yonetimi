@@ -27,6 +27,16 @@ public sealed class StaffApprovalGateMiddleware
         "/api/admin/adisyonlar",
     };
 
+    /// <summary>
+    /// SALT-OKUNUR POST'LAR — gövde taşıdığı için POST olan ama HİÇBİR ŞEY YAZMAYAN uçlar. Kapı
+    /// bunları taslağa alsaydı personel gönderim tahminini hiç göremezdi (tahmin "onaya gönderildi"
+    /// olurdu). Liste TAM YOL eşleşmesidir, önek değil: aynı grubun yazan uçları (ör. /send) kapıda kalır.
+    /// </summary>
+    private static readonly string[] ReadOnlyPostPaths =
+    {
+        "/api/admin/notification-templates/estimate",
+    };
+
     public StaffApprovalGateMiddleware(RequestDelegate next) => _next = next;
 
     public async Task InvokeAsync(HttpContext http, ICurrentUser currentUser, ITenantContext tenantContext, IPendingOperationService pendingOps)
@@ -241,7 +251,8 @@ public sealed class StaffApprovalGateMiddleware
         if (Is("/api/admin/accounts")) return Has("/payments") ? Permissions.AccountingCollect : Permissions.AccountingAccounts;
         if (Is("/api/admin/expenses") || Is("/api/admin/expense-categories")) return Permissions.AccountingExpenses;
         if (Is("/api/admin/notification-templates")) return Permissions.NotificationsTemplates;
-        if (Is("/api/admin/notifications") || Is("/api/admin/whatsapp")) return Permissions.NotificationsSend;
+        // SMS uçları WhatsApp'la aynı işlem iznine tabidir (hediye çeki SMS'i kurumun kotasından/kredisinden harcar).
+        if (Is("/api/admin/notifications") || Is("/api/admin/whatsapp") || Is("/api/admin/sms")) return Permissions.NotificationsSend;
         return null;
     }
 
@@ -261,6 +272,10 @@ public sealed class StaffApprovalGateMiddleware
 
         foreach (var prefix in ExemptPrefixes)
             if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
+
+        var exactPath = path.TrimEnd('/');
+        foreach (var readOnly in ReadOnlyPostPaths)
+            if (string.Equals(exactPath, readOnly, StringComparison.OrdinalIgnoreCase)) return false;
 
         // Randevu durum değişikliği (Tamamlandı/İptal/Gelmedi/Onaylandı) onay kapısından muaf —
         // personel direkt uygular; rutin operasyon, onay yığılması/tamamlanamaz hatası oluşmasın.

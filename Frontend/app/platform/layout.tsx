@@ -49,8 +49,9 @@ const items: SidebarNavItem[] = [
     href: '/platform/whatsapp',
     icon: MessageCircle,
     children: [
-      { label: 'Bağlantılar', href: '/platform/whatsapp?tab=connections' },
-      { label: 'Kontör Talepleri', href: '/platform/whatsapp?tab=purchases' },
+      { label: 'WhatsApp Bağlantıları', href: '/platform/whatsapp?tab=connections' },
+      { label: 'SMS Bağlantıları', href: '/platform/whatsapp?tab=sms' },
+      { label: 'Kredi Talepleri', href: '/platform/whatsapp?tab=purchases' },
       { label: 'Fiyatlandırma', href: '/platform/whatsapp?tab=pricing' },
     ],
   },

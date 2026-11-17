@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/auth/permissions.dart';
 import '../../core/network/api_client.dart';
+import '../../core/platform/store_policy.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
@@ -17,6 +18,26 @@ const _genders = [
   CrudOption('Other', 'Diğer'),
   CrudOption('Unspecified', 'Belirtilmemiş'),
 ];
+
+/// YENİ MÜŞTERİ (Müşteriler ekranı ve randevu formunun hızlı ekleme yolu ortak kullanır).
+///
+/// Ödenmiş müşteri kapasitesi doluysa sunucu 409 `CustomerLimitReached` döner; mesaj NÖTRDÜR. Yükseltme
+/// yolu yalnız satın almaya izin verilen yüzeyde söylenir — iOS'ta (App Store 3.1.1) dışarıya yönlendirme
+/// yapılmaz. (ApiClient'ta yapılmaz: müşteri portalı da aynı uygulamayı kullanır.)
+Future<dynamic> postNewCustomer(ApiClient api, Map<String, dynamic> body) async {
+  try {
+    return await api.post('/api/admin/customers/', body);
+  } on ApiException catch (e) {
+    if (e.code == 'CustomerLimitReached' && !StorePolicy.hidesPurchaseFlows) {
+      throw ApiException(
+        '${e.message}\nKurum yetkilisi müşteri kademesini Paketim ekranından yükseltebilir.',
+        statusCode: e.statusCode,
+        code: e.code,
+      );
+    }
+    rethrow;
+  }
+}
 
 class CustomersScreen extends StatelessWidget {
   const CustomersScreen({required this.api, required this.auth, super.key});
@@ -301,7 +322,7 @@ class CustomersScreen extends StatelessWidget {
                 .toIso8601String();
           }
         }
-        return api.post('/api/admin/customers/', body);
+        return postNewCustomer(api, body);
       },
       onUpdate: (item, body) async {
         body['branchId'] = await _resolveBranchId(item);

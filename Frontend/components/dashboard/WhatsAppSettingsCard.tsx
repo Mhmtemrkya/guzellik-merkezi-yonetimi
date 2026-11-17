@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MessageCircle, Loader2, Check, Clock3, Info, ShieldCheck, PhoneCall, Megaphone, Wallet, FileCheck2 } from 'lucide-react'
+import { MessageCircle, Loader2, Check, Clock3, Info, ShieldCheck, PhoneCall, Megaphone, Wallet, Route, Star, CalendarCheck2, ScrollText } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi, isPendingApprovalResult } from '@/lib/apiClient'
-import type { ApiWhatsAppSettings } from '@/lib/types'
+import type { ApiWhatsAppSettings, OneWayChannel } from '@/lib/types'
 
 const DEFAULT_TEMPLATE =
   'Merhaba {ad}, {tarih} {saat} tarihli {hizmet} randevunuzu hatırlatırız. Onaylıyorsanız EVET, iptal için HAYIR, ertelemek için ERTELE yazın. — {salon}'
@@ -27,12 +27,9 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
   const [marketingEnabled, setMarketingEnabled] = useState(false)
   const [allowOverage, setAllowOverage] = useState(false)
   const [spendCap, setSpendCap] = useState('')
-  const [kvkkTemplateName, setKvkkTemplateName] = useState('')
-  const [reminderTemplateName, setReminderTemplateName] = useState('')
-  const [waitlistOfferTemplateName, setWaitlistOfferTemplateName] = useState('')
-  const [waitlistActivatedTemplateName, setWaitlistActivatedTemplateName] = useState('')
-  const [ratingTemplateName, setRatingTemplateName] = useState('')
-  const [templateLanguage, setTemplateLanguage] = useState('tr')
+  const [ratingChannel, setRatingChannel] = useState<OneWayChannel>('WhatsApp')
+  const [waitlistChannel, setWaitlistChannel] = useState<OneWayChannel>('WhatsApp')
+  const [kvkkChannel, setKvkkChannel] = useState<OneWayChannel>('WhatsApp')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [pending, setPending] = useState(false)
@@ -42,13 +39,10 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
     setTemplate(data.reminderTemplate ?? '')
     setMarketingEnabled(Boolean(data.marketingEnabled))
     setAllowOverage(Boolean(data.allowWalletOverage))
-    setSpendCap(data.monthlySpendCapTry != null ? String(data.monthlySpendCapTry) : '')
-    setKvkkTemplateName(data.kvkkTemplateName ?? '')
-    setReminderTemplateName(data.reminderTemplateName ?? '')
-    setWaitlistOfferTemplateName(data.waitlistOfferTemplateName ?? '')
-    setWaitlistActivatedTemplateName(data.waitlistActivatedTemplateName ?? '')
-    setRatingTemplateName(data.ratingTemplateName ?? '')
-    setTemplateLanguage(data.templateLanguageCode || 'tr')
+    setSpendCap(data.monthlySpendCapCredits != null ? String(data.monthlySpendCapCredits) : '')
+    setRatingChannel(data.ratingLinkChannel === 'Sms' ? 'Sms' : 'WhatsApp')
+    setWaitlistChannel(data.waitlistActivatedChannel === 'Sms' ? 'Sms' : 'WhatsApp')
+    setKvkkChannel(data.kvkkChannel === 'Sms' ? 'Sms' : 'WhatsApp')
   }, [data])
 
   const save = async () => {
@@ -59,13 +53,13 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
         reminderTemplate: template.trim() || null,
         marketingEnabled,
         allowWalletOverage: allowOverage,
-        monthlySpendCapTry: cap != null && Number.isFinite(cap) ? cap : null,
-        kvkkTemplateName: kvkkTemplateName.trim() || null,
-        reminderTemplateName: reminderTemplateName.trim() || null,
-        waitlistOfferTemplateName: waitlistOfferTemplateName.trim() || null,
-        waitlistActivatedTemplateName: waitlistActivatedTemplateName.trim() || null,
-        ratingTemplateName: ratingTemplateName.trim() || null,
-        templateLanguageCode: templateLanguage.trim() || 'tr',
+        monthlySpendCapCredits: cap != null && Number.isFinite(cap) ? cap : null,
+        // Birim işareti: sunucu boş tavanı yalnız bunu gönderen (krediyi bilen) istemciden silinmiş sayar.
+        spendCapUnit: 'Credits',
+        ratingLinkChannel: ratingChannel,
+        waitlistActivatedChannel: waitlistChannel,
+        kvkkChannel,
+        // Meta onaylı şablon adları platformdadır (Platform > WhatsApp > Bağlantılar) — burada gönderilmez.
       }
       const res = await adminApi.saveWhatsappSettings(body, tenantId)
       if (isPendingApprovalResult(res)) setPending(true)
@@ -104,7 +98,7 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
                 <>
                   <b className="text-emerald-700">WhatsApp numaranız bağlı.</b>{' '}
                   {data?.displayPhoneNumber && <span className="font-mono">{data.displayPhoneNumber}</span>} üzerinden mesajlar gönderilir.
-                  Bağlantı ve teknik kurulum <b>BeautyAsist</b> tarafından yönetilir; siz yalnızca mesaj içeriğini ve kontör tercihlerini belirlersiniz.
+                  Bağlantı ve teknik kurulum <b>BeautyAsist</b> tarafından yönetilir; siz yalnızca mesaj içeriğini ve kredi tercihlerini belirlersiniz.
                 </>
               ) : (
                 <>
@@ -136,118 +130,65 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
             </div>
           </div>
 
-          {/* Faturalama tercihleri */}
+          {/* Faturalama tercihleri — mesaj kredisi WhatsApp ve SMS'in ORTAK bakiyesidir */}
           <div className="space-y-2 rounded-xl border border-[#EAD8DF] bg-[#F7F6F6] p-3">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Kontör tercihleri</div>
+            <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Mesaj kredisi tercihleri · WhatsApp + SMS</div>
 
             <PrefToggle
               icon={<Wallet className="h-3.5 w-3.5" />}
-              label="Kota bitince kontörden devam et"
-              desc="Aylık ücretsiz kotanız dolunca mesajlar kontör bakiyenizden gönderilsin. Kapalıyken kota bitince durur (sürpriz fatura olmaz)."
+              label="Kota bitince mesaj kredisinden devam et"
+              desc="Paketinizdeki aylık WhatsApp/SMS kotası dolunca mesajlar kredi bakiyenizden gönderilsin. Kapalıyken kota bitince gönderim durur (sürpriz harcama olmaz)."
               on={allowOverage} toggle={() => setAllowOverage((v) => !v)}
             />
             <PrefToggle
               icon={<Megaphone className="h-3.5 w-3.5" />}
-              label="Pazarlama (kampanya) mesajlarına izin ver"
-              desc="Doğum günü / kampanya gibi mesajlar. Meta bunları pahalı kategoride ücretlendirir; kontörden düşer."
+              label="WhatsApp kampanya mesajlarına izin ver"
+              desc="Doğum günü / kampanya gibi WhatsApp mesajları. Meta bunları pahalı kategoride ücretlendirir; mesaj başına daha fazla kredi düşer."
               on={marketingEnabled} toggle={() => setMarketingEnabled((v) => !v)}
             />
             <div>
-              <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Aylık kontör harcama tavanı (₺)</label>
+              <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Aylık kredi harcama tavanı</label>
               <input
                 value={spendCap}
-                onChange={(e) => setSpendCap(e.target.value.replace(/[^0-9.]/g, ''))}
-                inputMode="decimal"
+                onChange={(e) => setSpendCap(e.target.value.replace(/[^0-9]/g, ''))}
+                inputMode="numeric"
                 placeholder="Boş = paket / platform varsayılanı"
                 className="w-full rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
               />
-              <p className="mt-1 text-[10px] text-[#74616A]">Bu tutarı aşan gönderim yapılmaz — Meta faturanız bu tavanı geçemez.</p>
+              <p className="mt-1 text-[10px] text-[#74616A]">Bir ayda bu kadar krediden fazlası harcanmaz (WhatsApp + SMS toplamı).</p>
             </div>
           </div>
 
-          {/* Meta onaylı şablonlar — 24 saat penceresi kapalıyken zorunlu */}
+          {/* Tek yönlü bildirimlerin kanalı — kurum WhatsApp ya da SMS seçer */}
           <div className="space-y-2 rounded-xl border border-[#EAD8DF] bg-[#F7F6F6] p-3">
             <div className="flex items-center gap-1.5">
-              <FileCheck2 className="h-3.5 w-3.5 text-[#A5556E]" />
-              <span className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Meta onaylı şablonlar</span>
+              <Route className="h-3.5 w-3.5 text-[#A5556E]" />
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Otomatik bildirim kanalı</span>
             </div>
-            <div className="flex items-start gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[10px] leading-relaxed text-sky-900">
-              <Info className="mt-0.5 h-3 w-3 shrink-0" />
-              <span>
-                Meta kuralı: müşteri size son <b>24 saat</b> içinde yazmadıysa serbest metin iletilmez.
-                Yeni eklenen müşteriye giden KVKK isteği her zaman bu duruma girer. Meta panelinde
-                şablonu oluşturup adını buraya yazın; pencere kapalıyken sistem otomatik olarak
-                şablonla gönderir. Boş bırakılırsa serbest metin denenir.
-              </span>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#74616A]">KVKK onay isteği şablon adı</label>
-              <input
-                value={kvkkTemplateName}
-                onChange={(e) => setKvkkTemplateName(e.target.value)}
-                placeholder="örn. kvkk_acik_riza"
-                className="w-full rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
-              />
-              <p className="mt-1 text-[10px] leading-relaxed text-[#5A4B53]">
-                Meta&apos;da <b>Utility</b> kategorisinde, <b>belge (document) başlıklı</b> ve gövdesi şu 3 değişkenli olacak şekilde oluşturun:
-                <span className="mt-0.5 block rounded border border-[#EAD8DF] bg-white px-2 py-1 font-mono text-[10px] text-[#3E343A]">
-                  Merhaba &#123;&#123;1&#125;&#125;, &#123;&#123;2&#125;&#125; olarak kişisel verilerinizi işliyoruz. Aydınlatma metni ekte ve &#123;&#123;3&#125;&#125; adresinde. Onaylıyorsanız ONAYLIYORUM yazın.
-                </span>
-                <span className="mt-0.5 block">1 = müşteri adı · 2 = kurum adı · 3 = metin linki. KVKK PDF&apos;i belge başlığına otomatik eklenir.</span>
-              </p>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-[1fr_110px]">
-              <TemplateNameField
-                label="Hatırlatma şablon adı"
-                value={reminderTemplateName}
-                onChange={setReminderTemplateName}
-                placeholder="örn. randevu_hatirlatma"
-              />
-              <div>
-                <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Dil kodu</label>
-                <input
-                  value={templateLanguage}
-                  onChange={(e) => setTemplateLanguage(e.target.value)}
-                  placeholder="tr"
-                  className="w-full rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
-                />
-              </div>
-            </div>
-
-            {/* Randevu odaklı üç şablon AYNI değişken sırasını paylaşır — kurum tek mantıkla onaylatsın. */}
-            <p className="rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[10px] leading-relaxed text-[#5A4B53]">
-              Hatırlatma, bekleme listesi teklifi ve bekleme onayı şablonlarının gövdesi <b>aynı 5 değişkeni</b> bu sırayla kullanmalı:
-              <span className="mt-0.5 block font-mono text-[10px] text-[#3E343A]">
-                &#123;&#123;1&#125;&#125; ad · &#123;&#123;2&#125;&#125; tarih · &#123;&#123;3&#125;&#125; saat · &#123;&#123;4&#125;&#125; hizmet · &#123;&#123;5&#125;&#125; kurum
-              </span>
-              <span className="mt-0.5 block">
-                Değerlendirme şablonu 3 değişkenlidir: &#123;&#123;1&#125;&#125; ad · &#123;&#123;2&#125;&#125; kurum · &#123;&#123;3&#125;&#125; link.
-                Şablonda <b>hızlı yanıt düğmesi kullanmayın</b> — müşterinin düğmeye bastığı yanıt sisteme ulaşmaz, yazdığı metin ulaşır.
-              </span>
+            <p className="text-[10px] leading-relaxed text-[#5A4B53]">
+              Bu bildirimler müşteriye tek yönlü gider. WhatsApp numaranız bağlı değilse ya da müşterileriniz SMS&apos;e daha hızlı dönüyorsa
+              <b> SMS</b> seçin — SMS, paketinizdeki SMS kotasından, kota bitince mesaj kredisinden düşer
+              (BeautyAsist kendi başlığınızla SMS hesabınızı bağladıysa ücreti sağlayıcınız keser).
             </p>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <TemplateNameField
-                label="Bekleme listesi teklifi"
-                value={waitlistOfferTemplateName}
-                onChange={setWaitlistOfferTemplateName}
-                placeholder="örn. bekleme_teklif"
-              />
-              <TemplateNameField
-                label="Bekleme listesi onayı"
-                value={waitlistActivatedTemplateName}
-                onChange={setWaitlistActivatedTemplateName}
-                placeholder="örn. bekleme_onay"
-              />
-            </div>
-
-            <TemplateNameField
+            <ChannelRow
+              icon={<Star className="h-3.5 w-3.5" />}
               label="Değerlendirme (yıldız) linki"
-              value={ratingTemplateName}
-              onChange={setRatingTemplateName}
-              placeholder="örn. degerlendirme"
+              desc="Randevu tamamlanınca müşteriye 24 saat geçerli puanlama linki."
+              value={ratingChannel} onChange={setRatingChannel}
+            />
+            <ChannelRow
+              icon={<CalendarCheck2 className="h-3.5 w-3.5" />}
+              label="Bekleme listesinden randevu oluştu"
+              desc="Bekleyen müşteri için randevu açılınca tarih ve saati bildirir."
+              value={waitlistChannel} onChange={setWaitlistChannel}
+            />
+            <ChannelRow
+              icon={<ScrollText className="h-3.5 w-3.5" />}
+              label="KVKK"
+              desc={kvkkChannel === 'Sms'
+                ? 'SMS ile yalnız aydınlatma metni linki gider; açık rıza SMS yanıtıyla ALINMAZ (kayıt formunda işaretleyin).'
+                : 'WhatsApp ile açık rıza isteği gider; müşteri ONAYLIYORUM yazınca kayıt otomatik onaylanır.'}
+              value={kvkkChannel} onChange={setKvkkChannel}
             />
           </div>
 
@@ -269,17 +210,29 @@ export default function WhatsAppSettingsCard({ tenantId }: { tenantId?: string }
   )
 }
 
-/** Meta'da onaylanmış şablonun adı. Boş = serbest metin denenir (yalnız 24 saat penceresi açıkken çalışır). */
-function TemplateNameField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
+/** Tek yönlü bildirim için kanal seçimi (WhatsApp / SMS). */
+function ChannelRow({ icon, label, desc, value, onChange }: { icon: React.ReactNode; label: string; desc: string; value: OneWayChannel; onChange: (v: OneWayChannel) => void }) {
   return (
-    <div>
-      <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#74616A]">{label}</label>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-1.5 text-[12px] text-[#2A2027] outline-none focus:border-[#A5556E]"
-      />
+    <div className="flex flex-col gap-2 rounded-lg border border-[#EAD8DF] bg-white px-2.5 py-2 sm:flex-row sm:items-center">
+      <span className="flex min-w-0 flex-1 items-start gap-2.5">
+        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[#f3e7ec] text-[#8C4460]">{icon}</span>
+        <span className="min-w-0">
+          <span className="block text-[11.5px] font-medium text-[#2A2027]">{label}</span>
+          <span className="block text-[10px] leading-snug text-[#5A4B53]">{desc}</span>
+        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1 self-start rounded-lg border border-[#EAD8DF] bg-[#F7F6F6] p-0.5 sm:self-center">
+        {(['WhatsApp', 'Sms'] as const).map((ch) => (
+          <button
+            key={ch}
+            type="button"
+            onClick={() => onChange(ch)}
+            className={`rounded-md px-2.5 py-1 text-[10.5px] font-semibold transition ${value === ch ? 'bg-[#8e3f5b] text-white' : 'text-[#5A4B53] hover:text-[#8e3f5b]'}`}
+          >
+            {ch === 'Sms' ? 'SMS' : 'WhatsApp'}
+          </button>
+        ))}
+      </span>
     </div>
   )
 }

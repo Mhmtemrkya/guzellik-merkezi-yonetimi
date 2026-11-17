@@ -169,10 +169,14 @@ public sealed class PublicSalonService : IPublicSalonService
         var profile = await _db.TenantPublicProfiles.AsNoTracking()
             .FirstOrDefaultAsync(p => p.TenantId == tenant.Id, cancellationToken);
 
+        // Vitrin en fazla 15 görsel gösterir (salon başına toplam sınır). Sınırdan önce eklenmiş fazlalar
+        // silinmez ama yayımlanmaz: önce vitrin slider'ı, sonra hizmet galerisi, kendi sıralarıyla.
         var photos = await _db.TenantGalleryPhotos.AsNoTracking()
             .Where(g => g.TenantId == tenant.Id)
-            .OrderBy(g => g.SortOrder).ThenBy(g => g.CreatedAtUtc)
+            // Kind METİN olarak saklanır ("Service" < "Slider" alfabetik): slider'ı öne almak için açık sıra.
+            .OrderBy(g => g.Kind == GalleryPhotoKind.Slider ? 0 : 1).ThenBy(g => g.SortOrder).ThenBy(g => g.CreatedAtUtc)
             .Select(g => new { g.Kind, g.ImageData })
+            .Take(TenantProfileService.MaxPhotosPerSalon)
             .ToListAsync(cancellationToken);
 
         // Hizmetler: aktif olanlar kategoriye göre gruplanır (fiyat/süre public görünür).

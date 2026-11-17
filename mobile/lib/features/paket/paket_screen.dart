@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/idempotency.dart';
 import '../../core/platform/store_policy.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
@@ -94,6 +95,31 @@ List<String> _highlightsOf(Map<String, dynamic> plan) {
   return out;
 }
 
+Set<String> _featureSet(Map<String, dynamic> plan) => '${plan['features'] ?? ''}'
+    .split(',')
+    .map((e) => e.trim())
+    .where((e) => e.isNotEmpty)
+    .toSet();
+
+double _limitOf(Map<String, dynamic> plan, String key) {
+  final v = numberOf(plan, [key]).toDouble();
+  return v < 0 ? double.infinity : v;
+}
+
+const _limitKeys = ['maxBranches', 'maxStaff', 'maxCustomers', 'maxMonthlyAppointments'];
+
+/// Web `isUpgradeOf` ile birebir: aday, mevcut paketin TÜM özelliklerini kapsıyor ve fazlasını
+/// (özellik ya da limit; -1 = sınırsız) veriyorsa "üst paket"tir. Vitrin sırası / liste fiyatı
+/// ölçüt değil — şube başı tek paket sırada başta durur ve birim fiyatı düşük görünür.
+bool _isUpgradeOf(Map<String, dynamic> candidate, Map<String, dynamic> current) {
+  final cf = _featureSet(candidate);
+  final kf = _featureSet(current);
+  if (!kf.every(cf.contains)) return false;
+  if (_limitKeys.any((k) => _limitOf(candidate, k) < _limitOf(current, k))) return false;
+  return cf.length > kf.length ||
+      _limitKeys.any((k) => _limitOf(candidate, k) > _limitOf(current, k));
+}
+
 class _PaketScreenState extends State<PaketScreen> {
   late Future<_PaketData> _future;
   String _period = 'Yearly'; // Monthly | Yearly
@@ -121,6 +147,14 @@ class _PaketScreenState extends State<PaketScreen> {
       widget.api
           .get('/api/admin/billing/')
           .catchError((_) => <String, dynamic>{}),
+      // Dijital onam hakkı (web paritesi) — yetkisizse boş; sayfanın kalanı etkilenmez.
+      widget.api
+          .get('/api/admin/billing/consent-allowance')
+          .catchError((_) => <String, dynamic>{}),
+      // Kayıtlı müşteri hakkı (web paritesi) — aynı kural: ödenmiş kademe yoksa yeni müşteri eklenemez.
+      widget.api
+          .get('/api/admin/billing/customer-allowance')
+          .catchError((_) => <String, dynamic>{}),
     ]);
     final plans = apiItems(r[0])
         .where((p) => p['isActive'] != false)
@@ -137,7 +171,174 @@ class _PaketScreenState extends State<PaketScreen> {
       usage: r[1] is Map ? (r[1] as Map).cast<String, dynamic>() : const {},
       tenant: r[2] is Map ? (r[2] as Map).cast<String, dynamic>() : const {},
       billing: r[3] is Map ? (r[3] as Map).cast<String, dynamic>() : const {},
+      consent: r[4] is Map ? (r[4] as Map).cast<String, dynamic>() : const {},
+      customers: r[5] is Map ? (r[5] as Map).cast<String, dynamic>() : const {},
     );
+  }
+
+  // KADEME YÜKSELTME (müşteri / onam) — para yazar: anahtar içerikten (tuz + boyut + kademe + tutar). Sonucu
+  // bilinmeyen deneme aynı anahtarla tekrarlanır; kesin yanıtta (2xx/4xx) tuz döner (web paritesi).
+  final Map<String, String> _tierSalt = {
+    'customers': newIdempotencySalt(),
+    'consent': newIdempotencySalt(),
+  };
+  String? _tierBusy;
+
+  Future<void> _upgradeTier(String kind, Map<String, dynamic> allowance) async {
+    final text = _tierTexts[kind]!;
+    final quote = allowance['quote'] is Map ? (allowance['quote'] as Map).cast<String, dynamic>() : null;
+    final tierAbove = allowance['nextTierAbove'];
+    if (quote == null || tierAbove == null) return;
+    final total = numberOf(quote, const ['total']);
+    final byCard = '${allowance['chargeMethod'] ?? ''}' == 'Card';
+    final tierText = '${numberOf(allowance, const ['nextTierAbove']).toInt()} üzeri ${text.unit}';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(text.name),
+        content: Text(byCard
+            ? '${text.name} ($tierText) açılacak. Bugün ${_tl(total)} (KDV dahil, dönem sonuna kadar orantılı) kayıtlı kartınızdan çekilecek. Onaylıyor musunuz?'
+            : '${text.name} ($tierText) için ${_tl(total)} (KDV dahil) tutarında fatura kesilecek. Kademe, ödeme alındığında açılır. Onaylıyor musunuz?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Vazgeç')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(byCard ? '${_tl(total)} öde' : 'Onayla (${_tl(total)})'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final key = idempotencyKey(_tierSalt[kind]!, ['$kind-upgrade', tierAbove, total]);
+    final path = kind == 'customers' ? '/api/admin/billing/customer-upgrade' : '/api/admin/billing/consent-upgrade';
+    setState(() => _tierBusy = kind);
+    try {
+      final r = await widget.api.post(path, {'confirmedChargeTRY': total}, key);
+      _tierSalt[kind] = newIdempotencySalt();
+      if (!mounted) return;
+      setState(() {
+        _actionMsg = r is Map ? '${r['message'] ?? 'İşlem tamamlandı.'}' : 'İşlem tamamlandı.';
+        _actionErr = false;
+        _future = _load();
+      });
+    } on ApiException catch (e) {
+      final status = e.statusCode;
+      if (status != null && status > 0 && status < 500) _tierSalt[kind] = newIdempotencySalt();
+      if (!mounted) return;
+      setState(() {
+        _actionMsg = e.message;
+        _actionErr = true;
+        _future = _load();
+      });
+    } finally {
+      if (mounted) setState(() => _tierBusy = null);
+    }
+  }
+
+  /// Kademe kartı (kayıtlı müşteri / dijital onam) — sayaç / ödenmiş kapasite, kilit durumu, sonraki kademe.
+  /// iOS'ta (App Store 3.1.1) fiyat ve satın alma gösterilmez; yalnız durum, nötr dille.
+  Widget _tierCard(String kind, Map<String, dynamic> allowance, bool storeSafe) {
+    final text = _tierTexts[kind]!;
+    final count = numberOf(allowance, const ['count']).toInt();
+    final capRaw = allowance['capacity'];
+    final capacity = capRaw == null ? null : numberOf(allowance, const ['capacity']).toInt();
+    final locked = allowance['allowed'] == false;
+    final ratio = capacity == null || capacity == 0 ? 0.06 : (count / capacity).clamp(0.0, 1.0);
+    final near = !locked && capacity != null && ratio >= 0.9;
+    final quote = allowance['quote'] is Map ? (allowance['quote'] as Map).cast<String, dynamic>() : null;
+    final total = quote == null ? 0 : numberOf(quote, const ['total']);
+    final canBuy = !storeSafe && allowance['canPurchase'] == true && total > 0 && allowance['nextTierAbove'] != null;
+    final openInvoice = '${allowance['openInvoiceNumber'] ?? ''}';
+    final reason = '${allowance['reason'] ?? ''}';
+    final color = locked ? AppColors.danger : near ? const Color(0xFFB7791F) : AppColors.primary;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: locked ? AppColors.danger.withValues(alpha: .35) : AppColors.primary.withValues(alpha: .18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(text.icon, size: 18, color: color),
+              const SizedBox(width: 8),
+              Expanded(child: Text(text.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
+              if (locked)
+                const Icon(Icons.lock_rounded, size: 16, color: AppColors.danger),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text('$count / ${capacity?.toString() ?? '∞'} ${text.countLabel}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: ratio.toDouble(),
+              minHeight: 6,
+              color: color,
+              backgroundColor: const Color(0xFFF7E9EE),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (locked)
+            Text(
+              storeSafe ? text.lockedTextNeutral : text.lockedText,
+              style: const TextStyle(fontSize: 12, color: AppColors.danger, fontWeight: FontWeight.w600),
+            ),
+          const SizedBox(height: 2),
+          Text(text.footnote, style: const TextStyle(fontSize: 11.5, color: Color(0xFF74616A))),
+          if (!storeSafe && allowance['nextTierAbove'] != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Sonraki kademe: ${numberOf(allowance, const ['nextTierAbove']).toInt()} üzeri ${text.unit}'
+              '${allowance['nextTierMonthlyFee'] != null ? ' · ${_tl(numberOf(allowance, const ['nextTierMonthlyFee']))} / ay + KDV' : ''}',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF4A3A44)),
+            ),
+          ],
+          // iOS (App Store 3.1.1): fatura / ödeme bilgisi bu uygulamada gösterilmez (Paketim fatura kartı da gizli).
+          if (!storeSafe && openInvoice.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('$openInvoice numaralı fatura ödeme bekliyor; ödeme alındığında kademe açılır.',
+                style: const TextStyle(fontSize: 12, color: Color(0xFFB7791F))),
+          ] else if (!storeSafe && allowance['canPurchase'] != true && reason.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(reason, style: const TextStyle(fontSize: 12, color: Color(0xFF74616A))),
+          ],
+          if (canBuy) ...[
+            const SizedBox(height: 10),
+            FilledButton(
+              onPressed: _tierBusy != null ? null : () => _upgradeTier(kind, allowance),
+              child: Text(allowance['chargeMethod'] == 'Card' ? '${_tl(total)} öde ve kademeyi aç' : '${_tl(total)} faturayı onayla'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Müşteri metriğinin sınırı paket alanından (çoğu pakette sınırsız) değil ÖDENMİŞ müşteri kademesinden
+  /// gelir — "∞" yazan hücre yanında "yeni müşteri eklenemiyor" kartı çelişirdi (web `withTierCapacity`).
+  Map<String, dynamic> _withTierCapacity(Map<String, dynamic> metric, Map<String, dynamic> allowance) {
+    if (allowance.isEmpty || allowance['capacity'] == null) return metric;
+    final capacity = numberOf(allowance, const ['capacity']).toInt();
+    final count = numberOf(allowance, const ['count']).toInt();
+    final percent = capacity > 0 ? ((count / capacity) * 100).round().clamp(0, 100) : 100;
+    final allowed = allowance['allowed'] != false;
+    return {
+      ...metric,
+      'used': count,
+      'limit': capacity,
+      'percent': percent,
+      'isUnlimited': false,
+      'isOver': !allowed,
+      'isWarning': allowed && percent >= 90,
+    };
   }
 
   Future<void> _reload() async {
@@ -159,12 +360,28 @@ class _PaketScreenState extends State<PaketScreen> {
         plan, [yearly ? 'yearlyPriceTRY' : 'monthlyPriceTRY']);
     final periodText = yearly ? 'yıllık' : 'aylık';
     final isPaid = price > 0;
+    // TUTAR SUNUCUDAN: şube sayısı, müşteri / onam kademeleri ve KDV dahil — ödeme sayfası aynı
+    // tutarı çeker. Teklif alınamazsa birim fiyat "+ KDV" olarak söylenir (paket fiyatları KDV hariç).
+    var amountText = '${_tl(price)} + KDV';
+    if (isPaid) {
+      try {
+        final raw = await widget.api.get('/api/admin/billing/quote', query: {'planId': plan['id'], 'period': _period});
+        if (raw is Map && raw['total'] != null) {
+          final q = raw.cast<String, dynamic>();
+          final branches = numberOf(q, const ['branches']).toInt();
+          amountText = '${_tl(numberOf(q, const ['total']))} (KDV dahil${branches > 1 ? ' · $branches şube' : ''})';
+        }
+      } catch (_) {
+        // Birim fiyatla devam edilir; tahsil edilecek tutarı ödeme sayfası gösterir.
+      }
+    }
+    if (!mounted) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('${plan['name']} paketine geç'),
         content: Text(isPaid
-            ? '"${plan['name']}" paketine $periodText dönemle geçiyorsun.\n\nTutar: ${_tl(price)}\n\nGüvenli ödeme sayfası tarayıcıda açılacak. Ödeme tamamlanınca bu sayfayı aşağı çekip yenile.\n\nDevam edilsin mi?'
+            ? '"${plan['name']}" paketine $periodText dönemle geçiyorsun.\n\nTutar: $amountText\n\nGüvenli ödeme sayfası tarayıcıda açılacak. Ödeme tamamlanınca bu sayfayı aşağı çekip yenile.\n\nDevam edilsin mi?'
             : '"${plan['name']}" paketine $periodText dönemle geçeceksin.\n\nBu paket için ödeme alınmıyor.\n\nDevam edilsin mi?'),
         actions: [
           TextButton(
@@ -271,14 +488,18 @@ class _PaketScreenState extends State<PaketScreen> {
   List<Widget> _body(_PaketData d) {
     final usage = d.usage;
     final tenant = d.tenant;
+    // Müşteri metriği ödenmiş kademe kapasitesiyle (bkz. _withTierCapacity) — özet kart, rozet ve liste AYNI diziden.
     final metrics = (usage['metrics'] as List? ?? const [])
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())
+        .map((m) => '${m['key']}' == 'customers' ? _withTierCapacity(m, d.customers) : m)
         .toList();
     final planName = valueOf(usage, const ['planName'], fallback: 'Atanmamış');
     final monthlyPrice = numberOf(usage, const ['planMonthlyPriceTRY']);
     final currentPlanId = '${usage['subscriptionPlanId'] ?? ''}';
-    final maxPercent = numberOf(usage, const ['maxPercent']).round();
+    final maxPercent = metrics.fold<int>(
+        numberOf(usage, const ['maxPercent']).round(),
+        (best, m) => numberOf(m, const ['percent']).round() > best ? numberOf(m, const ['percent']).round() : best);
     final hasOverflow = usage['hasOverflow'] == true ||
         usage['hasAnyOverflow'] == true ||
         metrics.any((m) => m['isOver'] == true);
@@ -287,25 +508,61 @@ class _PaketScreenState extends State<PaketScreen> {
 
     final currentIndex =
         d.plans.indexWhere((p) => '${p['id']}' == currentPlanId);
-    final upgradePath =
-        currentIndex >= 0 ? d.plans.sublist(currentIndex + 1) : d.plans;
+    final currentPlan = currentIndex >= 0 ? d.plans[currentIndex] : null;
+    final upgradePath = currentPlan == null
+        ? d.plans
+        : (d.plans
+            .where((p) => '${p['id']}' != currentPlanId && _isUpgradeOf(p, currentPlan))
+            .toList()
+          ..sort((a, b) => numberOf(a, const ['monthlyPriceTRY'])
+              .compareTo(numberOf(b, const ['monthlyPriceTRY']))));
     Map<String, dynamic>? recommended;
-    for (final p in upgradePath) {
-      if (numberOf(p, const ['monthlyPriceTRY']) > 0) {
-        recommended = p;
-        break;
+    if (currentPlan != null) {
+      // Üst paketlerin en uygun ücretlisi.
+      for (final p in upgradePath) {
+        if (numberOf(p, const ['monthlyPriceTRY']) > 0) {
+          recommended = p;
+          break;
+        }
       }
-    }
-    if (recommended == null) {
+    } else {
+      // Paket atanmamış: en kapsamlı ücretli paket.
       final paid = d.plans
-          .where((p) =>
-              numberOf(p, const ['monthlyPriceTRY']) > 0 &&
-              '${p['id']}' != currentPlanId)
+          .where((p) => numberOf(p, const ['monthlyPriceTRY']) > 0)
           .toList()
-        ..sort((a, b) => numberOf(b, const ['monthlyPriceTRY'])
-            .compareTo(numberOf(a, const ['monthlyPriceTRY'])));
+        ..sort((a, b) {
+          final byFeat = _featureSet(b).length.compareTo(_featureSet(a).length);
+          return byFeat != 0
+              ? byFeat
+              : numberOf(a, const ['monthlyPriceTRY'])
+                  .compareTo(numberOf(b, const ['monthlyPriceTRY']));
+        });
       if (paid.isNotEmpty) recommended = paid.first;
     }
+    final perBranch = currentPlan?['chargePerBranch'] == true;
+    final quoteMap = d.billing['nextRenewalQuote'] is Map
+        ? (d.billing['nextRenewalQuote'] as Map).cast<String, dynamic>()
+        : null;
+    final branchMetric = metrics.where((m) => '${m['key']}' == 'branches');
+    final branchesBilled = quoteMap != null
+        ? numberOf(quoteMap, const ['branches']).toInt()
+        : (branchMetric.isEmpty ? 0 : numberOf(branchMetric.first, const ['used']).toInt());
+    final billedBranches = branchesBilled < 1 ? 1 : branchesBilled;
+    // Web paritesi: aylık toplam SUNUCU TEKLİFİNDEN (şube × birim + müşteri / onam kademeleri);
+    // teklif yoksa (ödeme kapalı / yıllık dönem) yalnız şube ücreti olduğu açıkça yazılır.
+    final monthlyQuote = quoteMap != null && '${quoteMap['period']}' == 'Monthly' ? quoteMap : null;
+    final quoteHasTiers = monthlyQuote != null &&
+        (monthlyQuote['lines'] as List? ?? const [])
+            .whereType<Map>()
+            .any((l) => l['code'] == 'customers' || l['code'] == 'consent');
+    final priceSub = monthlyPrice == 0
+        ? 'Teklifle fiyatlanır'
+        : monthlyQuote != null
+            ? 'Aylık toplam ${_tl(numberOf(monthlyQuote, const ['subtotal']))} + KDV · '
+                '${numberOf(monthlyQuote, const ['branches']).toInt()} şube${quoteHasTiers ? ' + kademe' : ''}'
+            : perBranch
+                ? 'Şube ücreti: $billedBranches şube · ${_tl(monthlyPrice * billedBranches)} + KDV / ay'
+                : 'KDV hariç · aylık';
 
     Map<String, dynamic>? topMetric;
     for (final m in metrics) {
@@ -401,9 +658,9 @@ class _PaketScreenState extends State<PaketScreen> {
             const SizedBox(width: 10),
             _statCard(
               Icons.credit_card_rounded,
-              'Aylık fiyat',
+              perBranch ? 'Aylık fiyat · şube başına' : 'Aylık fiyat',
               monthlyPrice == 0 ? 'Özel' : _tl(monthlyPrice),
-              sub: 'Aylık faturalandırılır',
+              sub: priceSub,
             ),
           ],
         ],
@@ -438,14 +695,17 @@ class _PaketScreenState extends State<PaketScreen> {
               '${upgradePath.length}',
               badge: recommended != null ? '${recommended['name']} (Önerilen)' : null,
               badgeColor: AppColors.primary,
-              sub: recommended == null ? 'en üst paktesin' : null,
+              sub: recommended == null ? 'en kapsamlı paketi kullanıyorsun' : null,
             ),
           ],
         ],
       ),
       const SizedBox(height: 16),
-      // ÖDEME: kayıtlı kart + son faturalar (ödeme altyapısı kapalıysa gösterilmez)
-      if (!storeSafe && d.billing['paymentsEnabled'] == true) ...[
+      // ÖDEME: kayıtlı kart + son faturalar. Ödeme altyapısı kapalıyken kart kısmı gizlenir ama kesilmiş
+      // faturalar (ör. kartsız şube eklemenin AÇIK faturası) yine görünür — web paritesi.
+      if (!storeSafe &&
+          (d.billing['paymentsEnabled'] == true ||
+              (d.billing['recentInvoices'] as List? ?? const []).isNotEmpty)) ...[
         const SizedBox(height: 12),
         _billingCard(d.billing),
       ],
@@ -456,6 +716,12 @@ class _PaketScreenState extends State<PaketScreen> {
         _emptyBox('Kullanım verisi alınamadı.')
       else
         ...metrics.map(_usageCell),
+      // MÜŞTERİ + DİJİTAL ONAM — kapasite yalnız ödenmiş kademeden; sınır yoksa kart gösterilmez.
+      for (final entry in [('customers', d.customers), ('consent', d.consent)])
+        if (entry.$2.isNotEmpty && (entry.$2['capacity'] != null || entry.$2['allowed'] == false)) ...[
+          const SizedBox(height: 12),
+          _tierCard(entry.$1, entry.$2, storeSafe),
+        ],
       if (!storeSafe) ...[
         const SizedBox(height: 16),
         // YÜKSELTME YOLU
@@ -498,6 +764,11 @@ class _PaketScreenState extends State<PaketScreen> {
         ? 0
         : numberOf(card, const ['consecutiveFailureCount']).round();
     final nextCharge = parseUtcToLocal(billing['subscriptionEndsAtUtc']);
+    final nextQuote = billing['nextRenewalQuote'] is Map
+        ? (billing['nextRenewalQuote'] as Map).cast<String, dynamic>()
+        : null;
+    final paymentsOn = billing['paymentsEnabled'] == true;
+    final hasOpen = invoices.any((i) => i['status'] == 'Sent' || i['status'] == 'Overdue');
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -514,12 +785,18 @@ class _PaketScreenState extends State<PaketScreen> {
               Icon(Icons.credit_card_rounded,
                   size: 18, color: AppColors.primary),
               const SizedBox(width: 8),
-              const Text('Ödeme ve Faturalar',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              Text(paymentsOn ? 'Ödeme ve Faturalar' : 'Faturalar',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
             ],
           ),
           const SizedBox(height: 10),
-          if (card != null) ...[
+          if (!paymentsOn) ...[
+            if (hasOpen)
+              const Text(
+                'Ödeme bekleyen faturaların için ekibimiz seninle iletişime geçer; ödeme alındığında durum "Ödendi" olur.',
+                style: TextStyle(fontSize: 12, height: 1.45, color: Color(0xFF74616A)),
+              ),
+          ] else if (card != null) ...[
             Text('${card['maskedNumber'] ?? 'Kayıtlı kart'}',
                 style: const TextStyle(
                     fontSize: 14.5, fontWeight: FontWeight.w600)),
@@ -533,8 +810,32 @@ class _PaketScreenState extends State<PaketScreen> {
             if (nextCharge != null) ...[
               const SizedBox(height: 6),
               Text(
-                'Sonraki tahsilat: ${nextCharge.day.toString().padLeft(2, '0')}.${nextCharge.month.toString().padLeft(2, '0')}.${nextCharge.year}',
+                'Sonraki tahsilat: ${nextCharge.day.toString().padLeft(2, '0')}.${nextCharge.month.toString().padLeft(2, '0')}.${nextCharge.year}'
+                '${nextQuote != null ? ' · ${_tl(numberOf(nextQuote, const ['total']))} (KDV dahil)' : ''}',
                 style: const TextStyle(fontSize: 12, color: Color(0xFF4A3A44)),
+              ),
+            ],
+            // Sonraki yenilemenin kalem dökümü (şube × birim, müşteri / onam kademesi) — sunucu hesabı.
+            if (nextQuote != null) ...[
+              const SizedBox(height: 6),
+              for (final line in (nextQuote['lines'] as List? ?? const []).whereType<Map>())
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text('${line['label']}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF5A4B53)))),
+                      Text(_tl(numberOf(line.cast<String, dynamic>(), const ['net'])), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(
+                  children: [
+                    const Expanded(child: Text('KDV', style: TextStyle(fontSize: 11.5, color: Color(0xFF74616A)))),
+                    Text(_tl(numberOf(nextQuote, const ['vat'])), style: const TextStyle(fontSize: 11.5, color: Color(0xFF74616A))),
+                  ],
+                ),
               ),
             ],
             if (failures > 0) ...[
@@ -559,14 +860,25 @@ class _PaketScreenState extends State<PaketScreen> {
             const SizedBox(height: 10),
             ...invoices.map((inv) {
               final paid = '${inv['status'] ?? ''}' == 'Paid';
+              // Neye ait olduğu (dönem / ek şube / kademe) — "ödenince açılacak" şube talebi burada görünür.
+              final notes = '${inv['notes'] ?? ''}'.trim();
               return Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text('${inv['number'] ?? ''}',
-                          style: const TextStyle(
-                              fontSize: 12, color: Color(0xFF4A3A44))),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${inv['number'] ?? ''}',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Color(0xFF4A3A44))),
+                          if (notes.isNotEmpty)
+                            Text(notes,
+                                style: const TextStyle(
+                                    fontSize: 11, height: 1.3, color: Color(0xFF74616A))),
+                        ],
+                      ),
                     ),
                     Text(_tl(numberOf(inv, const ['amountTRY'])),
                         style: const TextStyle(
@@ -984,7 +1296,8 @@ class _PaketScreenState extends State<PaketScreen> {
                 const SizedBox(width: 3),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
-                  child: Text('/ay',
+                  // Paket fiyatları KDV HARİÇ; şube başına paket birim fiyattır.
+                  child: Text('/ay${p['chargePerBranch'] == true ? ' · şube' : ''} +KDV',
                       style: TextStyle(fontSize: 12, color: mutedFg)),
                 ),
                 if (_period == 'Yearly' && yearly > 0) ...[
@@ -1131,6 +1444,8 @@ class _PaketData {
     this.usage = const {},
     this.tenant = const {},
     this.billing = const {},
+    this.consent = const {},
+    this.customers = const {},
   });
   final List<Map<String, dynamic>> plans;
   final Map<String, dynamic> usage;
@@ -1138,4 +1453,58 @@ class _PaketData {
 
   /// Ödeme özeti: kayıtlı kart + son faturalar. Ödeme altyapısı kapalıysa boş gelir.
   final Map<String, dynamic> billing;
+
+  /// Dijital onam hakkı (imzalı evrak, ödenmiş kapasite, sonraki kademe). Yetkisizse boş.
+  final Map<String, dynamic> consent;
+
+  /// Kayıtlı müşteri hakkı (müşteri sayısı, ödenmiş kapasite, sonraki kademe). Yetkisizse boş.
+  final Map<String, dynamic> customers;
 }
+
+/// Kademe kartının boyuta göre dili — para kodu tek, yalnız metin ayrışır (web `TIER_TEXT` paritesi).
+class _TierText {
+  const _TierText({
+    required this.title,
+    required this.icon,
+    required this.countLabel,
+    required this.unit,
+    required this.lockedText,
+    required this.lockedTextNeutral,
+    required this.footnote,
+    required this.name,
+  });
+  final String title;
+  final IconData icon;
+  final String countLabel;
+  final String unit;
+  final String lockedText;
+
+  /// iOS (App Store 3.1.1): ödeme / satın alma çağrışımı olmayan durum metni.
+  final String lockedTextNeutral;
+  final String footnote;
+  final String name;
+}
+
+const _tierTexts = <String, _TierText>{
+  'customers': _TierText(
+    title: 'Kayıtlı Müşteri',
+    icon: Icons.people_rounded,
+    countLabel: 'kayıtlı müşteri',
+    unit: 'müşteri',
+    lockedText:
+        'Ödenmiş müşteri kapasitesi doldu — bu kademenin bedeli ödenmeden yeni müşteri eklenemez; online kayıt da durur.',
+    lockedTextNeutral: 'Kayıtlı müşteri sınırına ulaşıldı — yeni müşteri eklenemiyor.',
+    footnote: 'Silinen müşteri sayaçtan düşer.',
+    name: 'Müşteri kademesi',
+  ),
+  'consent': _TierText(
+    title: 'Dijital Onam Evrakı',
+    icon: Icons.draw_rounded,
+    countLabel: 'imzalı evrak',
+    unit: 'evrak',
+    lockedText: 'Ödenmiş onam kapasitesi doldu — bu kademenin bedeli ödenmeden yeni onam imzalatılamaz.',
+    lockedTextNeutral: 'İmzalı onam evrakı sınırına ulaşıldı — yeni onam imzalatılamıyor.',
+    footnote: 'Silinen imzalı evrak da sayılır.',
+    name: 'Onam kademesi',
+  ),
+};

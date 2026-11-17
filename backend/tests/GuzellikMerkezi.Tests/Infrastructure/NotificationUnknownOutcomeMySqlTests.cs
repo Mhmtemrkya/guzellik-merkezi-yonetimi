@@ -134,7 +134,7 @@ public sealed class NotificationUnknownOutcomeMySqlTests : IClassFixture<Notific
             new AlwaysAllowUsageService(),
             new AllowAllFeatureService(),
             messaging,
-            new ServiceCollection().BuildServiceProvider());
+            NotificationTestServices.WithBilling(db));
 
         return (service, messaging);
     }

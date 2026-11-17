@@ -747,7 +747,34 @@ public sealed class TenantSignupTests
 
         await using var verify = NewDb(options);
         var tenant = await verify.Tenants.IgnoreQueryFilters().Include(t => t.SubscriptionPlan).SingleAsync();
+        // Tek paket yoksa en kapsamlı (en yüksek sıradaki) pakete düşülür — en zayıfa DEĞİL.
         Assert.Equal("Premium", tenant.SubscriptionPlan!.PlanKey);
+    }
+
+    /// <summary>
+    /// TEK PAKET (13 Kas 2026): yapılandırma verilmezse deneme TEK PAKETLE başlar — vitrin sırası
+    /// (DisplayOrder 0) en düşük olsa bile.
+    /// </summary>
+    [Fact]
+    public async Task TrialPlan_DefaultsToTheSinglePlan()
+    {
+        var options = NewOptions();
+        await using (var seed = NewDb(options))
+        {
+            seed.SubscriptionPlans.AddRange(
+                new SubscriptionPlan(GuzellikMerkezi.Infrastructure.Persistence.DatabaseBootstrap.SinglePlanKey, "BeautyAsist",
+                    1000m, -1, -1, -1, -1, 2500, "excel.customers,reports.finance", null, 0),
+                new SubscriptionPlan("Premium", "Premium", 2990m, 6, 25, 8000, 5000, 2500, "reports.finance", null, 3));
+            await seed.SaveChangesAsync();
+        }
+
+        var messaging = NewMessaging();
+        await using var db = NewDb(options);
+        await CompleteAsync(NewService(db, messaging), messaging, Form());
+
+        await using var verify = NewDb(options);
+        var tenant = await verify.Tenants.IgnoreQueryFilters().Include(t => t.SubscriptionPlan).SingleAsync();
+        Assert.Equal("BeautyAsist", tenant.SubscriptionPlan!.PlanKey);
     }
 
     /// <summary>Yapılandırmayla başka bir paket seçilebilir (kurulumdan kuruluma değişebilir).</summary>

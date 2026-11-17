@@ -8,23 +8,31 @@ import { useApiQuery } from '@/hooks/useApiQuery'
 import { platformApi } from '@/lib/apiClient'
 import {
   MessageCircle, PhoneCall, ShieldCheck, Clock3, Check, X, Loader2, Plus, PenLine, Trash2,
-  Wallet, Tag, Package, Settings2, Send, AlertTriangle, RefreshCw,
+  Wallet, Tag, Package, Settings2, Send, AlertTriangle, RefreshCw, Smartphone, FileCheck2, Info, Search,
 } from 'lucide-react'
 import type {
   ApiWhatsAppConnection, ApiCreditPurchase, ApiWhatsAppPricingRule, ApiCreditPackage,
-  ApiWhatsAppBillingSettings, WhatsAppMessageCategory,
+  ApiWhatsAppBillingSettings, WhatsAppMessageCategory, ApiPlatformSmsConnection, ApiSmsConnection,
+  ApiSmsConnectionTestResult,
 } from '@/lib/types'
+import SmsConnectionForm, { SmsStatusBadge } from '@/components/dashboard/SmsConnectionForm'
 
 const money = (n?: number) => `₺${(n ?? 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+/** Mesaj kredisi: tam sayıysa ondalıksız (1.000), kesirliyse iki hane. */
+const credits = (n?: number) => {
+  const v = n ?? 0
+  return Number.isInteger(v) ? v.toLocaleString('tr-TR') : v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 const CATEGORY_LABEL: Record<string, string> = { Utility: 'Hatırlatma (Utility)', Marketing: 'Pazarlama (Marketing)', Authentication: 'Doğrulama', Service: 'Servis (ücretsiz)' }
 const STATUS_LABEL: Record<string, string> = { Connected: 'Bağlı', Pending: 'Doğrulama bekliyor', Disabled: 'Devre dışı', NotConnected: 'Bağlı değil' }
 
-type Tab = 'connections' | 'purchases' | 'pricing' | 'packages'
+type Tab = 'connections' | 'sms' | 'purchases' | 'pricing' | 'packages'
 const TABS: { key: Tab; label: string; icon: typeof MessageCircle }[] = [
-  { key: 'connections', label: 'Bağlantılar', icon: PhoneCall },
-  { key: 'purchases', label: 'Kontör Talepleri', icon: Wallet },
-  { key: 'pricing', label: 'Fiyat & Ayar', icon: Tag },
-  { key: 'packages', label: 'Kontör Paketleri', icon: Package },
+  { key: 'connections', label: 'WhatsApp Bağlantıları', icon: PhoneCall },
+  { key: 'sms', label: 'SMS Bağlantıları', icon: Smartphone },
+  { key: 'purchases', label: 'Kredi Talepleri', icon: Wallet },
+  { key: 'pricing', label: 'Kredi Maliyeti & Ayar', icon: Tag },
+  { key: 'packages', label: 'Kredi Paketleri', icon: Package },
 ]
 
 export default function PlatformWhatsAppPage() {
@@ -44,8 +52,8 @@ function Inner() {
   return (
     <>
       <Topbar
-        title="WhatsApp Yönetimi"
-        subtitle="Meta bağlantıları, kontör faturalama ve satın alma onayları — merkezi kontrol"
+        title="WhatsApp, SMS & Mesaj Kredisi"
+        subtitle="Kurumların WhatsApp ve SMS bağlantıları, mesaj kredisi maliyetleri ve satın alma onayları — merkezi kontrol"
         breadcrumbs={['Platform', 'Sistem', 'WhatsApp']}
       />
       <div className="space-y-6 p-4 sm:p-6 lg:p-8">
@@ -60,6 +68,7 @@ function Inner() {
         </div>
 
         {tab === 'connections' && <ConnectionsTab />}
+        {tab === 'sms' && <SmsConnectionsTab />}
         {tab === 'purchases' && <PurchasesTab />}
         {tab === 'pricing' && <PricingTab />}
         {tab === 'packages' && <PackagesTab />}
@@ -125,6 +134,13 @@ function BindModal({ conn, onClose, onSaved }: { conn: ApiWhatsAppConnection; on
   const [connectionStatus, setConnectionStatus] = useState(conn.connectionStatus || 'Connected')
   const [verifyToken, setVerifyToken] = useState('')
   const [accessTokenOverride, setAccessTokenOverride] = useState('')
+  // Meta onaylı şablon adları — kurum değil platform yönetir (Meta Business Manager platformun).
+  const [kvkkTemplateName, setKvkkTemplateName] = useState(conn.kvkkTemplateName ?? '')
+  const [reminderTemplateName, setReminderTemplateName] = useState(conn.reminderTemplateName ?? '')
+  const [waitlistOfferTemplateName, setWaitlistOfferTemplateName] = useState(conn.waitlistOfferTemplateName ?? '')
+  const [waitlistActivatedTemplateName, setWaitlistActivatedTemplateName] = useState(conn.waitlistActivatedTemplateName ?? '')
+  const [ratingTemplateName, setRatingTemplateName] = useState(conn.ratingTemplateName ?? '')
+  const [templateLanguage, setTemplateLanguage] = useState(conn.templateLanguageCode || 'tr')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [testPhone, setTestPhone] = useState('')
@@ -141,6 +157,13 @@ function BindModal({ conn, onClose, onSaved }: { conn: ApiWhatsAppConnection; on
         connectionStatus,
         verifyToken: verifyToken.trim() || null,
         accessTokenOverride: accessTokenOverride.trim() || null,
+        // Şablon adları HER ZAMAN gönderilir: boş metin = temizle (null gönderilseydi sunucu korurdu).
+        kvkkTemplateName: kvkkTemplateName.trim(),
+        reminderTemplateName: reminderTemplateName.trim(),
+        waitlistOfferTemplateName: waitlistOfferTemplateName.trim(),
+        waitlistActivatedTemplateName: waitlistActivatedTemplateName.trim(),
+        ratingTemplateName: ratingTemplateName.trim(),
+        templateLanguageCode: templateLanguage.trim() || 'tr',
       })
       onSaved()
     } catch (e) { setErr(e instanceof Error ? e.message : 'Kaydedilemedi.') } finally { setBusy(false) }
@@ -155,7 +178,7 @@ function BindModal({ conn, onClose, onSaved }: { conn: ApiWhatsAppConnection; on
   }
 
   return (
-    <Modal title={`${conn.tenantName} — WhatsApp bağla`} onClose={onClose}>
+    <Modal title={`${conn.tenantName} — WhatsApp bağla`} onClose={onClose} wide>
       <div className="space-y-3">
         <p className="rounded-lg border border-[#cfe0ea] bg-[#f2f8fc] px-3 py-2 text-[11px] text-[#39525f]">
           Tek Business Manager altındaki numarayı bu kuruma bağlar. Sistem token'ı platform genelindedir (Sistem Ayarları → Mesajlaşma). Kuruma özel token yalnızca istisnai durumda gerekir.
@@ -175,6 +198,31 @@ function BindModal({ conn, onClose, onSaved }: { conn: ApiWhatsAppConnection; on
         <div className="grid grid-cols-2 gap-3">
           <Field label="Verify token (webhook)" value={verifyToken} onChange={setVerifyToken} placeholder="opsiyonel" />
           <Field label="Token override" value={accessTokenOverride} onChange={setAccessTokenOverride} placeholder="genelde boş" type="password" />
+        </div>
+
+        {/* Meta onaylı şablonlar — 24 saat penceresi kapalıyken zorunlu; kurum değil platform oluşturur. */}
+        <div className="space-y-2 rounded-lg border border-[#ecd9e1] bg-[#fbf7f9] p-2.5">
+          <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#9a7d88]">
+            <FileCheck2 className="h-3.5 w-3.5 text-[#c2436a]" /> Meta onaylı şablonlar
+          </div>
+          <div className="flex items-start gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[10.5px] leading-relaxed text-sky-900">
+            <Info className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>
+              Müşteri son <b>24 saat</b> içinde yazmadıysa serbest metin iletilmez; sistem bu adlardaki şablonla gönderir.
+              Boş bırakılırsa serbest metin denenir. Hatırlatma ve bekleme şablonlarının gövdesi aynı 5 değişkeni bu sırayla kullanmalı:
+              <span className="block font-mono text-[10px]">&#123;&#123;1&#125;&#125; ad · &#123;&#123;2&#125;&#125; tarih · &#123;&#123;3&#125;&#125; saat · &#123;&#123;4&#125;&#125; hizmet · &#123;&#123;5&#125;&#125; kurum</span>
+              KVKK (Utility, belge başlıklı): &#123;&#123;1&#125;&#125; ad · &#123;&#123;2&#125;&#125; kurum · &#123;&#123;3&#125;&#125; metin linki.
+              Değerlendirme: &#123;&#123;1&#125;&#125; ad · &#123;&#123;2&#125;&#125; kurum · &#123;&#123;3&#125;&#125; link. Hızlı yanıt düğmesi kullanmayın.
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="KVKK onay isteği" value={kvkkTemplateName} onChange={setKvkkTemplateName} placeholder="kvkk_acik_riza" mono />
+            <Field label="Randevu hatırlatma" value={reminderTemplateName} onChange={setReminderTemplateName} placeholder="randevu_hatirlatma" mono />
+            <Field label="Bekleme teklifi" value={waitlistOfferTemplateName} onChange={setWaitlistOfferTemplateName} placeholder="bekleme_teklif" mono />
+            <Field label="Bekleme onayı" value={waitlistActivatedTemplateName} onChange={setWaitlistActivatedTemplateName} placeholder="bekleme_onay" mono />
+            <Field label="Değerlendirme linki" value={ratingTemplateName} onChange={setRatingTemplateName} placeholder="degerlendirme" mono />
+            <Field label="Dil kodu" value={templateLanguage} onChange={setTemplateLanguage} placeholder="tr" mono />
+          </div>
         </div>
 
         <div className="rounded-lg border border-[#ecd9e1] bg-[#fbf7f9] p-2.5">
@@ -202,7 +250,99 @@ function BindModal({ conn, onClose, onSaved }: { conn: ApiWhatsAppConnection; on
   )
 }
 
-/* ===================== KONTÖR TALEPLERİ ===================== */
+/* ===================== SMS BAĞLANTILARI ===================== */
+/**
+ * Kurumların KENDİ SMS hesapları (Verimor / Netgsm). Bağlantıyı BeautyAsist kurar; kurum yalnız durumu
+ * görür. Doğrulanmış bağlantıda kurumun müşteri SMS'leri kendi başlığıyla gider (kota/kredi düşmez).
+ */
+function SmsConnectionsTab() {
+  const [refreshKey, setRefreshKey] = useState(0)
+  const { data, loading, error, setData } = useApiQuery<ApiPlatformSmsConnection[]>(
+    () => platformApi.smsConnections<ApiPlatformSmsConnection>(), [refreshKey], { initialData: [] })
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+
+  const rows = (data ?? []).filter((r) => !query.trim() || r.tenantName.toLocaleLowerCase('tr-TR').includes(query.trim().toLocaleLowerCase('tr-TR')))
+  const editing = (data ?? []).find((r) => r.tenantId === editingId) ?? null
+
+  // Pencere kaydettikçe satır yerinde güncellenir (liste yeniden çekilmeden).
+  const updateRow = (tenantId: string, connection: ApiSmsConnection) =>
+    setData((data ?? []).map((r) => (r.tenantId === tenantId ? { ...r, connection } : r)))
+
+  return (
+    <div className="space-y-4">
+      <ApiStateNotice loading={loading} error={error} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="max-w-2xl text-[11.5px] leading-relaxed text-[#6c5661]">
+          Kurumun Verimor / Netgsm hesabını bağlayın ve bir test SMS&apos;iyle doğrulayın. Doğrulanınca kurumun müşteri SMS&apos;leri
+          kendi başlığıyla gider; BeautyAsist kotası ve mesaj kredisi düşmez. Kurum bu bağlantıyı yalnız görür, değiştiremez.
+        </p>
+        <label className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9a7d88]" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Kurum ara"
+            className="w-56 rounded-lg border border-[#ecd9e1] bg-white py-1.5 pl-8 pr-2.5 text-[12px] outline-none focus:border-[#ef6088]" />
+        </label>
+      </div>
+      <div className="overflow-x-auto rounded-[16px] border border-[#ecd9e1] bg-white">
+        <table className="w-full min-w-[640px] text-left text-[12px]">
+          <thead className="bg-[#fbf1f5] text-[11px] uppercase tracking-wide text-[#9a7d88]">
+            <tr>
+              <th className="px-4 py-2.5">Kurum</th>
+              <th className="px-4 py-2.5">Sağlayıcı</th>
+              <th className="px-4 py-2.5">Başlık</th>
+              <th className="px-4 py-2.5">Durum</th>
+              <th className="px-4 py-2.5 text-right">İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.tenantId} className="border-t border-[#f3e6ec]">
+                <td className="px-4 py-2.5">
+                  <div className="font-semibold text-[#3f2d36]">{r.tenantName}</div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-[#9a7d88]">
+                    {r.planName || 'Paket yok'}
+                    {r.connection.smsFeatureAllowed === false && <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">pakette SMS yok</span>}
+                  </div>
+                </td>
+                <td className="px-4 py-2.5 text-[11.5px] text-[#6c5661]">{r.connection.provider || '—'}</td>
+                <td className="px-4 py-2.5 font-mono text-[11px] text-[#6c5661]">{r.connection.sender || '—'}</td>
+                <td className="px-4 py-2.5"><SmsStatusBadge status={r.connection.status} /></td>
+                <td className="px-4 py-2.5 text-right">
+                  <button type="button" onClick={() => setEditingId(r.tenantId)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[#ecd9e1] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#c2436a] hover:bg-[#fff1f6]">
+                    <PenLine className="h-3.5 w-3.5" /> {r.connection.status === 'NotConnected' ? 'Bağla' : 'Yönet'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!loading && rows.length === 0 && (
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-[12px] text-[#9a7d88]">Kurum bulunamadı.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {editing && (
+        <Modal title={`${editing.tenantName} — SMS hesabı`} onClose={() => { setEditingId(null); setRefreshKey((k) => k + 1) }} wide>
+          <div className="mb-3 flex items-center justify-between gap-2 text-[11px] text-[#6c5661]">
+            <span>{editing.planName || 'Paket yok'}</span>
+            <SmsStatusBadge status={editing.connection.status} />
+          </div>
+          <SmsConnectionForm
+            connection={editing.connection}
+            onChange={(next) => updateRow(editing.tenantId, next)}
+            api={{
+              save: (body) => platformApi.saveSmsConnection<ApiSmsConnection>(editing.tenantId, body),
+              test: (phone) => platformApi.testSmsConnection<ApiSmsConnectionTestResult>(editing.tenantId, phone),
+              remove: () => platformApi.deleteSmsConnection<ApiSmsConnection>(editing.tenantId),
+            }}
+          />
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+/* ===================== KREDİ TALEPLERİ ===================== */
 function PurchasesTab() {
   const [refreshKey, setRefreshKey] = useState(0)
   const { data, loading, error } = useApiQuery<ApiCreditPurchase[]>(
@@ -263,7 +403,7 @@ function PurchasesTab() {
               <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-sky-200 bg-sky-50/50 px-4 py-3">
                 <div>
                   <div className="text-[12.5px] font-semibold text-[#3f2d36]">{p.tenantName ?? 'Kurum'}</div>
-                  <div className="text-[11px] text-[#6c5661]">{p.packageName} · {money(p.priceTry)} · {p.provider}</div>
+                  <div className="text-[11px] text-[#6c5661]">{p.packageName} · {credits(p.grantsCredits)} kredi · {money(p.priceTry)} · {p.provider}</div>
                   <div className="text-[10px] text-[#9a7d88]">
                     {new Date(p.createdAtUtc).toLocaleString('tr-TR')}
                     {p.note && <> · {p.note}</>}
@@ -285,14 +425,14 @@ function PurchasesTab() {
       <div>
         <div className="mb-2 text-[12px] font-semibold text-[#3f2d36]">Onay bekleyenler (havale) {pending.length > 0 && <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700">{pending.length}</span>}</div>
         {pending.length === 0 ? (
-          <div className="rounded-[14px] border border-[#ecd9e1] bg-white px-4 py-6 text-center text-[12px] text-[#9a7d88]">Bekleyen kontör talebi yok.</div>
+          <div className="rounded-[14px] border border-[#ecd9e1] bg-white px-4 py-6 text-center text-[12px] text-[#9a7d88]">Bekleyen kredi talebi yok.</div>
         ) : (
           <div className="space-y-2">
             {pending.map((p) => (
               <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-amber-200 bg-amber-50/50 px-4 py-3">
                 <div>
                   <div className="text-[12.5px] font-semibold text-[#3f2d36]">{p.tenantName ?? 'Kurum'}</div>
-                  <div className="text-[11px] text-[#6c5661]">{p.packageName} · ödenecek {money(p.priceTry)} · yüklenecek <b>{money(p.grantsTry)}</b></div>
+                  <div className="text-[11px] text-[#6c5661]">{p.packageName} · ödenecek {money(p.priceTry)} · yüklenecek <b>{credits(p.grantsCredits)} kredi</b></div>
                   <div className="text-[10px] text-[#9a7d88]">{new Date(p.createdAtUtc).toLocaleString('tr-TR')}</div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -320,7 +460,7 @@ function PurchasesTab() {
                 {others.map((p) => (
                   <tr key={p.id} className="border-t border-[#f3e6ec] first:border-t-0">
                     <td className="px-4 py-2.5">{p.tenantName ?? 'Kurum'}</td>
-                    <td className="px-4 py-2.5 text-[#6c5661]">{p.packageName} · {money(p.grantsTry)}</td>
+                    <td className="px-4 py-2.5 text-[#6c5661]">{p.packageName} · {credits(p.grantsCredits)} kredi · {money(p.priceTry)}</td>
                     <td className="px-4 py-2.5"><PurchaseBadge status={p.status} /></td>
                     <td className="px-4 py-2.5 text-right text-[10.5px] text-[#9a7d88]">{new Date(p.createdAtUtc).toLocaleDateString('tr-TR')}</td>
                   </tr>
@@ -350,10 +490,10 @@ function PricingTab() {
 
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-[12px] font-semibold text-[#3f2d36]">Kategori fiyatları</div>
+          <div className="text-[12px] font-semibold text-[#3f2d36]">WhatsApp kategori kredi maliyetleri <span className="font-normal text-[#9a7d88]">· 1 kredi = 1 hatırlatma</span></div>
           <button type="button" onClick={() => setEditing('new')}
             className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-[#f47699] to-[#ef6088] px-3 py-1.5 text-[11px] font-semibold text-white">
-            <Plus className="h-3.5 w-3.5" /> Fiyat kuralı
+            <Plus className="h-3.5 w-3.5" /> Maliyet kuralı
           </button>
         </div>
         <div className="overflow-hidden rounded-[14px] border border-[#ecd9e1] bg-white">
@@ -363,7 +503,7 @@ function PricingTab() {
                 <th className="px-4 py-2.5">Kategori</th>
                 <th className="px-4 py-2.5">Meta (USD)</th>
                 <th className="px-4 py-2.5">≈ Meta (₺)</th>
-                <th className="px-4 py-2.5">Satış (₺)</th>
+                <th className="px-4 py-2.5">Kredi / mesaj</th>
                 <th className="px-4 py-2.5">Yürürlük</th>
                 <th className="px-4 py-2.5 text-right">İşlem</th>
               </tr>
@@ -374,7 +514,7 @@ function PricingTab() {
                   <td className="px-4 py-2.5 font-medium text-[#3f2d36]">{CATEGORY_LABEL[r.category] ?? r.category}</td>
                   <td className="px-4 py-2.5 text-[#6c5661]">${r.metaUsdPrice.toFixed(4)}</td>
                   <td className="px-4 py-2.5 text-[#9a7d88]">{money(r.estimatedMetaTry)}</td>
-                  <td className="px-4 py-2.5 font-semibold text-[#c2436a]">{money(r.sellPriceTry)}</td>
+                  <td className="px-4 py-2.5 font-semibold text-[#c2436a]">{credits(r.creditCost)} kredi</td>
                   <td className="px-4 py-2.5 text-[10.5px] text-[#9a7d88]">{new Date(r.effectiveFromUtc).toLocaleDateString('tr-TR')}</td>
                   <td className="px-4 py-2.5 text-right">
                     <button type="button" onClick={() => setEditing(r)} className="mr-1 inline-flex items-center rounded-lg border border-[#ecd9e1] bg-white p-1.5 text-[#c2436a] hover:bg-[#fff1f6]"><PenLine className="h-3.5 w-3.5" /></button>
@@ -395,40 +535,54 @@ function BillingSettingsCard({ settings, onSaved }: { settings: ApiWhatsAppBilli
   const [billingEnabled, setBillingEnabled] = useState(settings.billingEnabled)
   const [autoApprove, setAutoApprove] = useState(settings.autoApproveTopUps)
   const [rate, setRate] = useState(String(settings.usdTryRate))
-  const [lowBalance, setLowBalance] = useState(String(settings.lowBalanceThresholdTry))
-  const [cap, setCap] = useState(settings.defaultMonthlySpendCapTry != null ? String(settings.defaultMonthlySpendCapTry) : '')
+  const [lowBalance, setLowBalance] = useState(String(settings.lowBalanceThresholdCredits))
+  const [cap, setCap] = useState(settings.defaultMonthlySpendCapCredits != null ? String(settings.defaultMonthlySpendCapCredits) : '')
+  const [smsPerPart, setSmsPerPart] = useState(String(settings.smsCreditsPerPart))
+  const [unitPrice, setUnitPrice] = useState(String(settings.creditUnitPriceTry))
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
 
   const save = async () => {
-    setBusy(true)
+    setBusy(true); setErr(null)
     try {
       await platformApi.saveWaBillingSettings({
         billingEnabled, chargeSimulated: settings.chargeSimulated,
-        usdTryRate: Number(rate) || 0, lowBalanceThresholdTry: Number(lowBalance) || 0,
-        defaultMonthlySpendCapTry: cap.trim() === '' ? null : Number(cap), autoApproveTopUps: autoApprove,
+        usdTryRate: Number(rate) || 0,
+        lowBalanceThresholdCredits: Number(lowBalance) || 0,
+        defaultMonthlySpendCapCredits: cap.trim() === '' ? null : Number(cap),
+        autoApproveTopUps: autoApprove,
+        smsCreditsPerPart: Number(smsPerPart) || 0,
+        creditUnitPriceTry: Number(unitPrice) || 0,
       })
       setSaved(true); onSaved(); setTimeout(() => setSaved(false), 2000)
-    } finally { setBusy(false) }
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Kaydedilemedi.') } finally { setBusy(false) }
   }
 
   return (
     <div className="rounded-[16px] border border-[#ecd9e1] bg-white p-4">
-      <div className="mb-3 flex items-center gap-2 text-[12px] font-semibold text-[#3f2d36]"><Settings2 className="h-4 w-4 text-[#c2436a]" /> Genel faturalama ayarları</div>
+      <div className="mb-3 flex items-center gap-2 text-[12px] font-semibold text-[#3f2d36]"><Settings2 className="h-4 w-4 text-[#c2436a]" /> Mesaj kredisi ayarları <span className="font-normal text-[#9a7d88]">· WhatsApp + SMS ortak cüzdan</span></div>
       <div className="grid gap-3 sm:grid-cols-3">
-        <NumField label="USD/₺ kuru" value={rate} onChange={setRate} />
-        <NumField label="Düşük bakiye eşiği (₺)" value={lowBalance} onChange={setLowBalance} />
-        <NumField label="Varsayılan aylık tavan (₺)" value={cap} onChange={setCap} placeholder="boş = sınırsız" />
+        <NumField label="SMS kredi / parça" value={smsPerPart} onChange={setSmsPerPart} />
+        <NumField label="1 kredi fiyatı (₺) — paket dışı alım" value={unitPrice} onChange={setUnitPrice} />
+        <NumField label="USD/₺ kuru (Meta maliyeti)" value={rate} onChange={setRate} />
+        <NumField label="Düşük bakiye eşiği (kredi)" value={lowBalance} onChange={setLowBalance} />
+        <NumField label="Varsayılan aylık tavan (kredi)" value={cap} onChange={setCap} placeholder="boş = sınırsız" />
       </div>
+      <p className="mt-2 text-[10.5px] leading-relaxed text-[#9a7d88]">
+        SMS Unicode gider: 70 karaktere kadar 1 parça, daha uzunu 67&apos;lik parçalara bölünür; mesajın kredisi = parça × SMS kredisi.
+        Paket fiyatları paketlerin kendisindedir; birim fiyat yalnız kurumun serbest miktarda aldığı kredi içindir.
+      </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <MiniToggle label="Faturalama açık" on={billingEnabled} toggle={() => setBillingEnabled((v) => !v)} />
-        <MiniToggle label="Kontör taleplerini otomatik onayla" on={autoApprove} toggle={() => setAutoApprove((v) => !v)} />
+        <MiniToggle label="Kredi taleplerini otomatik onayla" on={autoApprove} toggle={() => setAutoApprove((v) => !v)} />
       </div>
       {!billingEnabled && (
         <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10.5px] text-amber-800">
-          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> Faturalama kapalıyken tüm mesajlar kontör düşülmeden gönderilir (pilot dönemi).
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> Faturalama kapalıyken mesajlar krediden düşülmeden yalnız plan kotasıyla gönderilir (pilot dönemi).
         </div>
       )}
+      {err && <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">{err}</div>}
       <div className="mt-3 flex justify-end">
         <button type="button" disabled={busy} onClick={save} className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50">
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saved ? <Check className="h-3.5 w-3.5" /> : null} {saved ? 'Kaydedildi' : 'Kaydet'}
@@ -441,7 +595,7 @@ function BillingSettingsCard({ settings, onSaved }: { settings: ApiWhatsAppBilli
 function PricingModal({ rule, onClose, onSaved }: { rule: ApiWhatsAppPricingRule | null; onClose: () => void; onSaved: () => void }) {
   const [category, setCategory] = useState<WhatsAppMessageCategory>(rule?.category ?? 'Utility')
   const [metaUsd, setMetaUsd] = useState(String(rule?.metaUsdPrice ?? 0.0009))
-  const [sell, setSell] = useState(String(rule?.sellPriceTry ?? 0.15))
+  const [cost, setCost] = useState(String(rule?.creditCost ?? 1))
   const [effective, setEffective] = useState((rule?.effectiveFromUtc ?? new Date().toISOString()).slice(0, 10))
   const [note, setNote] = useState(rule?.note ?? '')
   const [busy, setBusy] = useState(false)
@@ -450,7 +604,7 @@ function PricingModal({ rule, onClose, onSaved }: { rule: ApiWhatsAppPricingRule
   const save = async () => {
     setBusy(true); setErr(null)
     try {
-      const body = { category, metaUsdPrice: Number(metaUsd) || 0, sellPriceTry: Number(sell) || 0, effectiveFromUtc: new Date(effective).toISOString(), note: note.trim() || null }
+      const body = { category, metaUsdPrice: Number(metaUsd) || 0, creditCost: Number(cost) || 0, effectiveFromUtc: new Date(effective).toISOString(), note: note.trim() || null }
       if (rule) await platformApi.updateWaPricing(rule.id, body)
       else await platformApi.createWaPricing(body)
       onSaved()
@@ -458,7 +612,7 @@ function PricingModal({ rule, onClose, onSaved }: { rule: ApiWhatsAppPricingRule
   }
 
   return (
-    <Modal title={rule ? 'Fiyat kuralını düzenle' : 'Yeni fiyat kuralı'} onClose={onClose}>
+    <Modal title={rule ? 'Maliyet kuralını düzenle' : 'Yeni maliyet kuralı'} onClose={onClose}>
       <div className="space-y-3">
         <div>
           <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#9a7d88]">Kategori</label>
@@ -469,8 +623,9 @@ function PricingModal({ rule, onClose, onSaved }: { rule: ApiWhatsAppPricingRule
         </div>
         <div className="grid grid-cols-2 gap-3">
           <NumField label="Meta fiyatı (USD)" value={metaUsd} onChange={setMetaUsd} />
-          <NumField label="Satış fiyatı (₺)" value={sell} onChange={setSell} />
+          <NumField label="Kurumdan düşen kredi" value={cost} onChange={setCost} />
         </div>
+        <p className="text-[10px] text-[#9a7d88]">1 kredi = 1 hatırlatma. 0 girilen ücretli kategori gönderilmez (tanımsız sayılır); ücretsiz yalnız Servis kategorisidir.</p>
         <div>
           <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#9a7d88]">Yürürlük tarihi</label>
           <input type="date" value={effective} onChange={(e) => setEffective(e.target.value)}
@@ -490,7 +645,7 @@ function PricingModal({ rule, onClose, onSaved }: { rule: ApiWhatsAppPricingRule
   )
 }
 
-/* ===================== KONTÖR PAKETLERİ ===================== */
+/* ===================== KREDİ PAKETLERİ ===================== */
 function PackagesTab() {
   const [refreshKey, setRefreshKey] = useState(0)
   const { data, loading, error } = useApiQuery<ApiCreditPackage[]>(
@@ -516,8 +671,8 @@ function PackagesTab() {
               </div>
               {!p.isActive && <span className="rounded bg-[#f3e6ec] px-1.5 py-0.5 text-[9px] font-semibold text-[#9a7d88]">Pasif</span>}
             </div>
-            <div className="mt-2 text-[22px] font-bold text-[#c2436a]">{money(p.priceTry)}</div>
-            <div className="text-[11px] text-[#6c5661]">Yüklenen: <b>{money(p.grantsTry)}</b>{p.grantsTry > p.priceTry && <span className="text-emerald-600"> (+{money(p.grantsTry - p.priceTry)})</span>}</div>
+            <div className="mt-2 text-[22px] font-bold text-[#c2436a]">{credits(p.grantsCredits)} kredi</div>
+            <div className="text-[11px] text-[#6c5661]">Fiyat: <b>{money(p.priceTry)}</b>{p.grantsCredits > 0 && <span className="text-[#9a7d88]"> · kredi başı {money(p.priceTry / p.grantsCredits)}</span>}</div>
             <div className="text-[10.5px] text-[#9a7d88]">≈ {p.estimatedUtilityMessages.toLocaleString('tr-TR')} mesaj</div>
             <div className="mt-3 flex gap-2">
               <button type="button" onClick={() => setEditing(p)} className="inline-flex items-center gap-1 rounded-lg border border-[#ecd9e1] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#c2436a] hover:bg-[#fff1f6]"><PenLine className="h-3.5 w-3.5" /> Düzenle</button>
@@ -535,7 +690,7 @@ function PackageModal({ pkg, onClose, onSaved }: { pkg: ApiCreditPackage | null;
   const [name, setName] = useState(pkg?.name ?? '')
   const [description, setDescription] = useState(pkg?.description ?? '')
   const [price, setPrice] = useState(String(pkg?.priceTry ?? 150))
-  const [grants, setGrants] = useState(String(pkg?.grantsTry ?? 150))
+  const [grants, setGrants] = useState(String(pkg?.grantsCredits ?? 1000))
   const [order, setOrder] = useState(String(pkg?.displayOrder ?? 0))
   const [active, setActive] = useState(pkg?.isActive ?? true)
   const [busy, setBusy] = useState(false)
@@ -544,7 +699,7 @@ function PackageModal({ pkg, onClose, onSaved }: { pkg: ApiCreditPackage | null;
   const save = async () => {
     setBusy(true); setErr(null)
     try {
-      const body = { name: name.trim(), description: description.trim() || null, priceTry: Number(price) || 0, grantsTry: Number(grants) || 0, displayOrder: Number(order) || 0, isActive: active }
+      const body = { name: name.trim(), description: description.trim() || null, priceTry: Number(price) || 0, grantsCredits: Number(grants) || 0, displayOrder: Number(order) || 0, isActive: active }
       if (pkg) await platformApi.updateWaCreditPackage(pkg.id, body)
       else await platformApi.createWaCreditPackage(body)
       onSaved()
@@ -552,15 +707,18 @@ function PackageModal({ pkg, onClose, onSaved }: { pkg: ApiCreditPackage | null;
   }
 
   return (
-    <Modal title={pkg ? 'Paketi düzenle' : 'Yeni kontör paketi'} onClose={onClose}>
+    <Modal title={pkg ? 'Paketi düzenle' : 'Yeni kredi paketi'} onClose={onClose}>
       <div className="space-y-3">
-        <Field label="Paket adı" value={name} onChange={setName} placeholder="örn. Başlangıç Kontör" />
-        <Field label="Açıklama" value={description} onChange={setDescription} placeholder="≈1.000 mesaj" />
+        <Field label="Paket adı" value={name} onChange={setName} placeholder="örn. Başlangıç Kredi" />
+        <Field label="Açıklama" value={description} onChange={setDescription} placeholder="≈1.000 WhatsApp hatırlatma ya da 500 SMS" />
         <div className="grid grid-cols-3 gap-3">
           <NumField label="Fiyat (₺)" value={price} onChange={setPrice} />
-          <NumField label="Yüklenen (₺)" value={grants} onChange={setGrants} />
+          <NumField label="Yüklenen kredi" value={grants} onChange={setGrants} />
           <NumField label="Sıra" value={order} onChange={setOrder} />
         </div>
+        {Number(grants) > 0 && Number(price) > 0 && (
+          <p className="text-[10.5px] text-[#9a7d88]">Kredi başı {money(Number(price) / Number(grants))}</p>
+        )}
         <MiniToggle label="Aktif (satışta)" on={active} toggle={() => setActive((v) => !v)} />
         {err && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">{err}</div>}
         <div className="flex justify-end gap-2 pt-1">
@@ -575,10 +733,10 @@ function PackageModal({ pkg, onClose, onSaved }: { pkg: ApiCreditPackage | null;
 }
 
 /* ===================== ORTAK ===================== */
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[18px] border border-[#ecd9e1] bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className={`max-h-[90vh] w-full ${wide ? 'max-w-xl' : 'max-w-md'} overflow-y-auto rounded-[18px] border border-[#ecd9e1] bg-white p-5 shadow-2xl`} onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-[14px] font-semibold text-[#3f2d36]">{title}</h3>
           <button type="button" onClick={onClose} className="rounded-lg p-1 text-[#9a7d88] hover:bg-[#f7eef2]"><X className="h-4 w-4" /></button>

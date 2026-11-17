@@ -269,7 +269,11 @@ public sealed class CustomerPortalService : ICustomerPortalService
             return Result<PortalAppointmentDto>.Failure(Error.Conflict("Seçilen saat dolu. Lütfen başka bir saat seçin."));
 
         // Randevunun bağlanacağı (kurum altındaki) müşteri kaydını çöz/oluştur — kurum izolasyonu için.
-        var bookingCustomerId = await ResolveTenantCustomerAsync(identity, tenantId, request.BranchId, cancellationToken);
+        var resolvedCustomerId = await ResolveTenantCustomerAsync(identity, tenantId, request.BranchId, cancellationToken);
+        // Salonun ödenmiş müşteri kapasitesi dolu → yeni (gölge) müşteri açılamaz. Mesaj salon müşterisine
+        // gösterilir: faturalama içeriği YOK.
+        if (resolvedCustomerId is not { } bookingCustomerId)
+            return Result<PortalAppointmentDto>.Failure(Error.CustomerLimitReached(TierEntitlementQuery.PublicCustomerLimitMessage));
 
         // Spam freni: müşterinin bu kurumda aynı anda sınırlı sayıda açık (gelecek tarihli) randevusu olabilir.
         var nowUtc = DateTime.UtcNow;
@@ -348,9 +352,10 @@ public sealed class CustomerPortalService : ICustomerPortalService
     /// <summary>
     /// Randevunun bağlanacağı, hedef kurum (tenantId) altındaki müşteri kaydını döndürür.
     /// Müşteri zaten o kurumda (kendi tenant'ı) ise kendisi; pazaryeri müşterisi ise kimliğe (telefon+doğum+ad)
-    /// göre o kurumda eşleşen kayıt, yoksa yeni "gölge" müşteri oluşturulur.
+    /// göre o kurumda eşleşen kayıt, yoksa yeni "gölge" müşteri oluşturulur. Yeni kayıt kurumun ödenmiş
+    /// MÜŞTERİ kapasitesini aşacaksa null döner (müşteri açılmaz).
     /// </summary>
-    private async Task<Guid> ResolveTenantCustomerAsync(Customer identity, Guid tenantId, Guid branchId, CancellationToken ct)
+    private async Task<Guid?> ResolveTenantCustomerAsync(Customer identity, Guid tenantId, Guid branchId, CancellationToken ct)
     {
         if (identity.TenantId == tenantId) return identity.Id;
 
@@ -361,6 +366,10 @@ public sealed class CustomerPortalService : ICustomerPortalService
             .ToListAsync(ct);
         var match = existing.FirstOrDefault(c => PhoneMask.LoginKey(c.Phone) == key && NormalizeName(c.FullName) == name);
         if (match is not null) return match.Id;
+
+        // ÜCRETLİ MÜŞTERİ KADEMESİ: yeni kayıt ödenmemiş bir kademeye düşüyorsa açılmaz.
+        var tier = await TierEntitlementQuery.EvaluateAsync(_db, tenantId, Domain.Billing.TierDimension.Customers, DateTime.UtcNow, ct);
+        if (!tier.Allowed) return null;
 
         var shadow = new Customer(tenantId, branchId, identity.FullName, identity.Phone, identity.Email);
         shadow.UpdateProfile(identity.BirthDate, identity.Gender, kvkkConsent: true, notes: "Online randevu (pazaryeri) ile oluşturuldu.");

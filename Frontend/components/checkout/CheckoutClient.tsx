@@ -9,7 +9,8 @@ import {
 import { useAuth } from '@/components/dashboard/AuthContext'
 import { apiRequest } from '@/lib/apiClient'
 import { useCart } from '@/lib/cart'
-import { planFeatureLabels, planLimitLabels, type PublicPlan } from '@/lib/plans'
+import { planFeatureLabels, planLimitLabels, tierLabels, vatRateOf, type PublicPlan } from '@/lib/plans'
+import type { SubscriptionQuote } from '@/lib/types'
 import PressButton from '@/components/landing/apple/PressButton'
 import { legalLinks } from '@/lib/legal/company'
 
@@ -38,10 +39,8 @@ interface CheckoutResponse {
   amountTRY: number
 }
 
-const tl = (n: number) => `₺${Math.round(n).toLocaleString('tr-TR')}`
-
-/** KDV oranı yalnız GÖSTERİM içindir; tahsilatta geçerli olan sunucunun döndüğü tutardır. */
-const VAT_RATE = 0.2
+/** Kuruşlu TL (ödeme ekranında yuvarlama yanıltıcı olur: 580,64 ≠ 581). */
+const tl = (n: number) => `₺${n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export default function CheckoutClient({ plans }: { plans: PublicPlan[] | null }) {
   const { hydrated, isAuthenticated, user } = useAuth()
@@ -51,6 +50,7 @@ export default function CheckoutClient({ plans }: { plans: PublicPlan[] | null }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [checkout, setCheckout] = useState<CheckoutResponse | null>(null)
+  const [quote, setQuote] = useState<SubscriptionQuote | null>(null)
   const formHost = useRef<HTMLDivElement>(null)
 
   useEffect(() => setMounted(true), [])
@@ -60,10 +60,28 @@ export default function CheckoutClient({ plans }: { plans: PublicPlan[] | null }
     [item, plans],
   )
 
-  /** Yıllık seçimde aylık karşılığı da gösterilir; kullanıcı neye baktığını bilsin. */
-  const gross = item?.period === 'yearly' ? plan?.yearlyPriceTRY ?? 0 : plan?.monthlyPriceTRY ?? 0
-  const net = gross > 0 ? gross / (1 + VAT_RATE) : 0
-  const vat = gross - net
+  /**
+   * GİRİŞLİ: tutar SUNUCU teklifinden gelir — kurumun şube sayısı, müşteri / onam kademeleri ve
+   * KDV ile; tahsilat aynı hesabı yapar. Teklif alınamazsa birim fiyat gösterilir (tahsil edilen
+   * tutar her durumda form açıldığında sunucunun döndüğü `amountTRY`'dir).
+   */
+  useEffect(() => {
+    if (!isAuthenticated || !item) { setQuote(null); return }
+    let alive = true
+    apiRequest<SubscriptionQuote>('/api/admin/billing/quote', {
+      query: { planId: item.planId, period: item.period === 'yearly' ? 'Yearly' : 'Monthly' },
+    })
+      .then((q) => { if (alive) setQuote(q) })
+      .catch(() => { if (alive) setQuote(null) })
+    return () => { alive = false }
+  }, [isAuthenticated, item])
+
+  // Girişsiz ya da teklif yokken: birim fiyat (KDV HARİÇ) + KDV.
+  const unitNet = item?.period === 'yearly' ? plan?.yearlyPriceTRY ?? 0 : plan?.monthlyPriceTRY ?? 0
+  const vatRate = quote?.vatRate ?? (plan ? vatRateOf(plan) : 0.2)
+  const net = quote?.subtotal ?? unitNet
+  const vat = quote?.vat ?? Math.round(unitNet * vatRate * 100) / 100
+  const gross = quote?.total ?? net + vat
 
   /**
    * iyzico'nun form içeriği <script> taşır. `dangerouslySetInnerHTML` ile basılan script'ler
@@ -142,7 +160,7 @@ export default function CheckoutClient({ plans }: { plans: PublicPlan[] | null }
                   {tl(gross)}
                 </span>
                 <span className="pb-1 text-[14px] text-white/70">
-                  {item.period === 'yearly' ? 'yılda bir' : 'ayda bir'}
+                  {item.period === 'yearly' ? 'yılda bir' : 'ayda bir'} · KDV dahil
                 </span>
               </p>
               {item.period === 'yearly' && gross > 0 && (
@@ -152,12 +170,37 @@ export default function CheckoutClient({ plans }: { plans: PublicPlan[] | null }
               )}
 
               <div className="mt-9 space-y-4 border-t border-white/15 pt-6">
-                <Row label={plan.name} sub={item.period === 'yearly' ? 'Yıllık faturalandırılır' : 'Aylık faturalandırılır'} value={tl(net)} />
-                <Row label="Ara toplam" value={tl(net)} bold />
-                <Row label="KDV (%20)" value={tl(vat)} muted />
+                {quote ? (
+                  quote.lines.map((l) => (
+                    <Row key={l.code + l.label} label={l.label}
+                      sub={l.code === 'branches' ? `${l.quantity} × ${tl(l.unitNet)}` : undefined}
+                      value={tl(l.net)} />
+                  ))
+                ) : (
+                  <Row label={plan.name}
+                    sub={`${item.period === 'yearly' ? 'Yıllık' : 'Aylık'} faturalandırılır${plan.chargePerBranch ? ' · şube başına' : ''}`}
+                    value={tl(net)} />
+                )}
+                <Row label="Ara toplam (KDV hariç)" value={tl(net)} bold />
+                <Row label={`KDV (%${Math.round(vatRate * 100)})`} value={tl(vat)} muted />
                 <div className="border-t border-white/15 pt-4">
                   <Row label="Bugün ödenecek toplam" value={tl(gross)} bold big />
                 </div>
+                {!quote && plan.chargePerBranch && (
+                  <p className="text-[12px] leading-relaxed text-white/60">
+                    Fiyat şube başınadır; şube sayınız ve müşteri / onam kademeleriniz giriş yaptıktan sonra hesaplanır.
+                  </p>
+                )}
+                {(plan.customerTiers?.length ?? 0) + (plan.consentTiers?.length ?? 0) > 0 && (
+                  <div className="space-y-1 text-[11.5px] leading-relaxed text-white/55">
+                    {tierLabels(plan.customerTiers, 'müşteri').length > 0 && (
+                      <p>Müşteri kademesi: {tierLabels(plan.customerTiers, 'müşteri').join(' · ')} (+KDV)</p>
+                    )}
+                    {tierLabels(plan.consentTiers, 'imzalı onam').length > 0 && (
+                      <p>Dijital onam: {tierLabels(plan.consentTiers, 'imzalı onam').join(' · ')} (+KDV)</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <ul className="mt-8 hidden space-y-2.5 border-t border-white/15 pt-6 lg:block">

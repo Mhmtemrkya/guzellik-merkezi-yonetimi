@@ -1,4 +1,5 @@
 using GuzellikMerkezi.Application.Abstractions;
+using GuzellikMerkezi.Application.Features.Billing;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Background;
 using GuzellikMerkezi.Infrastructure.Persistence;
@@ -64,6 +65,19 @@ public sealed class SubscriptionRenewalBackgroundService : BackgroundService
 
         var settings = await db.PlatformIntegrationSettings.AsNoTracking().FirstOrDefaultAsync(ct);
         if (settings is null || !settings.PaymentsEnabled) return;
+
+        // SONUCU BEKLEYEN EK ŞUBE ÖDEMELERİ: yanıtı kaybolmuş çekim sağlayıcıya sorulur; başarılıysa
+        // şube ödemedeki bilgiden açılır, kesin redde kapanır. Kullanıcı tekrar denediğinde de sorulur.
+        try
+        {
+            var billing = scope.ServiceProvider.GetRequiredService<IBillingService>();
+            var opened = await billing.ResolvePendingBranchChargesAsync(ct);
+            if (opened > 0) _logger.LogInformation("{Count} bekleyen ek şube ödemesi doğrulandı; şubeler açıldı.", opened);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Bekleyen şube ödemeleri sonuçlandırılamadı.");
+        }
 
         var dueBefore = DateTime.UtcNow + BillingService.RenewalLeadTime;
 

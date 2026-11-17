@@ -1,6 +1,8 @@
 using System.Text.Json;
 using GuzellikMerkezi.Application.Abstractions;
+using GuzellikMerkezi.Application.Features.Notifications;
 using GuzellikMerkezi.Application.Features.WhatsApp;
+using GuzellikMerkezi.Domain.Enums;
 
 namespace GuzellikMerkezi.Infrastructure.Background;
 
@@ -33,7 +35,7 @@ internal static class DurableJobDispatchGuard
     {
         if (!report.ShouldRetry) return;
         throw new InvalidOperationException(
-            $"WhatsApp gönderimi başarısız ({jobType}, {entityId}): {report.Error ?? "sebep bildirilmedi"}");
+            $"Mesaj gönderimi başarısız ({jobType}, {entityId}): {report.Error ?? "sebep bildirilmedi"}");
     }
 }
 
@@ -77,21 +79,32 @@ public sealed class SubscriptionRenewalJobHandler : IDurableJobHandler
 }
 
 /// <summary>
-/// KVKK açık rıza isteğini WhatsApp'tan gönderir. İstek yolundan ayrıldığı için müşteri
-/// kaydetme işlemi WhatsApp yavaşlığından/kesintisinden etkilenmez; gönderim başarısız olursa
-/// kuyruk otomatik yeniden dener.
+/// KVKK mesajını kurumun seçtiği kanaldan gönderir. WhatsApp: açık rıza isteği (müşteri ONAYLIYORUM
+/// yazar, webhook işler). SMS: yalnız aydınlatma metni LİNKİ — SMS yanıtı işlenmediği için rıza bu
+/// yoldan alınmaz. İstek yolundan ayrıldığı için müşteri kaydetme işlemi gönderim
+/// yavaşlığından/kesintisinden etkilenmez; gönderim başarısız olursa kuyruk otomatik yeniden dener.
 /// </summary>
 public sealed class KvkkConsentJobHandler : IDurableJobHandler
 {
     private readonly IWhatsAppService _whatsApp;
-    public KvkkConsentJobHandler(IWhatsAppService whatsApp) => _whatsApp = whatsApp;
+    private readonly ICustomerSmsService _sms;
+
+    public KvkkConsentJobHandler(IWhatsAppService whatsApp, ICustomerSmsService sms)
+    {
+        _whatsApp = whatsApp;
+        _sms = sms;
+    }
+
     public string JobType => DurableJobTypes.KvkkConsent;
 
     public async Task ExecuteAsync(string payloadJson, CancellationToken ct)
     {
         var job = JsonSerializer.Deserialize<KvkkConsentJob>(payloadJson)
                   ?? throw new InvalidOperationException("KvkkConsent payload çözülemedi.");
-        var report = await _whatsApp.SendKvkkConsentRequestAsync(job.TenantId, job.CustomerId, ct);
+        var channel = await _sms.ResolveChannelAsync(job.TenantId, OneWayMessageKind.Kvkk, ct);
+        var report = channel == NotificationChannel.Sms
+            ? await _sms.SendKvkkInfoAsync(job.TenantId, job.CustomerId, ct)
+            : await _whatsApp.SendKvkkConsentRequestAsync(job.TenantId, job.CustomerId, ct);
         DurableJobDispatchGuard.EnsureDelivered(report, JobType, job.CustomerId);
     }
 }
@@ -111,34 +124,48 @@ public sealed class WaitlistOfferJobHandler : IDurableJobHandler
     }
 }
 
+/// <summary>Bekleme listesinden randevu oluşunca müşteriye bildirim — kurumun seçtiği kanaldan (WhatsApp / SMS).</summary>
 public sealed class WaitlistActivatedJobHandler : IDurableJobHandler
 {
     private readonly IWhatsAppService _whatsApp;
-    public WaitlistActivatedJobHandler(IWhatsAppService whatsApp) => _whatsApp = whatsApp;
+    private readonly ICustomerSmsService _sms;
+
+    public WaitlistActivatedJobHandler(IWhatsAppService whatsApp, ICustomerSmsService sms)
+    {
+        _whatsApp = whatsApp;
+        _sms = sms;
+    }
+
     public string JobType => DurableJobTypes.WaitlistActivated;
 
     public async Task ExecuteAsync(string payloadJson, CancellationToken ct)
     {
         var job = JsonSerializer.Deserialize<WaitlistActivatedJob>(payloadJson)
                   ?? throw new InvalidOperationException("WaitlistActivated payload çözülemedi.");
-        var report = await _whatsApp.SendWaitlistActivatedAsync(job.TenantId, job.AppointmentId, ct);
+        var channel = await _sms.ResolveChannelAsync(job.TenantId, OneWayMessageKind.WaitlistActivated, ct);
+        var report = channel == NotificationChannel.Sms
+            ? await _sms.SendWaitlistActivatedAsync(job.TenantId, job.AppointmentId, ct)
+            : await _whatsApp.SendWaitlistActivatedAsync(job.TenantId, job.AppointmentId, ct);
         DurableJobDispatchGuard.EnsureDelivered(report, JobType, job.AppointmentId);
     }
 }
 
 /// <summary>
-/// Randevu tamamlanınca: 24 saat geçerli değerlendirme linki üretir (idempotent) ve müşteriye
-/// WhatsApp'tan gönderir. Link hem personel hem salon yıldızını kapsar. Zaten puanlanmışsa sessizce biter.
+/// Randevu tamamlanınca: 24 saat geçerli değerlendirme linki üretir (idempotent) ve müşteriye kurumun
+/// seçtiği kanaldan (WhatsApp / SMS) gönderir. Link hem personel hem salon yıldızını kapsar. Zaten
+/// puanlanmışsa sessizce biter.
 /// </summary>
 public sealed class RatingLinkJobHandler : IDurableJobHandler
 {
     private readonly Application.Features.Ratings.IRatingService _ratings;
     private readonly IWhatsAppService _whatsApp;
+    private readonly ICustomerSmsService _sms;
 
-    public RatingLinkJobHandler(Application.Features.Ratings.IRatingService ratings, IWhatsAppService whatsApp)
+    public RatingLinkJobHandler(Application.Features.Ratings.IRatingService ratings, IWhatsAppService whatsApp, ICustomerSmsService sms)
     {
         _ratings = ratings;
         _whatsApp = whatsApp;
+        _sms = sms;
     }
 
     public string JobType => DurableJobTypes.RatingLink;
@@ -151,7 +178,10 @@ public sealed class RatingLinkJobHandler : IDurableJobHandler
             Domain.Entities.AppointmentRating.WhatsAppLinkLifetimeMinutes, ct);
         // Conflict = zaten puanlanmış → gönderilecek bir şey yok; diğer hatalarda da sessizce bit (best-effort).
         if (issued.IsFailure) return;
-        var report = await _whatsApp.SendRatingLinkAsync(job.TenantId, job.AppointmentId, issued.Value!.Token, ct);
+        var channel = await _sms.ResolveChannelAsync(job.TenantId, OneWayMessageKind.RatingLink, ct);
+        var report = channel == NotificationChannel.Sms
+            ? await _sms.SendRatingLinkAsync(job.TenantId, job.AppointmentId, issued.Value!.Token, ct)
+            : await _whatsApp.SendRatingLinkAsync(job.TenantId, job.AppointmentId, issued.Value!.Token, ct);
         DurableJobDispatchGuard.EnsureDelivered(report, JobType, job.AppointmentId);
     }
 }

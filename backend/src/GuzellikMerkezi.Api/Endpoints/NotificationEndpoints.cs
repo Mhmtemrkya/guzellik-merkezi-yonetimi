@@ -49,6 +49,15 @@ public static class NotificationEndpoints
             return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await svc.SendAsync(t, req, ct)).ToHttpResult(http);
         });
 
+        // GÖNDERİM ÖNCESİ TAHMİN: kitle, SMS parçası, kotadan/krediden düşecek miktar. Hiçbir şey yazmaz.
+        // POST çünkü seçili müşteri listesi URL'ye sığmaz; personel onay kapısında salt-okunur
+        // olarak muaftır (bkz. StaffApprovalGateMiddleware.ReadOnlyPostPaths).
+        tpl.MapPost("/estimate", async (SendNotificationRequest req, Guid? tenantId, ICurrentUser cu, INotificationService svc, HttpContext http, CancellationToken ct) =>
+        {
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await svc.EstimateAsync(t, req, ct)).ToHttpResult(http);
+        });
+
         // Vadesi geçen taksit hatırlatmasını şimdi çalıştır (arka plan taramasını beklemeden).
         tpl.MapPost("/payment-reminders/run", async (Guid? tenantId, ICurrentUser cu, INotificationService svc, HttpContext http, CancellationToken ct) =>
         {

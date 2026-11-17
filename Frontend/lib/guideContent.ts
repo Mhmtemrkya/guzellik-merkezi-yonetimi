@@ -848,12 +848,13 @@ const guides: Record<string, PageGuide> = {
   },
   '/platform/fatura': {
     title: 'Faturalama',
-    intro: 'Kurum faturaları ve tahsilat mutabakatı.',
+    intro: 'Abonelikler, tahsilatlar ve faturalar — tutarlar fiyatlama motorundan, KDV ayrıştırılmış.',
     steps: [
       {
         icon: Receipt,
         title: 'Fatura yönetimi',
-        desc: 'Kurum bazında fatura kesme, ödeme durumu işaretleme ve bakiye mutabakatı buradan yapılır.',
+        desc:
+          'MRR, bu ayın tahsilatı, açık alacak ve önümüzdeki 30 günün yenilemeleri üstte. Abonelik satırını açınca sonraki yenilemenin kalem dökümü (şube × fiyat, müşteri / onam kademesi, KDV) görünür. Kartla tahsil edilen faturalar otomatik kesilir; kartı olmayan kurum dönem ortasında şube açınca orantılı tutar için "Gönderildi" durumunda açık fatura kendiliğinden kesilir. Elle faturalanan kurumlar için taslak oluşturup durumunu (ör. havale gelince "Ödendi") işaretlersiniz.',
       },
     ],
   },
@@ -865,7 +866,7 @@ const guides: Record<string, PageGuide> = {
         icon: PackageOpen,
         title: 'Plan tanımlama',
         desc:
-          'Plan fiyatı, dahil özellik anahtarları ve aylık kotalar (WhatsApp/SMS/e-posta, müşteri limiti) plan formunda belirlenir; kurumlar bu katalogdan plan alır.',
+          'Fiyatlar KDV HARİÇ girilir (tahsilatta %20 eklenir). "Şube başına ücretlendir" açıkken tutar = şube sayısı × fiyat; müşteri ve dijital onam kademeleri eşik üzeri aylık ek ücreti tanımlar (yıllıkta × çarpan). Özellik anahtarları ve aylık kotalar da aynı formda.',
       },
     ],
   },

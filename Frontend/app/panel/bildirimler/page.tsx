@@ -1,28 +1,27 @@
 'use client'
 
 import { Suspense, useCallback, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import Topbar from '@/components/dashboard/Topbar'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import ScopeBadge from '@/components/dashboard/ScopeBadge'
 import StatCard, { statGridContainer } from '@/components/dashboard/StatCard'
 import AnimatedNumber from '@/components/dashboard/AnimatedNumber'
-import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
 import AutomationStatusPanel from '@/components/dashboard/AutomationStatusPanel'
+import TemplateComposerDialog from '@/components/dashboard/notifications/TemplateComposerDialog'
+import SendMessageDialog from '@/components/dashboard/notifications/SendMessageDialog'
+import { SUGGESTED_TEXTS, formatCredits, usesWhatsAppReminderFlow } from '@/components/dashboard/notifications/messageKit'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import { adminApi } from '@/lib/apiClient'
+import { adminApi, isPendingApprovalResult } from '@/lib/apiClient'
 import {
   apiItems,
   guidOrUndefined,
   normalizeNotificationLog,
   normalizeNotificationSummary,
   normalizeNotificationTemplate,
-  notificationChannelLabels,
-  notificationLogStatusLabels,
-  notificationTemplateStatusLabels,
-  notificationTriggerLabels,
 } from '@/lib/apiMappers'
 import { motion, AnimatePresence, type Variants } from 'framer-motion'
 import {
@@ -30,25 +29,19 @@ import {
   BellRing,
   CheckCircle2,
   Clock,
-  FileSignature,
+  Coins,
   Mail,
   MessageCircle,
-  MessageSquare,
   PenLine,
   Phone,
   Plus,
-  Radio,
   Send,
   Sparkles,
-  Tag,
-  Target,
-  ToggleRight,
   Trash2,
-  Users,
-  Zap,
   type LucideIcon,
 } from 'lucide-react'
 import type {
+  ApiMessagingWallet,
   ApiNotificationLog,
   ApiNotificationSummary,
   ApiNotificationTemplate,
@@ -81,6 +74,8 @@ const channelTone: Record<NotificationChannelKey, string> = {
   Email: 'border-violet-300/30 bg-violet-400/12 text-violet-700',
 }
 
+const channelShort: Record<NotificationChannelKey, string> = { Sms: 'SMS', WhatsApp: 'WhatsApp', Email: 'E-posta' }
+
 const templateStatusTone: Record<NotificationTemplateStatusKey, string> = {
   Active: 'border-emerald-300/30 bg-emerald-400/12 text-emerald-700',
   Draft: 'border-[#EAD8DF] bg-[#F7F6F6]/8 text-[#5A4B53]',
@@ -109,6 +104,13 @@ interface BildirimlerData {
   summary: ApiNotificationSummary
 }
 
+interface ComposerState {
+  open: boolean
+  template: NotificationTemplate | null
+  trigger?: NotificationTriggerKey
+  channel?: NotificationChannelKey
+}
+
 function BildirimlerPageInner() {
   const search = useSearchParams()
   const scopeParam = search?.get('scope') as ScopeKey | null
@@ -117,6 +119,7 @@ function BildirimlerPageInner() {
 
   const { selectedInstitutionId, selectedBranch, selectedInstitution } = useBranch()
   const tenantId = guidOrUndefined(selectedInstitutionId)
+  const salonName = selectedBranch?.name || selectedInstitution?.name || 'Salonunuz'
   // Paket özellik kapıları (kanal/toplu/şablon)
   const canSms = useFeature('notifications.sms')
   const canWhatsApp = useFeature('notifications.whatsapp')
@@ -135,6 +138,8 @@ function BildirimlerPageInner() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [composer, setComposer] = useState<ComposerState>({ open: false, template: null })
+  const [send, setSend] = useState<{ open: boolean; templateId: string | null }>({ open: false, templateId: null })
 
   const { data, loading, error } = useApiQuery<BildirimlerData>(
     async () => {
@@ -145,6 +150,13 @@ function BildirimlerPageInner() {
       ])
       return { templates, logs, summary }
     },
+    [tenantId, refreshKey],
+    { initialData: null },
+  )
+  // Mesaj kredisi: şablon oluşturucudaki SMS maliyet sayacı + üstteki bakiye şeridi için.
+  // Yüklenemezse sayfa çalışmaya devam eder (yalnız maliyet bilgisi gizlenir).
+  const { data: wallet } = useApiQuery<ApiMessagingWallet | null>(
+    () => adminApi.whatsappWallet<ApiMessagingWallet>(tenantId).catch(() => null),
     [tenantId, refreshKey],
     { initialData: null },
   )
@@ -183,6 +195,7 @@ function BildirimlerPageInner() {
   }, [logs, scopeInfo.channel])
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), [])
+  const done = useCallback((msg: string) => { setActionError(null); setActionMessage(msg); refresh() }, [refresh])
 
   const handleDelete = useCallback(async (t: NotificationTemplate) => {
     if (!confirm(`"${t.name}" şablonunu silmek istediğine emin misin?`)) return
@@ -198,6 +211,8 @@ function BildirimlerPageInner() {
     }
   }, [tenantId, refresh])
 
+  const openComposer = (state: Omit<ComposerState, 'open'> = { template: null }) => setComposer({ open: true, ...state })
+
   return (
     <>
       <Topbar
@@ -207,10 +222,16 @@ function BildirimlerPageInner() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {canTemplates && allowedChannels.length > 0 && (
-              <TemplateCreateButton tenantId={tenantId} allowedChannels={allowedChannels} onSuccess={(msg) => { setActionMessage(msg); refresh() }} />
+              <button type="button" onClick={() => openComposer()}
+                className="inline-flex items-center gap-1.5 rounded-[12px] border border-[#BE7690] bg-white px-3.5 py-2 text-[12px] font-semibold text-[#A5556E] transition-colors hover:bg-[#F7F6F6]">
+                <Plus className="h-3.5 w-3.5" /> Şablon oluştur
+              </button>
             )}
-            {canBulk && (
-              <BulkSendButton tenantId={tenantId} templates={templates} onResult={(msg) => { setActionMessage(msg); refresh() }} />
+            {allowedChannels.length > 0 && (
+              <button type="button" onClick={() => setSend({ open: true, templateId: null })}
+                className="inline-flex items-center gap-1.5 rounded-[12px] bg-gradient-to-r from-[#A5556E] to-[#8C4460] px-3.5 py-2 text-[12px] font-semibold text-white shadow-[0_12px_24px_-16px_rgba(214,95,131,0.95)] transition-transform hover:-translate-y-0.5">
+                <Send className="h-3.5 w-3.5" /> Mesaj gönder
+              </button>
             )}
           </div>
         }
@@ -219,6 +240,18 @@ function BildirimlerPageInner() {
       <div className="relative mx-auto w-full max-w-[1600px] space-y-6 p-4 sm:p-6 xl:px-8">
         <div className="flex flex-wrap items-center gap-3">
           <ScopeBadge label={scopeInfo.label} description={scopeInfo.description} />
+          {wallet && (
+            <Link href="/panel/ayarlar"
+              className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[11.5px] text-[#5A4B53] transition-colors hover:border-[#BE7690]">
+              <Coins className="h-3.5 w-3.5 text-[#A5556E]" />
+              <span>Mesaj kredisi <b className="text-[#8e3f5b]">{formatCredits(wallet.availableCredits)}</b></span>
+              <span className="text-[#9d7386]">·</span>
+              <span>SMS kotası {wallet.smsUsed.toLocaleString('tr-TR')}{wallet.smsLimit < 0 ? ' (sınırsız)' : ` / ${wallet.smsLimit.toLocaleString('tr-TR')}`}</span>
+              <span className="text-[#9d7386]">·</span>
+              <span>WhatsApp {wallet.utilityUsed.toLocaleString('tr-TR')}{wallet.utilityLimit < 0 ? '' : ` / ${wallet.utilityLimit.toLocaleString('tr-TR')}`}</span>
+              <span className="font-semibold text-[#8C4460]">Kredi yükle ›</span>
+            </Link>
+          )}
         </div>
 
         <ApiStateNotice loading={loading} error={error} />
@@ -252,7 +285,7 @@ function BildirimlerPageInner() {
           <StatCard index={2} label="Kuyrukta" value={<AnimatedNumber value={summary.todayQueued} />}
             icon={Clock} accent="copper" />
           <StatCard index={3} label="Başarısız" value={<AnimatedNumber value={summary.todayFailed} />}
-            delta={summary.todayFailed > 0 ? 'tekrar gönderim önerilir' : 'sorun yok'} icon={AlertCircle} accent="gold" />
+            delta={summary.todayFailed > 0 ? 'sebebi gönderim geçmişinde' : 'sorun yok'} icon={AlertCircle} accent="gold" />
         </motion.section>
 
         <AutomationStatusPanel templates={templates} />
@@ -274,13 +307,16 @@ function BildirimlerPageInner() {
           </div>
         )}
 
-        {/* HAZIR ŞABLONLAR — tek tıkla yaşam döngüsü otomasyonu kur */}
-        <TemplatePresetGallery
-          tenantId={tenantId}
-          allowedChannels={allowedChannels}
-          existingTriggers={templates.map((t) => t.trigger)}
-          onSuccess={(msg) => { setActionMessage(msg); refresh() }}
-        />
+        {/* HAZIR OTOMASYONLAR — tek tıkla kur ya da düzenleyerek ekle */}
+        {canTemplates && (
+          <TemplatePresetGallery
+            tenantId={tenantId}
+            allowedChannels={allowedChannels}
+            templates={templates}
+            onSuccess={done}
+            onCustomize={(trigger, channel) => openComposer({ template: null, trigger, channel })}
+          />
+        )}
 
         <section className="grid gap-3 xl:grid-cols-[1fr_.85fr]">
           {/* TEMPLATES LIST */}
@@ -308,7 +344,7 @@ function BildirimlerPageInner() {
               {filteredTemplates.map((t) => {
                 const Icon = channelIcon[t.channel]
                 return (
-                  <motion.div key={t.id} variants={listRow} whileHover={{ x: 4 }}
+                  <motion.div key={t.id} variants={listRow}
                     className="grid gap-3 px-5 py-4 transition-colors hover:bg-[#F7F6F6]/[0.035] md:grid-cols-12 md:items-center">
                     <div className="md:col-span-1">
                       <span className={`grid h-9 w-9 place-items-center border ${channelTone[t.channel]}`}>
@@ -320,7 +356,11 @@ function BildirimlerPageInner() {
                       <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/55">
                         {t.channelLabel} · {t.triggerLabel}
                       </div>
-                      <div className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-[#5A4B53]">{t.body}</div>
+                      <div className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-[#5A4B53]">
+                        {usesWhatsAppReminderFlow(t.channel, t.trigger)
+                          ? 'İki yönlü WhatsApp hatırlatması — metin WhatsApp ayarlarındaki hatırlatma şablonundan gelir.'
+                          : t.body}
+                      </div>
                       {t.totalSentCount > 0 && (
                         <div className="mt-1 text-[10px] font-mono text-[#74616A]">
                           {t.totalSentCount} gönderim · son: {t.lastSentAtFormatted || '—'}
@@ -332,9 +372,19 @@ function BildirimlerPageInner() {
                         {t.statusLabel}
                       </span>
                     </div>
-                    <div className="md:col-span-3 flex justify-end gap-2">
-                      <TemplateEditButton template={t} tenantId={tenantId}
-                        onSuccess={(msg) => { setActionMessage(msg); refresh() }} />
+                    <div className="md:col-span-3 flex flex-wrap justify-end gap-2">
+                      {t.status === 'Active' && (
+                        <button type="button" onClick={() => setSend({ open: true, templateId: t.id })}
+                          className="inline-flex items-center gap-1 border border-[#BE7690]/50 bg-[#fdf1f5] px-2 py-1.5 text-[9px] font-mono uppercase tracking-widest text-[#8C4460] transition-colors hover:bg-[#F6DFE6]">
+                          <Send className="h-3 w-3" /> Gönder
+                        </button>
+                      )}
+                      {canTemplates && (
+                        <button type="button" onClick={() => openComposer({ template: t })}
+                          className="inline-flex items-center gap-1 border border-[#EAD8DF] bg-white px-2 py-1.5 text-[9px] font-mono uppercase tracking-widest text-[#5A4B53] transition-colors hover:bg-[#F7F6F6]">
+                          <PenLine className="h-3 w-3" /> Düzenle
+                        </button>
+                      )}
                       <button type="button" disabled={busyId === t.id} onClick={() => handleDelete(t)}
                         className="inline-flex items-center gap-1 border border-rose-300/30 bg-rose-400/10 px-2 py-1.5 text-[9px] font-mono uppercase tracking-widest text-rose-700 transition-colors hover:bg-rose-400/20 disabled:opacity-50">
                         <Trash2 className="h-3 w-3" /> Sil
@@ -346,7 +396,12 @@ function BildirimlerPageInner() {
               {!filteredTemplates.length && !loading && (
                 <div className="px-5 py-12 text-center text-[12px] text-[#74616A]">
                   <BellRing className="mx-auto mb-3 h-8 w-8 text-[#A5556E]/40" strokeWidth={1.4} />
-                  Bu kanalda henüz şablon yok. Sağ üstten "Şablon ekle" ile başlayabilirsin.
+                  Bu kanalda henüz şablon yok.
+                  {canTemplates && allowedChannels.length > 0 && (
+                    <button type="button" onClick={() => openComposer()} className="mt-2 block w-full font-semibold text-[#8C4460] hover:underline">
+                      Şablon oluştur
+                    </button>
+                  )}
                 </div>
               )}
             </motion.div>
@@ -382,10 +437,20 @@ function BildirimlerPageInner() {
                         {l.customerName || l.recipient || 'Alıcı'}
                       </div>
                       <div className="mt-0.5 truncate text-[10px] font-mono text-[#74616A]">
-                        {l.templateName || 'Manuel'} · {l.createdAtFormatted}
+                        {l.templateName || l.purposeLabel || 'Manuel'} · {l.createdAtFormatted}
                       </div>
+                      {(l.smsParts > 0 || l.billingSource === 'Quota' || l.billingSource === 'OwnAccount' || (l.billingSource === 'Wallet' && l.chargedCredits > 0)) && (
+                        <div className="mt-1 flex flex-wrap gap-1 text-[9.5px] font-semibold">
+                          {l.smsParts > 0 && <span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700">{l.smsParts} parça</span>}
+                          {l.billingSource === 'Quota' && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">paket kotası</span>}
+                          {l.billingSource === 'OwnAccount' && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">kendi SMS hesabı</span>}
+                          {l.billingSource === 'Wallet' && l.chargedCredits > 0 && (
+                            <span className="rounded bg-[#fdf1f5] px-1.5 py-0.5 text-[#8e3f5b]">{formatCredits(l.chargedCredits)} kredi</span>
+                          )}
+                        </div>
+                      )}
                       {l.errorMessage && (
-                        <div className="mt-1 line-clamp-1 text-[10px] text-rose-700/85">{l.errorMessage}</div>
+                        <div className="mt-1 line-clamp-2 text-[10px] text-rose-700/85" title={l.errorMessage}>{l.errorMessage}</div>
                       )}
                     </div>
                     <span className={`shrink-0 inline-flex border px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-widest ${logStatusTone[l.status]}`}>
@@ -404,66 +469,88 @@ function BildirimlerPageInner() {
           </motion.div>
         </section>
       </div>
+
+      <TemplateComposerDialog
+        open={composer.open}
+        onClose={() => setComposer((c) => ({ ...c, open: false }))}
+        tenantId={tenantId}
+        allowedChannels={allowedChannels}
+        salonName={salonName}
+        smsCreditsPerPart={wallet?.smsCreditsPerPart}
+        template={composer.template}
+        initialTrigger={composer.trigger}
+        initialChannel={composer.channel}
+        onSaved={done}
+      />
+
+      <SendMessageDialog
+        open={send.open}
+        onClose={() => setSend({ open: false, templateId: null })}
+        tenantId={tenantId}
+        templates={templates}
+        initialTemplateId={send.templateId}
+        salonName={salonName}
+        allowBulk={canBulk}
+        onSent={(msg, ok) => {
+          if (ok) { done(msg); return }
+          // Hiç mesaj gitmediyse yeşil "başarılı" bandı yanıltıcı olurdu.
+          setActionMessage(null)
+          setActionError(msg)
+          refresh()
+        }}
+        onCreateTemplate={() => { setSend({ open: false, templateId: null }); openComposer() }}
+      />
     </>
   )
 }
 
 // ---------------- Sub-components ----------------
 
-/** Hazır yaşam döngüsü şablonları — tek tıkla oluşturulur ve AKTİF başlar (otomasyon hemen çalışır). */
-const TEMPLATE_PRESETS: Array<{ key: string; title: string; trigger: NotificationTriggerKey; hint: string; body: string }> = [
-  {
-    key: 'birthday', title: 'Doğum Günü Kutlaması', trigger: 'BirthdayGreeting',
-    hint: 'Doğum gününde otomatik gider (yılda 1)',
-    body: 'Sayın {{ad}}, doğum gününüz kutlu olsun! 🎂 Bu özel gününüzde sizi salonumuzda ağırlamaktan mutluluk duyarız. Bu aya özel randevunuzda sizi küçük bir sürpriz bekliyor. ✨',
-  },
-  {
-    key: 'winback', title: 'Sizi Özledik (Geri Kazanım)', trigger: 'WinBack',
-    hint: 'Uzun süredir gelmeyen müşteriye (ayda en çok 1)',
-    body: 'Sayın {{ad}}, sizi özledik! 💐 Son ziyaretinizin üzerinden epey zaman geçti. Yeniden aramızda görmek isteriz — bu hafta randevu alırsanız size özel bir karşılama hazırlayalım. Randevu için bu mesaja yanıt verebilirsiniz.',
-  },
-  {
-    key: 'renewal', title: 'Paket Yenileme Teklifi', trigger: 'SessionRenewal',
-    hint: 'Paketi bitmek üzere olana (ayda en çok 1)',
-    body: 'Sayın {{ad}}, paketinizdeki seanslarınız bitmek üzere. ✨ Bakım rutininiz yarıda kalmasın — yenileme yapan misafirlerimize özel avantajlarımız var. Detaylar için bu mesaja yanıt verebilir ya da salonumuzu arayabilirsiniz.',
-  },
-  {
-    key: 'reminder', title: 'Randevu Hatırlatma', trigger: 'AppointmentReminder',
-    hint: 'Randevudan 24 saat önce otomatik',
-    body: 'Sayın {{ad}}, {{tarih}} {{saat}} randevunuzu hatırlatırız. 📅 Gelemeyecekseniz lütfen önceden haber verin, saatinizi bekleyen misafirlerimize açalım. Görüşmek üzere!',
-  },
-  {
-    key: 'payment', title: 'Ödeme Hatırlatma', trigger: 'PaymentDue',
-    hint: 'Vadesi gelen taksiti olana (günde 1)',
-    body: 'Sayın {{ad}}, vadesi gelen taksit ödemeniz bulunmaktadır. Dilerseniz salonumuza uğrayarak ya da havale ile ödemenizi tamamlayabilirsiniz. Sorularınız için bize yazabilirsiniz. 🙏',
-  },
+/** Hazır yaşam döngüsü otomasyonları — metin kısa ve emojisizdir (SMS parça başına ücretlenir). */
+const AUTOMATION_PRESETS: Array<{ key: string; title: string; trigger: NotificationTriggerKey; hint: string }> = [
+  { key: 'reminder', title: 'Randevu Hatırlatma', trigger: 'AppointmentReminder', hint: 'Randevudan 24 saat önce otomatik' },
+  { key: 'birthday', title: 'Doğum Günü Kutlaması', trigger: 'BirthdayGreeting', hint: 'Doğum gününde otomatik (yılda 1)' },
+  { key: 'payment', title: 'Ödeme Hatırlatma', trigger: 'PaymentDue', hint: 'Vadesi gelen taksiti olana (günde en çok 1)' },
+  { key: 'winback', title: 'Sizi Özledik', trigger: 'WinBack', hint: 'Uzun süredir gelmeyene (ayda en çok 1)' },
+  { key: 'renewal', title: 'Paket Yenileme', trigger: 'SessionRenewal', hint: 'Paketi bitmek üzere olana (ayda en çok 1)' },
 ]
 
 function TemplatePresetGallery({
   tenantId,
   allowedChannels,
-  existingTriggers,
+  templates,
   onSuccess,
+  onCustomize,
 }: {
   tenantId: string | undefined
   allowedChannels: NotificationChannelKey[]
-  existingTriggers: string[]
+  templates: NotificationTemplate[]
   onSuccess: (msg: string) => void
+  onCustomize: (trigger: NotificationTriggerKey, channel: NotificationChannelKey) => void
 }) {
+  // SMS öncelikli: WhatsApp'ta serbest metin yalnız son 24 saatte yazan müşteriye iletilir;
+  // otomatik doğum günü / geri kazanım mesajı çoğu müşteriye WhatsApp'tan ULAŞMAZ.
+  const phoneChannels = allowedChannels.filter((c) => c !== 'Email')
+  const [channel, setChannel] = useState<NotificationChannelKey | undefined>(undefined)
+  const active = channel && allowedChannels.includes(channel) ? channel : (phoneChannels.includes('Sms') ? 'Sms' : allowedChannels[0])
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [error, setError] = useState('')
   const [collapsed, setCollapsed] = useState(false)
-  const defaultChannel = allowedChannels.includes('WhatsApp') ? 'WhatsApp' : allowedChannels[0]
-  if (!defaultChannel) return null
-  const existing = new Set(existingTriggers)
+  if (!active) return null
 
-  const addPreset = async (preset: (typeof TEMPLATE_PRESETS)[number]): Promise<void> => {
+  const addPreset = async (preset: (typeof AUTOMATION_PRESETS)[number]): Promise<void> => {
     setBusyKey(preset.key)
+    setError('')
     try {
-      await adminApi.createNotificationTemplate(
-        { name: preset.title, channel: defaultChannel, trigger: preset.trigger, body: preset.body, status: 'Active' },
+      const res = await adminApi.createNotificationTemplate(
+        { name: `${preset.title} · ${channelShort[active]}`, channel: active, trigger: preset.trigger, body: SUGGESTED_TEXTS[preset.trigger]?.[0] ?? '', status: 'Active' },
         tenantId,
       )
-      onSuccess(`"${preset.title}" şablonu eklendi ve aktifleştirildi — otomatik tarama devrede.`)
+      onSuccess(isPendingApprovalResult(res)
+        ? `"${preset.title}" şablonu onaya gönderildi.`
+        : `"${preset.title}" (${channelShort[active]}) eklendi ve aktifleştirildi — otomatik gönderim devrede.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Şablon eklenemedi.')
     } finally {
       setBusyKey(null)
     }
@@ -472,197 +559,70 @@ function TemplatePresetGallery({
   return (
     <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
       className="rounded-[16px] border border-[#EAD8DF] bg-white/80 px-4 py-3">
-      <button type="button" onClick={() => setCollapsed((c) => !c)} className="flex w-full items-center justify-between">
-        <span className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">
-          <Sparkles className="h-3.5 w-3.5" /> Hazır Şablonlar
-          <span className="normal-case tracking-normal text-[#74616A]">· tek tıkla ekle, otomasyon hemen başlasın ({defaultChannel === 'WhatsApp' ? 'WhatsApp' : defaultChannel} kanalı)</span>
-        </span>
-        <span className="text-[10px] font-mono uppercase tracking-widest text-[#9d7386]">{collapsed ? 'Göster' : 'Gizle'}</span>
-      </button>
-      {!collapsed && (
-        <div className="mt-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
-          {TEMPLATE_PRESETS.map((p) => {
-            const added = existing.has(p.trigger)
-            return (
-              <div key={p.key} className={`flex flex-col rounded-[14px] border p-3 ${added ? 'border-emerald-200/70 bg-emerald-50/40' : 'border-[#EAD8DF] bg-[#F7F6F6]'}`}>
-                <div className="text-[12.5px] font-semibold text-[#241923]">{p.title}</div>
-                <div className="mt-0.5 text-[10px] text-[#9d7386]">{p.hint}</div>
-                <div className="mt-2 line-clamp-3 flex-1 text-[10.5px] leading-relaxed text-[#5A4B53]">{p.body}</div>
-                <button
-                  type="button"
-                  disabled={busyKey === p.key || added}
-                  onClick={() => void addPreset(p)}
-                  className={`mt-2.5 inline-flex items-center justify-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
-                    added ? 'border border-emerald-300/60 bg-white text-emerald-700' : 'border border-[#BE7690] bg-white text-[#A5556E] hover:bg-[#F7F6F6]'
-                  }`}
-                >
-                  {added ? <><CheckCircle2 className="h-3.5 w-3.5" /> Bu tetikleyicide şablon var</> : busyKey === p.key ? 'Ekleniyor…' : <><Plus className="h-3.5 w-3.5" /> Şablonu ekle</>}
-                </button>
-              </div>
-            )
-          })}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button type="button" onClick={() => setCollapsed((c) => !c)} className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#A5556E]/75">
+          <Sparkles className="h-3.5 w-3.5" /> Hazır otomasyonlar
+          <span className="normal-case tracking-normal text-[#74616A]">· tek tıkla ekle, otomatik gönderim hemen başlasın</span>
+        </button>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1 rounded-[10px] border border-[#EAD8DF] bg-[#F7F6F6] p-0.5">
+            {allowedChannels.map((c) => (
+              <button key={c} type="button" onClick={() => setChannel(c)}
+                className={`rounded-[8px] px-2.5 py-1 text-[10.5px] font-semibold transition ${active === c ? 'bg-[#8e3f5b] text-white' : 'text-[#5A4B53] hover:text-[#8e3f5b]'}`}>
+                {channelShort[c]}
+              </button>
+            ))}
+          </span>
+          <button type="button" onClick={() => setCollapsed((c) => !c)} className="text-[10px] font-mono uppercase tracking-widest text-[#9d7386]">
+            {collapsed ? 'Göster' : 'Gizle'}
+          </button>
         </div>
+      </div>
+      {!collapsed && (
+        <>
+          {active === 'WhatsApp' && (
+            <p className="mt-2 rounded-[10px] border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10.5px] leading-snug text-amber-800">
+              WhatsApp&apos;ta serbest metin yalnız son 24 saatte size yazmış müşteriye iletilir (Meta kuralı). Randevu hatırlatması dışındaki
+              otomatik mesajlar için <b>SMS</b> önerilir.
+            </p>
+          )}
+          {error && <p className="mt-2 text-[11px] text-rose-700">{error}</p>}
+          <div className="mt-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
+            {AUTOMATION_PRESETS.map((p) => {
+              const added = templates.some((t) => t.trigger === p.trigger && t.channel === active)
+              const reminderFlow = usesWhatsAppReminderFlow(active, p.trigger)
+              return (
+                <div key={p.key} className={`flex flex-col rounded-[14px] border p-3 ${added ? 'border-emerald-200/70 bg-emerald-50/40' : 'border-[#EAD8DF] bg-[#F7F6F6]'}`}>
+                  <div className="text-[12.5px] font-semibold text-[#241923]">{p.title}</div>
+                  <div className="mt-0.5 text-[10px] text-[#9d7386]">{p.hint}</div>
+                  <div className="mt-2 line-clamp-3 flex-1 text-[10.5px] leading-relaxed text-[#5A4B53]">
+                    {reminderFlow ? 'İki yönlü onaylı WhatsApp hatırlatması (Evet / Hayır / Ertele).' : SUGGESTED_TEXTS[p.trigger]?.[0]}
+                  </div>
+                  <div className="mt-2.5 flex gap-1.5">
+                    <button
+                      type="button"
+                      disabled={busyKey === p.key || added}
+                      onClick={() => void addPreset(p)}
+                      className={`inline-flex flex-1 items-center justify-center gap-1 rounded-[10px] px-2 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
+                        added ? 'border border-emerald-300/60 bg-white text-emerald-700' : 'border border-[#BE7690] bg-white text-[#A5556E] hover:bg-[#F7F6F6]'
+                      }`}
+                    >
+                      {added ? <><CheckCircle2 className="h-3.5 w-3.5" /> Eklendi</> : busyKey === p.key ? 'Ekleniyor…' : <><Plus className="h-3.5 w-3.5" /> Ekle</>}
+                    </button>
+                    {!added && (
+                      <button type="button" onClick={() => onCustomize(p.trigger, active)} title="Metni düzenleyerek ekle"
+                        className="inline-flex items-center justify-center rounded-[10px] border border-[#EAD8DF] bg-white px-2 text-[#5A4B53] transition-colors hover:bg-[#F7F6F6]">
+                        <PenLine className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
     </motion.section>
-  )
-}
-
-function TemplateCreateButton({
-  tenantId,
-  allowedChannels,
-  onSuccess,
-}: {
-  tenantId: string | undefined
-  allowedChannels: NotificationChannelKey[]
-  onSuccess: (msg: string) => void
-}) {
-  const submit = async (values: Record<string, unknown>) => {
-    await adminApi.createNotificationTemplate(
-      {
-        name: values.name,
-        channel: values.channel,
-        trigger: values.trigger,
-        body: values.body,
-        status: values.status,
-      },
-      tenantId,
-    )
-    onSuccess('Şablon oluşturuldu.')
-  }
-
-  return (
-    <AdminEditDialog
-      triggerLabel="Şablon ekle"
-      titleIcon={FileSignature}
-      title="Yeni bildirim şablonu"
-      description="Müşteriye SMS / WhatsApp / E-posta gönderilecek hazır mesaj. {{ad}}, {{tarih}}, {{saat}} gibi değişkenler render anında doldurulur."
-      submitLabel="Şablon oluştur"
-      onSubmit={submit}
-      fields={[
-        { label: 'Şablon adı', name: 'name', value: '', required: true, icon: Tag, section: 'Tanım',
-          helper: 'İçerikteki amacı yansıtsın (örn. "Randevu hatırlatma — 1 gün önce")' },
-        { label: 'Kanal', name: 'channel', type: 'select', value: allowedChannels[0] ?? 'Sms', required: true, icon: Radio,
-          options: Object.entries(notificationChannelLabels)
-            .filter(([value]) => allowedChannels.includes(value as NotificationChannelKey))
-            .map(([value, label]) => ({ value, label })),
-          helper: 'Yalnızca paketinizdeki kanallar listelenir' },
-        { label: 'Tetikleyici', name: 'trigger', type: 'select', value: 'Manual', required: true, icon: Zap,
-          options: Object.entries(notificationTriggerLabels).map(([value, label]) => ({ value, label })),
-          helper: '"Manuel" toplu gönderim ve elle gönderim için; diğerleri otomasyon planı' },
-        { label: 'Mesaj gövdesi', name: 'body', type: 'textarea', value: 'Sayın {{ad}}, ...', required: true,
-          icon: MessageSquare, fullWidth: true, section: 'İçerik',
-          helper: 'Değişkenler: {{ad}}, {{tarih}}, {{saat}}, {{telefon}}',
-          placeholder: 'Sayın {{ad}}, randevunuzu {{tarih}} {{saat}} olarak onaylıyoruz.' },
-        { label: 'Durum', name: 'status', type: 'select', value: 'Draft', icon: ToggleRight, section: 'Yayın',
-          options: Object.entries(notificationTemplateStatusLabels).map(([value, label]) => ({ value, label })) },
-      ]}
-    />
-  )
-}
-
-function TemplateEditButton({
-  template,
-  tenantId,
-  onSuccess,
-}: {
-  template: NotificationTemplate
-  tenantId: string | undefined
-  onSuccess: (msg: string) => void
-}) {
-  const submit = async (values: Record<string, unknown>) => {
-    await adminApi.updateNotificationTemplate(
-      template.id,
-      {
-        name: values.name,
-        channel: values.channel,
-        trigger: values.trigger,
-        body: values.body,
-        status: values.status,
-      },
-      tenantId,
-    )
-    onSuccess('Şablon güncellendi.')
-  }
-  return (
-    <AdminEditDialog
-      triggerVariant="ghost"
-      triggerLabel="Düzenle"
-      triggerClassName="px-2 py-1.5 text-[9px]"
-      titleIcon={PenLine}
-      title={template.name}
-      description="Aktif şablonlarda yapılan değişiklik bir sonraki gönderimden itibaren geçerlidir."
-      submitLabel="Şablonu kaydet"
-      onSubmit={submit}
-      fields={[
-        { label: 'Şablon adı', name: 'name', value: template.name, required: true, icon: Tag, section: 'Tanım' },
-        { label: 'Kanal', name: 'channel', type: 'select', value: template.channel, icon: Radio,
-          options: Object.entries(notificationChannelLabels).map(([value, label]) => ({ value, label })) },
-        { label: 'Tetikleyici', name: 'trigger', type: 'select', value: template.trigger, icon: Zap,
-          options: Object.entries(notificationTriggerLabels).map(([value, label]) => ({ value, label })) },
-        { label: 'Mesaj gövdesi', name: 'body', type: 'textarea', value: template.body, icon: MessageSquare,
-          fullWidth: true, section: 'İçerik', helper: 'Değişkenler: {{ad}}, {{tarih}}, {{saat}}, {{telefon}}' },
-        { label: 'Durum', name: 'status', type: 'select', value: template.status, icon: ToggleRight, section: 'Yayın',
-          options: Object.entries(notificationTemplateStatusLabels).map(([value, label]) => ({ value, label })) },
-      ]}
-    />
-  )
-}
-
-function BulkSendButton({
-  tenantId,
-  templates,
-  onResult,
-}: {
-  tenantId: string | undefined
-  templates: NotificationTemplate[]
-  onResult: (msg: string) => void
-}) {
-  const activeTemplates = templates.filter((t) => t.status === 'Active')
-
-  const submit = async (values: Record<string, unknown>) => {
-    if (!values.templateId) throw new Error('Şablon seçilmedi.')
-    const result = await adminApi.sendNotification<{ sent: number; failed: number; skipped: number }>(
-      { templateId: values.templateId, audience: values.audience || 'all' },
-      tenantId,
-    )
-    onResult(`Gönderim tamamlandı — ${result.sent} başarılı, ${result.failed} hata, ${result.skipped} atlanan.`)
-  }
-
-  if (activeTemplates.length === 0) {
-    return (
-      <button type="button" disabled
-        className="inline-flex cursor-not-allowed items-center gap-1 border border-[#EAD8DF] bg-[#F7F6F6]/5 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-[#74616A]">
-        <Send className="h-3 w-3" /> Aktif şablon yok
-      </button>
-    )
-  }
-
-  return (
-    <AdminEditDialog
-      triggerLabel="Toplu gönderim"
-      triggerVariant="ghost"
-      titleIcon={Send}
-      title="Toplu bildirim gönder"
-      description="Seçilen aktif şablonu seçilen kitleye gönderir. KVKK onayı olmayanlar atlanır."
-      submitLabel="Gönder"
-      onSubmit={submit}
-      fields={[
-        { label: 'Şablon', name: 'templateId', type: 'select', value: activeTemplates[0]?.id || '', required: true,
-          icon: FileSignature, fullWidth: true, section: 'Mesaj',
-          options: activeTemplates.map((t) => ({ value: t.id, label: `${t.channelLabel} · ${t.name}` })) },
-        { label: 'Hedef kitle', name: 'audience', type: 'select', value: 'all', required: true,
-          icon: Target, section: 'Kitle',
-          options: [
-            { value: 'all', label: 'Tüm müşteriler' },
-            { value: 'active90', label: 'Aktif müşteriler (son 90 gün)' },
-            { value: 'birthdayWeek', label: 'Bu hafta doğum günü olanlar' },
-            { value: 'inactive30', label: 'Son 30 gündür gelmeyenler' },
-          ],
-          helper: 'Müşteride telefon/e-posta eksikse o kayıt atlanır' },
-        { label: 'Hedef sayısı', name: 'estimate', value: '— anlık hesaplanır', icon: Users,
-          helper: 'Backend gönderim sırasında uygun alıcıları seçer' },
-      ]}
-    />
   )
 }
 

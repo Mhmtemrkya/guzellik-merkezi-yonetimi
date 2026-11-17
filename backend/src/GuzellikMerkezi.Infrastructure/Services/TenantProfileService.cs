@@ -10,11 +10,13 @@ namespace GuzellikMerkezi.Infrastructure.Services;
 
 /// <summary>
 /// Salon vitrini profil + galeri yönetimi (kurum yöneticisi ve platform admin).
-/// Fotoğraflar base64 data-URL olarak saklanır; tür başına en fazla <see cref="MaxPhotosPerKind"/> adet.
+/// Fotoğraflar base64 data-URL olarak saklanır; salon başına TOPLAM en fazla <see cref="MaxPhotosPerSalon"/>
+/// görsel (vitrin slider'ı + hizmet galerisi birlikte). Sınırdan önce eklenmiş fazlalar SİLİNMEZ
+/// (yeni ekleme engellenir, vitrinde ilk 15'i görünür).
 /// </summary>
 public sealed class TenantProfileService : ITenantProfileService
 {
-    public const int MaxPhotosPerKind = 10;
+    public const int MaxPhotosPerSalon = 15;
     /// <summary>Base64 data-URL üst sınırı (~1.5 MB metin ≈ ~1.1 MB görsel) — DB şişmesini frenler.</summary>
     public const int MaxImageDataLength = 1_500_000;
 
@@ -84,9 +86,13 @@ public sealed class TenantProfileService : ITenantProfileService
         if (request.ImageData.Length > MaxImageDataLength)
             return Result<TenantGalleryPhotoDto>.Failure(Error.Validation("Fotoğraf çok büyük. Lütfen daha küçük bir görsel yükleyin."));
 
-        var count = await _db.TenantGalleryPhotos.CountAsync(g => g.TenantId == tenantId && g.Kind == kind, cancellationToken);
-        if (count >= MaxPhotosPerKind)
-            return Result<TenantGalleryPhotoDto>.Failure(Error.Conflict($"Bu galeriye en fazla {MaxPhotosPerKind} fotoğraf eklenebilir. Önce bir fotoğraf silin."));
+        // SALON BAŞINA TOPLAM SINIR (iki galeri birlikte). Kapsam filtresi aşılır, TenantId açıkça
+        // süzülür: platform yöneticisi de bu yoldan ekler (/api/platform/tenants/{id}/gallery).
+        var count = await _db.TenantGalleryPhotos.IgnoreQueryFilters()
+            .CountAsync(g => g.TenantId == tenantId && !g.IsDeleted, cancellationToken);
+        if (count >= MaxPhotosPerSalon)
+            return Result<TenantGalleryPhotoDto>.Failure(Error.Conflict(
+                $"Salon vitrinine en fazla {MaxPhotosPerSalon} görsel eklenebilir (vitrin + hizmet galerisi toplamı). Önce bir görsel silin."));
 
         var maxSort = await _db.TenantGalleryPhotos
             .Where(g => g.TenantId == tenantId && g.Kind == kind)

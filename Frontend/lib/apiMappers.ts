@@ -23,6 +23,7 @@ import type {
   ApiPlanUsageBreakdown,
   ApiPlatformUsageSummary,
   ApiSubscriptionPlan,
+  PricingTier,
   ApiTenantUsage,
   ApiUsageMetric,
   ApiProduct,
@@ -121,12 +122,12 @@ export function formatTL(value: number | string | null | undefined): string {
   }).format(amount)
 }
 
+/**
+ * Sunucu tutar göndermediğinde son çare liste fiyatı (KDV hariç, şube başı). TEK PAKET (13 Kas 2026):
+ * eski beş paket kaldırıldı; gerçek tutarlar sunucudaki fiyatlama motorundan gelir.
+ */
 export const planPrice: Record<string, number> = {
-  Premium: 2990,
-  'AI Klinik': 4990,
-  Profesyonel: 1499,
-  Başlangıç: 799,
-  Enterprise: 0,
+  BeautyAsist: 1000,
   Trial: 0,
   Free: 0,
 }
@@ -164,7 +165,7 @@ export function tenantStatusKey(status: string | null | undefined): TenantStatus
 }
 
 export function normalizeTenant(tenant: ApiTenant | null | undefined, index = 0): Tenant {
-  const plan = tenant?.plan || 'Başlangıç'
+  const plan = tenant?.plan || 'BeautyAsist'
   const name = tenant?.name || tenant?.tenantName || `Kurum ${index + 1}`
   const branchCount = tenant?.branchCount ?? tenant?.branches?.length ?? 0
   const owner = tenant?.ownerName || tenant?.owner || 'Yetkili atanmadı'
@@ -232,12 +233,22 @@ export function normalizeSubscriptionPlan(p: ApiSubscriptionPlan | null | undefi
     maxMonthlyWhatsAppCount: Number(p?.maxMonthlyWhatsAppCount ?? 0),
     maxMonthlyEmailCount: Number(p?.maxMonthlyEmailCount ?? 0),
     maxMonthlyWhatsAppMarketing: Number(p?.maxMonthlyWhatsAppMarketing ?? 0),
-    defaultWhatsAppSpendCapTry: Number(p?.defaultWhatsAppSpendCapTry ?? 0),
+    defaultSpendCapCredits: Number(p?.defaultSpendCapCredits ?? 0),
     features,
     displayOrder: Number(p?.displayOrder ?? 0),
     isActive: p?.isActive ?? true,
     tenantCount: Number(p?.tenantCount ?? 0),
+    chargePerBranch: Boolean(p?.chargePerBranch),
+    customerTiers: normalizeTiers(p?.customerTiers),
+    consentTiers: normalizeTiers(p?.consentTiers),
+    yearlyTierMultiplier: Number(p?.yearlyTierMultiplier ?? 10),
   }
+}
+
+function normalizeTiers(tiers: PricingTier[] | null | undefined): PricingTier[] {
+  return (tiers ?? [])
+    .map((t) => ({ above: Number(t?.above ?? 0), monthlyFee: Number(t?.monthlyFee ?? 0) }))
+    .sort((a, b) => a.above - b.above)
 }
 
 export function normalizeUsageMetric(m: ApiUsageMetric | null | undefined): UsageMetric {
@@ -1522,7 +1533,17 @@ export const notificationTriggerLabels: Record<NotificationTriggerKey, string> =
 const triggerEnumMap: Record<number, NotificationTriggerKey> = {
   0: 'Manual', 1: 'AppointmentReminder', 2: 'BirthdayGreeting', 3: 'PaymentDue', 4: 'Campaign', 5: 'WinBack', 6: 'SessionRenewal',
 }
-const validTriggers: NotificationTriggerKey[] = ['Manual', 'AppointmentReminder', 'BirthdayGreeting', 'PaymentDue', 'Campaign', 'WinBack']
+// SessionRenewal eksikti: metin olarak gelen "SessionRenewal" Manual'a düşüyor, şablon
+// düzenlenip kaydedilince tetikleyicisi SESSİZCE "Manuel"e dönüyordu (otomasyon kayboluyordu).
+const validTriggers: NotificationTriggerKey[] = ['Manual', 'AppointmentReminder', 'BirthdayGreeting', 'PaymentDue', 'Campaign', 'WinBack', 'SessionRenewal']
+
+/** Şablonsuz sistem SMS'lerinin amacı → bildirim geçmişinde görünen ad. */
+export const notificationPurposeLabels: Record<string, string> = {
+  'rating-link': 'Değerlendirme linki',
+  'waitlist-activated': 'Bekleme listesi — randevu oluştu',
+  'kvkk-info': 'KVKK aydınlatma linki',
+  'gift-card': 'Hediye çeki',
+}
 
 export const notificationTemplateStatusLabels: Record<NotificationTemplateStatusKey, string> = {
   Draft: 'Taslak',
@@ -1610,6 +1631,11 @@ export function normalizeNotificationLog(l: ApiNotificationLog | null | undefine
     sentAtFormatted: formatDateTime(l?.sentAtUtc),
     createdAt: l?.createdAtUtc || '',
     createdAtFormatted: formatDateTime(l?.createdAtUtc),
+    purpose: l?.purpose ?? null,
+    purposeLabel: l?.purpose ? notificationPurposeLabels[l.purpose] || l.purpose : '',
+    billingSource: l?.billingSource ?? 'None',
+    chargedCredits: Number(l?.chargedCredits ?? 0),
+    smsParts: Number(l?.smsParts ?? 0),
   }
 }
 

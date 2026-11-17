@@ -21,6 +21,7 @@ import type {
   FeatureCatalogItem,
   FeatureCategoryKey,
   FeatureKey,
+  PricingTier,
   SubscriptionPlan,
 } from '@/lib/types'
 
@@ -49,9 +50,14 @@ interface PlanFormValues {
   maxMonthlySmsCount: number
   maxMonthlyWhatsAppCount: number
   maxMonthlyWhatsAppMarketing: number
-  defaultWhatsAppSpendCapTry: number
+  defaultSpendCapCredits: number
   maxMonthlyEmailCount: number
   features: Set<FeatureKey>
+  /** Fiyatlama modeli — fiyatlar KDV HARİÇ; tahsilatta %20 KDV eklenir. */
+  chargePerBranch: boolean
+  customerTiers: PricingTier[]
+  consentTiers: PricingTier[]
+  yearlyTierMultiplier: number
 }
 
 function emptyForm(): PlanFormValues {
@@ -70,9 +76,13 @@ function emptyForm(): PlanFormValues {
     maxMonthlySmsCount: 0,
     maxMonthlyWhatsAppCount: 0,
     maxMonthlyWhatsAppMarketing: 0,
-    defaultWhatsAppSpendCapTry: 0,
+    defaultSpendCapCredits: 0,
     maxMonthlyEmailCount: 0,
     features: new Set(),
+    chargePerBranch: false,
+    customerTiers: [],
+    consentTiers: [],
+    yearlyTierMultiplier: 10,
   }
 }
 
@@ -92,10 +102,26 @@ function planToForm(plan: SubscriptionPlan): PlanFormValues {
     maxMonthlySmsCount: plan.maxMonthlySmsCount,
     maxMonthlyWhatsAppCount: plan.maxMonthlyWhatsAppCount,
     maxMonthlyWhatsAppMarketing: plan.maxMonthlyWhatsAppMarketing ?? 0,
-    defaultWhatsAppSpendCapTry: plan.defaultWhatsAppSpendCapTry ?? 0,
+    defaultSpendCapCredits: plan.defaultSpendCapCredits ?? 0,
     maxMonthlyEmailCount: plan.maxMonthlyEmailCount,
     features: new Set(plan.features as FeatureKey[]),
+    chargePerBranch: plan.chargePerBranch,
+    customerTiers: plan.customerTiers.map((t) => ({ ...t })),
+    consentTiers: plan.consentTiers.map((t) => ({ ...t })),
+    yearlyTierMultiplier: plan.yearlyTierMultiplier || 10,
   }
+}
+
+const VAT_RATE = 0.2
+const tl0 = (n: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 2 }).format(n)
+
+/** Kademe listesi doğrulaması — sunucudaki kuralların aynısı (erken ve anlaşılır hata için). */
+function tierError(tiers: PricingTier[], label: string): string | null {
+  if (tiers.length > 10) return `${label}: en fazla 10 kademe.`
+  if (tiers.some((t) => !Number.isFinite(t.above) || t.above < 0)) return `${label}: eşik 0 ya da daha büyük olmalı.`
+  if (tiers.some((t) => !Number.isFinite(t.monthlyFee) || t.monthlyFee < 0)) return `${label}: ücret negatif olamaz.`
+  if (new Set(tiers.map((t) => t.above)).size !== tiers.length) return `${label}: aynı eşik iki kez kullanılamaz.`
+  return null
 }
 
 interface PlanFormDialogProps {
@@ -179,6 +205,15 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
       setErr('PlanKey boş olamaz.')
       return
     }
+    const tierProblem = tierError(form.customerTiers, 'Müşteri kademeleri') ?? tierError(form.consentTiers, 'Onam kademeleri')
+    if (tierProblem) {
+      setErr(tierProblem)
+      return
+    }
+    if (!(form.yearlyTierMultiplier > 0 && form.yearlyTierMultiplier <= 12)) {
+      setErr('Yıllık kademe çarpanı 0\'dan büyük ve en fazla 12 olmalı.')
+      return
+    }
     setSubmitting(true)
     try {
       const featuresCsv = Array.from(form.features).join(',')
@@ -194,11 +229,16 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
         maxMonthlySmsCount: Number(form.maxMonthlySmsCount),
         maxMonthlyWhatsAppCount: Number(form.maxMonthlyWhatsAppCount),
         maxMonthlyWhatsAppMarketing: Number(form.maxMonthlyWhatsAppMarketing),
-        defaultWhatsAppSpendCapTry: Number(form.defaultWhatsAppSpendCapTry),
+        defaultSpendCapCredits: Number(form.defaultSpendCapCredits),
         maxMonthlyEmailCount: Number(form.maxMonthlyEmailCount),
         features: featuresCsv,
         displayOrder: Number(form.displayOrder),
         isActive: Boolean(form.isActive),
+        // Fiyatlama modeli HER ZAMAN gönderilir: sunucu null'u "koru" sayar; boş liste bilerek temizler.
+        chargePerBranch: form.chargePerBranch,
+        customerTiers: form.customerTiers.map((t) => ({ above: Number(t.above), monthlyFee: Number(t.monthlyFee) })),
+        consentTiers: form.consentTiers.map((t) => ({ above: Number(t.above), monthlyFee: Number(t.monthlyFee) })),
+        yearlyTierMultiplier: Number(form.yearlyTierMultiplier),
       }
       if (mode === 'create') {
         await platformApi.createSubscriptionPlan({ ...payload, planKey: form.planKey.trim() })
@@ -251,13 +291,29 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
 
             <div className="mt-5">
               <div className="font-display text-4xl tabular-nums beautyasist-text-gradient">
-                {form.monthlyPriceTRY === 0 ? 'Özel' : new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(form.monthlyPriceTRY)}
+                {form.monthlyPriceTRY === 0 ? 'Özel' : tl0(form.monthlyPriceTRY)}
               </div>
-              <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.45]">aylık</div>
+              <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.55]">
+                aylık{form.chargePerBranch ? ' · şube başına' : ''} · + KDV
+              </div>
               <div className="mt-2 font-display text-xl tabular-nums text-[#A5556E]">
-                {form.yearlyPriceTRY === 0 ? 'Özel' : new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(form.yearlyPriceTRY)}
+                {form.yearlyPriceTRY === 0 ? 'Özel' : tl0(form.yearlyPriceTRY)}
               </div>
-              <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.45]">yıllık</div>
+              <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#2A2027]/[0.55]">
+                yıllık{form.chargePerBranch ? ' · şube başına' : ''} · + KDV
+              </div>
+              {form.monthlyPriceTRY > 0 && (
+                <div className="mt-3 rounded-[14px] border border-[#EAD8DF]/[0.80] bg-white/[0.80] px-3 py-2 text-[11px] text-[#2A2027]/[0.75]">
+                  KDV dahil: <b className="tabular-nums">{tl0(form.monthlyPriceTRY * (1 + VAT_RATE))}</b> / ay
+                  {form.yearlyPriceTRY > 0 && <> · <b className="tabular-nums">{tl0(form.yearlyPriceTRY * (1 + VAT_RATE))}</b> / yıl</>}
+                </div>
+              )}
+              {(form.customerTiers.length > 0 || form.consentTiers.length > 0) && (
+                <div className="mt-3 space-y-1 text-[11px] text-[#2A2027]/[0.75]">
+                  {form.customerTiers.length > 0 && <div>Müşteri kademesi: {form.customerTiers.length} eşik</div>}
+                  {form.consentTiers.length > 0 && <div>Onam kademesi: {form.consentTiers.length} eşik</div>}
+                </div>
+              )}
             </div>
 
             <div className="mt-6 space-y-3">
@@ -326,7 +382,7 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
                 )}
                 <Field label="Paket adı" required helper="Müşteriye gösterilen ad">
                   <input type="text" value={form.name} onChange={(e) => update('name', e.target.value)}
-                    className={inputClass} placeholder="Profesyonel" />
+                    className={inputClass} placeholder="örn. BeautyAsist Kurumsal" />
                 </Field>
                 <Field label="Açıklama" fullWidth>
                   <textarea rows={2} value={form.description} onChange={(e) => update('description', e.target.value)}
@@ -334,15 +390,15 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
                 </Field>
               </div>
 
-              <SectionTitle icon={CreditCard} className="mt-6">Fiyat & sıra</SectionTitle>
+              <SectionTitle icon={CreditCard} className="mt-6">Fiyat & sıra <span className="ml-1 normal-case text-[#74616A]">(KDV HARİÇ · tahsilatta %20 KDV eklenir)</span></SectionTitle>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label="Aylık fiyat (₺)" helper="0 = özel/teklif">
-                  <input type="number" value={form.monthlyPriceTRY}
+                <Field label={`Aylık fiyat (₺, KDV hariç${form.chargePerBranch ? ', şube başına' : ''})`} helper="0 = özel/teklif">
+                  <input type="number" min={0} step="0.01" value={form.monthlyPriceTRY}
                     onChange={(e) => update('monthlyPriceTRY', Number(e.target.value))}
                     className={inputClass} />
                 </Field>
-                <Field label="Yıllık fiyat (₺)" helper="Yıllık satışlarda kullanılır">
-                  <input type="number" value={form.yearlyPriceTRY}
+                <Field label={`Yıllık fiyat (₺, KDV hariç${form.chargePerBranch ? ', şube başına' : ''})`} helper="Yıllık satışlarda kullanılır">
+                  <input type="number" min={0} step="0.01" value={form.yearlyPriceTRY}
                     onChange={(e) => update('yearlyPriceTRY', Number(e.target.value))}
                     className={inputClass} />
                 </Field>
@@ -361,6 +417,42 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
                     </span>
                   </label>
                 </Field>
+              </div>
+
+              <SectionTitle icon={Building2} className="mt-6">Fiyatlama modeli</SectionTitle>
+              <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
+                <label className="flex cursor-pointer items-start gap-3 rounded-[16px] border border-[#EAD8DF]/[0.80] bg-white/[0.86] p-3">
+                  <input type="checkbox" checked={form.chargePerBranch}
+                    onChange={(e) => update('chargePerBranch', e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[#A5556E]" />
+                  <span>
+                    <span className="block text-[12.5px] font-semibold text-[#2A2027]">Şube başına ücretlendir</span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-[#5A4B53]">
+                      Tutar = şube sayısı × fiyat. Dönem ortasında açılan şube, kalan gün kadar kayıtlı karttan hemen tahsil edilir
+                      (kurum tutarı onaylar). Kapalıyken paket şube sayısından bağımsız tek fiyattır.
+                    </span>
+                  </span>
+                </label>
+                <Field label="Yıllık kademe çarpanı" helper="Yıllık dönemde kademe ücreti = aylık ücret × çarpan (10 = yıllıkta 2 ay indirim)">
+                  <input type="number" min={1} max={12} step="0.5" value={form.yearlyTierMultiplier}
+                    onChange={(e) => update('yearlyTierMultiplier', Number(e.target.value))} className={inputClass} />
+                </Field>
+              </div>
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                <TierEditor
+                  title="Müşteri sayısı kademeleri"
+                  unit="müşteri"
+                  hint="Kurumun kayıtlı müşteri sayısı eşiği AŞINCA aylık ek ücret (KDV hariç). Kademeler birikmez: aşılan en yüksek kademe uygulanır."
+                  tiers={form.customerTiers}
+                  onChange={(tiers) => update('customerTiers', tiers)}
+                />
+                <TierEditor
+                  title="Dijital onam formu kademeleri"
+                  unit="imzalı evrak"
+                  hint="İmzalanmış onam formu sayısı eşiği AŞINCA aylık ek ücret (KDV hariç). Eşiğin altı ücretsizdir."
+                  tiers={form.consentTiers}
+                  onChange={(tiers) => update('consentTiers', tiers)}
+                />
               </div>
 
               <SectionTitle icon={Layers} className="mt-6">Kullanım Limitleri <span className="ml-1 normal-case text-[#74616A]">(aylık maliyetli kanallar dahil · -1 = sınırsız · 0 = kapalı)</span></SectionTitle>
@@ -389,13 +481,13 @@ export default function PlanFormDialog({ mode, plan, trigger, onSuccess }: PlanF
                   <input type="number" value={form.maxMonthlyWhatsAppCount}
                     onChange={(e) => update('maxMonthlyWhatsAppCount', Number(e.target.value))} className={inputClass} />
                 </Field>
-                <Field label="Aylık WhatsApp (Pazarlama)" helper="Marketing kotası — genelde 0, kontörle alınır">
+                <Field label="Aylık WhatsApp (Pazarlama)" helper="Marketing kotası — genelde 0, mesaj kredisiyle alınır">
                   <input type="number" value={form.maxMonthlyWhatsAppMarketing}
                     onChange={(e) => update('maxMonthlyWhatsAppMarketing', Number(e.target.value))} className={inputClass} />
                 </Field>
-                <Field label="Kontör harcama tavanı (₺)" helper="Aylık üst sınır önerisi — 0 = platform varsayılanı">
-                  <input type="number" value={form.defaultWhatsAppSpendCapTry}
-                    onChange={(e) => update('defaultWhatsAppSpendCapTry', Number(e.target.value))} className={inputClass} />
+                <Field label="Kredi harcama tavanı (kredi)" helper="Aylık WhatsApp + SMS kredi üst sınırı önerisi — 0 = platform varsayılanı">
+                  <input type="number" value={form.defaultSpendCapCredits}
+                    onChange={(e) => update('defaultSpendCapCredits', Number(e.target.value))} className={inputClass} />
                 </Field>
                 <Field label="Aylık E-posta" helper="E-posta gönderim kotası">
                   <input type="number" value={form.maxMonthlyEmailCount}
@@ -538,6 +630,65 @@ function Field({
       </div>
       {children}
       {helper && <p className="mt-1 text-[10px] leading-snug text-[#2A2027]/[0.45]">{helper}</p>}
+    </div>
+  )
+}
+
+/**
+ * Hacim kademesi düzenleyici — "eşik ÜZERİ aylık ek ücret" satırları. Satırlar eşik sırasıyla
+ * gösterilir; sunucu da aynı sıraya dizer ve aynı eşiği iki kez kabul etmez.
+ */
+function TierEditor({ title, unit, hint, tiers, onChange }: {
+  title: string
+  unit: string
+  hint: string
+  tiers: PricingTier[]
+  onChange: (tiers: PricingTier[]) => void
+}) {
+  const set = (i: number, patch: Partial<PricingTier>) => onChange(tiers.map((t, k) => (k === i ? { ...t, ...patch } : t)))
+  const add = () => {
+    const last = tiers.length ? Math.max(...tiers.map((t) => t.above)) : 5_000
+    onChange([...tiers, { above: last + 5_000, monthlyFee: 0 }])
+  }
+  return (
+    <div className="rounded-[16px] border border-[#EAD8DF]/[0.80] bg-white/[0.86] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12.5px] font-semibold text-[#2A2027]">{title}</span>
+        <button type="button" onClick={add} disabled={tiers.length >= 10}
+          className="inline-flex items-center gap-1 rounded-full border border-[#EAD8DF] px-2.5 py-1 text-[11px] font-semibold text-[#A5556E] hover:bg-[#fff1f6] disabled:opacity-40">
+          <Plus className="h-3.5 w-3.5" /> Kademe
+        </button>
+      </div>
+      <p className="mt-1 text-[11px] leading-snug text-[#5A4B53]">{hint}</p>
+      {tiers.length === 0 ? (
+        <div className="mt-2 rounded-[12px] border border-dashed border-[#EAD8DF] px-3 py-2 text-[11px] text-[#74616A]">Kademe yok — sayıdan bağımsız ek ücret alınmaz.</div>
+      ) : (
+        <div className="mt-2 space-y-1.5">
+          {tiers.map((t, i) => (
+            <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+              <label className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-[#74616A]">&gt;</span>
+                <input type="number" min={0} step={1} value={t.above} aria-label={`Eşik (${unit})`}
+                  onChange={(e) => set(i, { above: Number(e.target.value) })}
+                  className={inputClass + ' pl-6'} />
+              </label>
+              <label className="relative">
+                <input type="number" min={0} step="0.01" value={t.monthlyFee} aria-label="Aylık ek ücret (₺, KDV hariç)"
+                  onChange={(e) => set(i, { monthlyFee: Number(e.target.value) })}
+                  className={inputClass + ' pr-16'} />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[#74616A]">₺/ay +KDV</span>
+              </label>
+              <button type="button" onClick={() => onChange(tiers.filter((_, k) => k !== i))} aria-label="Kademeyi sil"
+                className="rounded-full p-1.5 text-[#B23252] hover:bg-rose-50">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-2 px-1 text-[10px] text-[#74616A]">
+            <span>{unit} sayısı ÜZERİ</span><span>aylık ek ücret</span><span />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -64,8 +64,13 @@ public sealed class UsageService : IUsageService
         var appointmentCounts = await _db.Appointments.AsNoTracking().IgnoreQueryFilters()
             .Where(x => !x.IsDeleted && x.StartUtc >= monthStart).GroupBy(x => x.TenantId)
             .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+        // SMS KOTA SAYIMI faturalamayla AYNI tanım (WhatsAppBillingService.CountSmsQuotaUsedAsync):
+        // mesaj kredisinden ödenen SMS kotayı tüketmez; dönüşüm öncesi kaynaksız gönderilmiş satırlar kotadandır.
         var smsCounts = await _db.NotificationLogs.AsNoTracking().IgnoreQueryFilters()
-            .Where(x => !x.IsDeleted && x.Channel == NotificationChannel.Sms && x.Status == NotificationLogStatus.Sent && x.CreatedAtUtc >= monthStart)
+            .Where(x => !x.IsDeleted && x.Channel == NotificationChannel.Sms && x.CreatedAtUtc >= monthStart
+                     && x.Status != NotificationLogStatus.Failed
+                     && (x.BillingSource == WhatsAppBillingSource.Quota
+                         || (x.BillingSource == WhatsAppBillingSource.None && x.Status == NotificationLogStatus.Sent)))
             .GroupBy(x => x.TenantId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
         var whatsAppCounts = await _db.WhatsAppMessages.AsNoTracking().IgnoreQueryFilters()
             .Where(x => !x.IsDeleted && x.Direction == WhatsAppMessageDirection.Outbound && x.CreatedAtUtc >= monthStart)
@@ -93,8 +98,20 @@ public sealed class UsageService : IUsageService
                 metrics));
         }
 
+        // MRR = fiyatlama motorunun aylık eşdeğeri (KDV HARİÇ): şube başı paket şube sayısıyla,
+        // müşteri/onam kademeleriyle; yıllık abonelik ÷ 12. Düz paket fiyatı toplamı şube başı
+        // ücretlendirmede eksik, yıllıkta fazla gösterirdi.
+        // Onam sayacı ücret ve imza kapısıyla AYNI ifadeden (imzalanmış her evrak; bkz. BillingCountsQuery).
+        var signedConsents = await _db.CustomerConsentForms.AsNoTracking().IgnoreQueryFilters()
+            .Where(BillingCountsQuery.CountsAsSignedConsent).GroupBy(x => x.TenantId)
+            .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+        decimal Recurring(Tenant t) => t.SubscriptionPlan is { } p
+            ? Domain.Billing.SubscriptionPricing.MonthlyEquivalentNet(p, t.SubscriptionPeriod, new Domain.Billing.BillingCounts(
+                branchCounts.GetValueOrDefault(t.Id), customerCounts.GetValueOrDefault(t.Id), signedConsents.GetValueOrDefault(t.Id)))
+            : 0m;
+
         var mrr = tenants.Where(t => t.Status == TenantStatus.Active && t.SubscriptionPlan is not null)
-            .Sum(t => t.SubscriptionPlan!.MonthlyPriceTRY);
+            .Sum(Recurring);
 
         var breakdown = tenants
             .GroupBy(t => new { Id = t.SubscriptionPlanId, Key = t.SubscriptionPlan?.PlanKey ?? "Unassigned", Name = t.SubscriptionPlan?.Name ?? "Atanmamış" })
@@ -104,7 +121,7 @@ public sealed class UsageService : IUsageService
                 g.Key.Name,
                 g.Count(),
                 g.Where(t => t.Status == TenantStatus.Active && t.SubscriptionPlan is not null)
-                 .Sum(t => t.SubscriptionPlan!.MonthlyPriceTRY)))
+                 .Sum(Recurring)))
             .OrderByDescending(b => b.TenantCount)
             .ToArray();
 
@@ -154,13 +171,26 @@ public sealed class UsageService : IUsageService
                 $"Bilinmeyen kullanım metriği: '{metricKey}'. Limit kontrolü sessizce atlanamaz — " +
                 $"geçerli anahtarlar: {string.Join(", ", metrics.Select(m => m.Key))}.");
         }
-        if (metric.IsUnlimited) return Result.Success();
-        if (metric.Used < metric.Limit) return Result.Success();
+        if (!metric.IsUnlimited && metric.Used >= metric.Limit)
+        {
+            // Sert paket sınırı dolu — Conflict (HTTP 409) ile dön.
+            return Result.Failure(Error.Conflict(
+                $"{plan.Name} paketinin {metric.Label.ToLower()} sınırına ulaşıldı ({metric.Used}/{metric.Limit}). " +
+                "Bir üst pakete geçerek devam edebilirsin."));
+        }
 
-        // Limit dolu — Conflict (HTTP 409) ile dön.
-        return Result.Failure(Error.Conflict(
-            $"{plan.Name} paketinin {metric.Label.ToLower()} sınırına ulaşıldı ({metric.Used}/{metric.Limit}). " +
-            "Bir üst pakete geçerek devam edebilirsin."));
+        // ÜCRETLİ MÜŞTERİ KADEMESİ — "sınırı geçen ödemeden kullanamaz": yeni müşteri bedeli ÖDENMEMİŞ bir
+        // kademeye düşüyorsa eklenemez (onam kapısıyla aynı kural; hak yalnız ödenmiş faturadan).
+        if (string.Equals(metricKey, UsageMetricKeys.Customers, StringComparison.OrdinalIgnoreCase))
+        {
+            var tier = await TierEntitlementQuery.EvaluateAsync(_db, tenantId, Domain.Billing.TierDimension.Customers, DateTime.UtcNow, ct);
+            if (!tier.Allowed)
+            {
+                return Result.Failure(Error.CustomerLimitReached(
+                    TierEntitlementQuery.LimitMessage(Domain.Billing.TierDimension.Customers, tier)));
+            }
+        }
+        return Result.Success();
     }
 
     private async Task<IReadOnlyCollection<UsageMetric>> CalculateMetricsAsync(Tenant tenant, CancellationToken ct)
@@ -177,11 +207,14 @@ public sealed class UsageService : IUsageService
             .CountAsync(x => x.TenantId == tenant.Id && !x.IsDeleted, ct);
         var monthlyAppointmentCount = await _db.Appointments.AsNoTracking().IgnoreQueryFilters()
             .CountAsync(x => x.TenantId == tenant.Id && !x.IsDeleted && x.StartUtc >= monthStart, ct);
+        // Faturalamayla AYNI kota tanımı (bkz. üstteki platform özeti notu).
         var monthlySmsCount = await _db.NotificationLogs.AsNoTracking().IgnoreQueryFilters()
             .CountAsync(x => x.TenantId == tenant.Id && !x.IsDeleted
                           && x.Channel == NotificationChannel.Sms
-                          && x.Status == NotificationLogStatus.Sent
-                          && x.CreatedAtUtc >= monthStart, ct);
+                          && x.CreatedAtUtc >= monthStart
+                          && x.Status != NotificationLogStatus.Failed
+                          && (x.BillingSource == WhatsAppBillingSource.Quota
+                              || (x.BillingSource == WhatsAppBillingSource.None && x.Status == NotificationLogStatus.Sent)), ct);
         var monthlyWhatsAppCount = await _db.WhatsAppMessages.AsNoTracking().IgnoreQueryFilters()
             .CountAsync(x => x.TenantId == tenant.Id && !x.IsDeleted
                           && x.Direction == WhatsAppMessageDirection.Outbound

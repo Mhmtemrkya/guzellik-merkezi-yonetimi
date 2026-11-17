@@ -44,7 +44,18 @@ public sealed class DataImportService : IDataImportService
         if (request.Customers is { Count: > 0 })
         {
             var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Customers, cancellationToken);
-            if (limit.IsFailure) return Result<BulkImportResultDto>.Failure(limit.Error);
+            // Ödenmiş müşteri kademesi DOLU: müşteri satırları atlanıp raporlanır, aynı dosyadaki hizmet / paket /
+            // ürün / personel yine aktarılır (tüm isteği reddetmek onları da kaybettirirdi). Paket sınırı ya da
+            // plansız kurum gibi diğer engeller tüm isteği durdurur.
+            var tierFull = limit.IsFailure && limit.Error.Code == "CustomerLimitReached";
+            if (limit.IsFailure && !tierFull) return Result<BulkImportResultDto>.Failure(limit.Error);
+
+            // ÜCRETLİ MÜŞTERİ KADEMESİ: içe aktarma ödenmiş kapasiteyi AŞAMAZ — sığan satırlar alınır, kalanı
+            // atlanıp raporlanır (kilit tutulmaz: uzun içe aktarma kurum satırını dakikalarca kilitlemesin;
+            // aynı anda elle eklenen tek bir müşteri kadar aşım kabul edilmiş sınırdır).
+            var tier = await TierEntitlementQuery.EvaluateAsync(_db, tenantId, Domain.Billing.TierDimension.Customers, DateTime.UtcNow, cancellationToken);
+            var tierRoom = tierFull ? 0 : tier.Capacity is int capacity ? Math.Max(0, capacity - tier.Count) : int.MaxValue;
+            var tierSkipped = 0;
 
             // Şifreli kolonlarda SQL karşılaştırması çalışmaz — mevcutlar belleğe alınıp
             // çözülmüş değerler üzerinden mükerrer kontrolü yapılır.
@@ -86,6 +97,12 @@ public sealed class DataImportService : IDataImportService
                     }
                     if (digits.Length >= 7) seenNames.Add(nameKey);
 
+                    if (custCreated >= tierRoom)
+                    {
+                        tierSkipped++;
+                        continue;
+                    }
+
                     var customer = new Customer(tenantId, request.BranchId, name, phone, NullIfBlank(row.Email));
                     customer.UpdateProfile(row.BirthDate, row.Gender, kvkkConsent: false, NullIfBlank(row.Notes));
                     _db.Customers.Add(customer);
@@ -98,6 +115,13 @@ public sealed class DataImportService : IDataImportService
                     failed++;
                     if (errors.Count < 50) errors.Add($"Müşteri satırı hatası: {ex.Message}");
                 }
+            }
+
+            if (tierSkipped > 0)
+            {
+                failed += tierSkipped;
+                errors.Insert(0, $"{tierSkipped} müşteri satırı içe aktarılmadı: kayıtlı müşteri sınırına ulaşıldı " +
+                                 $"({(tier.Capacity ?? 0):N0} müşteri). Bu kademenin bedeli ödenmeden yeni müşteri eklenemez.");
             }
         }
 

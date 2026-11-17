@@ -85,7 +85,8 @@ public sealed class SubscriptionBillingTests
         {
             var started = await NewService(db).StartCheckoutAsync(tenantId, planId, BillingPeriod.Monthly, Callback);
             Assert.True(started.IsSuccess);
-            Assert.Equal(1000m, started.Value!.AmountTRY);
+            // Paket fiyatı KDV HARİÇTİR (13 Kas 2026): 1.000 + %20 KDV = 1.200 tahsil edilir.
+            Assert.Equal(1200m, started.Value!.AmountTRY);
         }
 
         await using var verify = NewDb(options);
@@ -130,10 +131,11 @@ public sealed class SubscriptionBillingTests
 
         var invoice = await verify.TenantInvoices.SingleAsync();
         Assert.Equal("Paid", invoice.Status);
-        Assert.Equal(1000m, invoice.AmountTRY);
-        // KDV DAHİL brütten türetilir: 1000 / 1.20 = 833,33 net + 166,67 KDV.
-        Assert.Equal(833.33m, invoice.NetAmountTRY);
-        Assert.Equal(166.67m, invoice.VatAmountTRY);
+        // Fatura tahsilattaki teklif dökümünü AYNEN taşır: 1.000 net + 200 KDV = 1.200 brüt.
+        Assert.Equal(1200m, invoice.AmountTRY);
+        Assert.Equal(1000m, invoice.NetAmountTRY);
+        Assert.Equal(200m, invoice.VatAmountTRY);
+        Assert.NotNull(invoice.LinesJson);
 
         var payment = await verify.SubscriptionPayments.SingleAsync();
         Assert.Equal(SubscriptionPayment.Succeeded, payment.Status);

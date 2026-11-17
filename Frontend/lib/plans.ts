@@ -9,6 +9,16 @@
  * BURAYA AĞ ÇAĞRISI VE GİZLİ ANAHTAR GİRMEZ.
  */
 
+/** Hacim kademesi: sayaç `above` değerini AŞINCA aylık ek ücret (KDV hariç). */
+export interface PublicPricingTier {
+  above: number
+  monthlyFee: number
+}
+
+/**
+ * Vitrine açık paket. Fiyatlar KDV HARİÇTİR (`vatRate` ile gösterimde eklenir); `chargePerBranch`
+ * açıksa şube başına birim fiyattır.
+ */
 export interface PublicPlan {
   id: string
   name: string
@@ -20,6 +30,25 @@ export interface PublicPlan {
   maxCustomers: number
   features: string | null
   displayOrder: number
+  chargePerBranch?: boolean
+  customerTiers?: PublicPricingTier[]
+  consentTiers?: PublicPricingTier[]
+  yearlyTierMultiplier?: number
+  vatRate?: number
+}
+
+/** Sunucu vermezse varsayılan KDV oranı (gösterim). Tahsil edilen tutarı her zaman sunucu söyler. */
+export const DEFAULT_VAT_RATE = 0.2
+
+export const vatRateOf = (p: PublicPlan) => (typeof p.vatRate === 'number' ? p.vatRate : DEFAULT_VAT_RATE)
+
+/** "10.000 üzeri +250 ₺" biçiminde kademe satırları. */
+export function tierLabels(tiers: PublicPricingTier[] | undefined, unit: string): string[] {
+  return (tiers ?? [])
+    .filter((t) => t.monthlyFee > 0)
+    .slice()
+    .sort((a, b) => a.above - b.above)
+    .map((t) => `${t.above.toLocaleString('tr-TR')} ${unit} üzeri +₺${t.monthlyFee.toLocaleString('tr-TR')}/ay`)
 }
 
 /**
@@ -62,7 +91,9 @@ export function planFeatureLabels(features: string | null, limit = 6): string[] 
 /** Limit satırları: 0/negatif = sınırsız (paket kataloğundaki kural). */
 export function planLimitLabels(plan: PublicPlan): string[] {
   const rows: string[] = []
-  rows.push(plan.maxBranches > 0 ? `${plan.maxBranches} şube` : 'Sınırsız şube')
+  rows.push(plan.chargePerBranch
+    ? 'Her şube ayrı ücretlendirilir'
+    : plan.maxBranches > 0 ? `${plan.maxBranches} şube` : 'Sınırsız şube')
   rows.push(plan.maxStaff > 0 ? `${plan.maxStaff} kullanıcı` : 'Sınırsız kullanıcı')
   if (plan.maxCustomers > 0) rows.push(`${plan.maxCustomers.toLocaleString('tr-TR')} danışan`)
   else rows.push('Sınırsız danışan')

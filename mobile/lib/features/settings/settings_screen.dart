@@ -12,6 +12,7 @@ import '../../shared/widgets/app_background.dart';
 import '../../shared/widgets/page_header.dart';
 import '../account/account_deletion.dart';
 import '../appointments/calendar_theme.dart';
+import '../branches/branches_screen.dart' show createBranchWithCharge;
 
 /// Ayarlar — web "ayarlar" sayfasının mobil paritesi: Kurum Profili, Ödeme &
 /// Taksit, WhatsApp, Gelir Bilgileri + Gelir Kalemleri, Kayıt Özeti, Aktif
@@ -298,10 +299,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (result?.body == null) return;
+    if (!mounted) return;
     await _guard(
       () => isEdit
           ? widget.api.put('/api/admin/branches/${b['id']}', result!.body!)
-          : widget.api.post('/api/admin/branches/', result!.body!),
+          // Yeni şube: ücret onayı (şube başı paket) + mağaza kuralı + idempotency ortak yoldan.
+          : createBranchWithCharge(context, widget.api, result!.body!),
       isEdit ? 'Şube güncellendi.' : 'Şube oluşturuldu.',
     );
   }

@@ -1,5 +1,6 @@
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Application.Abstractions;
+using GuzellikMerkezi.Application.Features.Notifications;
 using GuzellikMerkezi.Application.Features.WhatsApp;
 
 namespace GuzellikMerkezi.Api.Endpoints;
@@ -47,6 +48,18 @@ public static class PlatformWhatsAppEndpoints
             (await s.BindConnectionAsync(tenantId, req, ct)).ToHttpResult(http));
         g.MapPost("/connections/{tenantId:guid}/test", async (Guid tenantId, SendTestMessageRequest req, IWhatsAppService s, HttpContext http, CancellationToken ct) =>
             (await s.SendTestMessageAsync(tenantId, req, ct)).ToHttpResult(http));
+
+        // --- Kurumun kendi SMS hesabı (Verimor / Netgsm) — bağlantıyı BeautyAsist kurar ---
+        // Kurum yalnız durumu görür (GET /api/admin/sms/connection). Kaydetme parolayı şifreli saklar;
+        // test SMS'i başarılı olunca kurumun SMS'leri o hesaptan gider (kota/kredi düşmez).
+        g.MapGet("/sms-connections", async (ITenantSmsConnectionService s, HttpContext http, CancellationToken ct) =>
+            (await s.ListAsync(ct)).ToHttpResult(http));
+        g.MapPut("/sms-connections/{tenantId:guid}", async (Guid tenantId, SaveSmsConnectionRequest req, ITenantSmsConnectionService s, HttpContext http, CancellationToken ct) =>
+            (await s.SaveAsync(tenantId, req, ct)).ToHttpResult(http));
+        g.MapPost("/sms-connections/{tenantId:guid}/test", async (Guid tenantId, TestSmsConnectionRequest req, ITenantSmsConnectionService s, HttpContext http, CancellationToken ct) =>
+            (await s.TestAsync(tenantId, req, ct)).ToHttpResult(http));
+        g.MapDelete("/sms-connections/{tenantId:guid}", async (Guid tenantId, ITenantSmsConnectionService s, HttpContext http, CancellationToken ct) =>
+            (await s.DisconnectAsync(tenantId, ct)).ToHttpResult(http));
 
         // --- Kurum cüzdanı yönetimi ---
         g.MapGet("/wallets/{tenantId:guid}", async (Guid tenantId, IWhatsAppBillingService b, HttpContext http, CancellationToken ct) =>

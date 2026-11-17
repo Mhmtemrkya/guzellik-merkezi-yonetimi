@@ -15,27 +15,40 @@ public sealed record WhatsAppSettingsDto(
     string WebhookUrl,
     bool MarketingEnabled,
     bool AllowWalletOverage,
-    decimal? MonthlySpendCapTry,
+    decimal? MonthlySpendCapCredits,
     // Meta onaylı şablon adları — 24 saat penceresi kapalıyken serbest metin İLETİLMEZ.
     string? KvkkTemplateName = null,
     string? ReminderTemplateName = null,
     string TemplateLanguageCode = "tr",
     string? WaitlistOfferTemplateName = null,
     string? WaitlistActivatedTemplateName = null,
-    string? RatingTemplateName = null);
+    string? RatingTemplateName = null,
+    // Tek yönlü bildirimlerin kanalı (WhatsApp / Sms).
+    NotificationChannel RatingLinkChannel = NotificationChannel.WhatsApp,
+    NotificationChannel WaitlistActivatedChannel = NotificationChannel.WhatsApp,
+    NotificationChannel KvkkChannel = NotificationChannel.WhatsApp);
 
-/// <summary>Kurum yöneticisi yalnızca içeriği ve faturalama tercihlerini kaydeder (bağlantıyı platform yönetir).</summary>
+/// <summary>
+/// Kurum yöneticisi yalnızca içeriği, faturalama tercihlerini ve tek yönlü bildirim kanallarını
+/// kaydeder. Bağlantı VE Meta onaylı şablon adları platformdadır (<see cref="BindWhatsAppConnectionRequest"/>):
+/// mağazadaki eski mobil sürüm şablon adlarını hâlâ gönderir — bu kayıtta alan YOKTUR, sessizce yok sayılır.
+/// Kanal alanları boş gelirse MEVCUT değer korunur — eski istemci (kanal alanlarını bilmeyen mobil
+/// sürüm) kaydettiğinde seçim sıfırlanmasın.
+/// </summary>
 public sealed record SaveWhatsAppSettingsRequest(
     string? ReminderTemplate,
     bool MarketingEnabled = false,
     bool AllowWalletOverage = false,
-    decimal? MonthlySpendCapTry = null,
-    string? KvkkTemplateName = null,
-    string? ReminderTemplateName = null,
-    string? TemplateLanguageCode = null,
-    string? WaitlistOfferTemplateName = null,
-    string? WaitlistActivatedTemplateName = null,
-    string? RatingTemplateName = null);
+    decimal? MonthlySpendCapCredits = null,
+    NotificationChannel? RatingLinkChannel = null,
+    NotificationChannel? WaitlistActivatedChannel = null,
+    NotificationChannel? KvkkChannel = null,
+    /// <summary>
+    /// Tavanın birimi. Yeni istemciler "Credits" gönderir. Boşsa istek, tavanı ₺ olarak
+    /// (<c>monthlySpendCapTry</c>) gönderen ESKİ istemcidendir (mağazadaki mobil sürüm) ve
+    /// <see cref="MonthlySpendCapCredits"/> hiç gelmez — o durumda mevcut tavan KORUNUR, sessizce silinmez.
+    /// </summary>
+    string? SpendCapUnit = null);
 
 public sealed record ReminderResultDto(
     bool Sent,
@@ -59,7 +72,7 @@ public sealed record WhatsAppMessageDto(
     DateTime CreatedAtUtc,
     WhatsAppMessageCategory Category,
     WhatsAppBillingSource BillingSource,
-    decimal ChargedAmountTry);
+    decimal ChargedCredits);
 
 // --- Platform tarafı: bağlantı yönetimi ---
 
@@ -74,15 +87,32 @@ public sealed record WhatsAppConnectionDto(
     string ConnectionStatus,
     bool IsConnected,
     bool HasTokenOverride,
-    string WebhookUrl);
+    string WebhookUrl,
+    // Meta onaylı şablon adları — Meta Business Manager platformun olduğu için platform yönetir.
+    string? KvkkTemplateName = null,
+    string? ReminderTemplateName = null,
+    string TemplateLanguageCode = "tr",
+    string? WaitlistOfferTemplateName = null,
+    string? WaitlistActivatedTemplateName = null,
+    string? RatingTemplateName = null);
 
+/// <summary>
+/// Platform: kurum numarasını bağlar. Şablon adlarında <c>null</c> = MEVCUT korunur (alanları bilmeyen
+/// istemci, ör. yalnız durumu değiştiren kayıt, şablonları silmesin); boş metin = temizle.
+/// </summary>
 public sealed record BindWhatsAppConnectionRequest(
     string? PhoneNumberId,
     string? BusinessAccountId,
     string? DisplayPhoneNumber,
     string ConnectionStatus,
     string? VerifyToken,
-    string? AccessTokenOverride);
+    string? AccessTokenOverride,
+    string? KvkkTemplateName = null,
+    string? ReminderTemplateName = null,
+    string? TemplateLanguageCode = null,
+    string? WaitlistOfferTemplateName = null,
+    string? WaitlistActivatedTemplateName = null,
+    string? RatingTemplateName = null);
 
 /// <summary>
 /// Hediye kartı gönderimi. <paramref name="PdfBase64"/> istemcide üretilen kartın PDF'idir

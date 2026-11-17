@@ -143,8 +143,8 @@ public sealed class BalanceRaceMySqlTests
 
         await using var check = database.NewContext();
         var final = await check.TenantMessagingWallets.IgnoreQueryFilters().SingleAsync(w => w.TenantId == seed.TenantId);
-        Assert.Equal(10m, final.ReservedTry);          // yalnız bir rezervasyon
-        Assert.True(final.AvailableTry >= 0m);         // kullanılabilir bakiye ASLA eksiye düşmez
+        Assert.Equal(10m, final.ReservedCredits);          // yalnız bir rezervasyon
+        Assert.True(final.AvailableCredits >= 0m);         // kullanılabilir bakiye ASLA eksiye düşmez
     }
 
     /// <summary>
@@ -239,7 +239,7 @@ public sealed class BalanceRaceMySqlTests
 
         await using (var db = database.NewContext())
         {
-            db.WhatsAppBillingSettings.Add(new WhatsAppBillingSettings());
+            db.WhatsAppBillingSettings.Add(PaymentTestDoubles.BillingOneTryPerCredit());
             await db.SaveChangesAsync();
         }
 
@@ -277,7 +277,7 @@ public sealed class BalanceRaceMySqlTests
             // ...ama para TEK KEZ yüklenir.
             var wallet = await check.TenantMessagingWallets.IgnoreQueryFilters().AsNoTracking()
                 .SingleAsync(w => w.TenantId == seed.TenantId);
-            Assert.Equal(400m, wallet.BalanceTry);
+            Assert.Equal(400m, wallet.BalanceCredits);
             Assert.Single(await check.WalletTransactions.IgnoreQueryFilters().AsNoTracking()
                 .Where(t => t.TenantId == seed.TenantId && t.Type == WalletTransactionType.TopUp).ToListAsync());
         }
@@ -305,7 +305,7 @@ public sealed class BalanceRaceMySqlTests
 
         await using (var db = database.NewContext())
         {
-            db.WhatsAppBillingSettings.Add(new WhatsAppBillingSettings());
+            db.WhatsAppBillingSettings.Add(PaymentTestDoubles.BillingOneTryPerCredit());
             db.SubscriptionPlans.Add(new SubscriptionPlan("race-basic", "Yarış", 500m, 1, 3, 500, 300, 100));
             await db.SaveChangesAsync();
         }

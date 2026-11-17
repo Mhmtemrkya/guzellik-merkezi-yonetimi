@@ -252,7 +252,7 @@ export default function PlatformKurumlarPage() {
   }, [usageSummary])
   const plansList: SubscriptionPlan[] = (data?.plans ?? []).map((p, i) => normalizeSubscriptionPlan(p, i))
   const planOptions = plansList.filter((p) => p.isActive).map((p) => ({ value: p.name, label: `${p.name} · ${p.monthlyPriceTRY === 0 ? 'Özel' : formatTL(p.monthlyPriceTRY)}` }))
-  const plans = planOptions.length ? planOptions.map((o) => o.value) : ['Başlangıç', 'Profesyonel', 'Premium', 'AI Klinik', 'Enterprise']
+  const plans = planOptions.length ? planOptions.map((o) => o.value) : ['BeautyAsist']
   // Kurum oluşturma diyaloğu için dönem-bazlı tutar gösterebilsin diye aylık/yıllık fiyatlı plan listesi.
   const createPlanOptions: CreateTenantPlanOption[] = plansList
     .filter((p) => p.isActive)

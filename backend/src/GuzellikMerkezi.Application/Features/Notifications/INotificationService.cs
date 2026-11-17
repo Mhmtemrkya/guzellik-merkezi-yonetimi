@@ -15,6 +15,19 @@ public interface INotificationService
 
     Task<Result<SendNotificationResultDto>> SendAsync(Guid tenantId, SendNotificationRequest req, CancellationToken ct = default);
 
+    /// <summary>
+    /// Gönderim ÖNCESİ tahmin — <see cref="SendAsync"/> ile AYNI kitle ve AYNI metin kuralı; hiçbir
+    /// şey yazmaz, kota/kredi ayırmaz.
+    /// </summary>
+    Task<Result<NotificationSendEstimateDto>> EstimateAsync(Guid tenantId, SendNotificationRequest req, CancellationToken ct = default);
+
+    /// <summary>
+    /// ŞABLONSUZ SİSTEM SMS'İ. Şablonlu bildirimle AYNI protokol: kayıt sağlayıcıdan önce yazılır,
+    /// kota/mesaj kredisi rezerve edilir, sonuç ve kredi aynı kayıtta kapanır. Bildirim geçmişinde
+    /// <see cref="SystemSmsRequest.Purpose"/> ile görünür.
+    /// </summary>
+    Task<SystemSmsOutcome> SendSystemSmsAsync(SystemSmsRequest request, CancellationToken ct = default);
+
     /// <summary>Vadesi gelmiş/geçmiş ve ödenmemiş taksiti olan müşteri Id'leri (allocation bazlı).</summary>
     Task<IReadOnlyList<Guid>> GetPaymentDueTargetsAsync(Guid tenantId, DateOnly today, CancellationToken ct = default);
 

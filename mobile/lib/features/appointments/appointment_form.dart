@@ -13,6 +13,7 @@ import '../accounting/adisyon_detail_sheet.dart';
 import '../accounting/package_sale_sheet.dart';
 import '../customers/consultation_form_screen.dart';
 import '../customers/customer_picker.dart';
+import '../customers/customers_screen.dart' show postNewCustomer;
 import 'appointment_help_sheet.dart';
 import 'calendar_theme.dart';
 import 'customer_history_panel.dart';
@@ -317,7 +318,7 @@ class _AppointmentFormState extends State<AppointmentForm> {
     if (body == null) return;
     try {
       body['branchId'] = await _resolveBranchId();
-      final created = await widget.api.post('/api/admin/customers/', body);
+      final created = await postNewCustomer(widget.api, body);
       final map = created is Map ? created.cast<String, dynamic>() : null;
       final newId = _cleanId(map?['id']);
       if (map == null || newId == null) {

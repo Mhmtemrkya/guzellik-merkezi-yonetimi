@@ -68,7 +68,8 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
                 req.Features, req.Description, req.DisplayOrder, req.MaxMonthlyWhatsAppCount, req.MaxMonthlyEmailCount,
                 req.YearlyPriceTRY);
             plan.SetWhatsAppCategoryLimits(req.MaxMonthlyWhatsAppCount, req.MaxMonthlyWhatsAppMarketing);
-            plan.SetDefaultWhatsAppSpendCap(req.DefaultWhatsAppSpendCapTry);
+            plan.SetDefaultSpendCapCredits(req.DefaultSpendCapCredits);
+            plan.SetPricingModel(req.ChargePerBranch, req.CustomerTiers, req.ConsentTiers, req.YearlyTierMultiplier);
             _db.SubscriptionPlans.Add(plan);
             await _db.SaveChangesAsync(ct);
             return Result<SubscriptionPlanDto>.Success(ToDto(plan, 0));
@@ -92,7 +93,13 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
             plan.SetLimits(req.MaxBranches, req.MaxStaff, req.MaxCustomers, req.MaxMonthlyAppointments, req.MaxMonthlySmsCount);
             plan.SetMessagingLimits(req.MaxMonthlyWhatsAppCount, req.MaxMonthlyEmailCount);
             plan.SetWhatsAppCategoryLimits(req.MaxMonthlyWhatsAppCount, req.MaxMonthlyWhatsAppMarketing);
-            plan.SetDefaultWhatsAppSpendCap(req.DefaultWhatsAppSpendCapTry);
+            plan.SetDefaultSpendCapCredits(req.DefaultSpendCapCredits);
+            // Fiyatlama modeli: gönderilmeyen alan MEVCUT değeri korur (bkz. UpdateSubscriptionPlanRequest).
+            plan.SetPricingModel(
+                req.ChargePerBranch ?? plan.ChargePerBranch,
+                req.CustomerTiers ?? plan.CustomerTiers,
+                req.ConsentTiers ?? plan.ConsentTiers,
+                req.YearlyTierMultiplier ?? plan.YearlyTierMultiplier);
             plan.SetFeatures(req.Features);
             plan.SetDisplayOrder(req.DisplayOrder);
             if (req.IsActive) plan.Activate(); else plan.Deactivate();
@@ -166,5 +173,6 @@ public sealed class SubscriptionPlanService : ISubscriptionPlanService
         p.MaxBranches, p.MaxStaff, p.MaxCustomers, p.MaxMonthlyAppointments, p.MaxMonthlySmsCount,
         p.MaxMonthlyWhatsAppCount, p.MaxMonthlyEmailCount,
         p.Features, p.DisplayOrder, p.IsActive, tenantCount,
-        p.MaxMonthlyWhatsAppMarketing, p.DefaultWhatsAppSpendCapTry);
+        p.MaxMonthlyWhatsAppMarketing, p.DefaultSpendCapCredits,
+        p.ChargePerBranch, p.CustomerTiers, p.ConsentTiers, p.YearlyTierMultiplier);
 }

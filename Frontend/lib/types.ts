@@ -365,11 +365,172 @@ export interface ApiSubscriptionPlan {
   maxMonthlyWhatsAppCount?: number
   maxMonthlyEmailCount?: number
   maxMonthlyWhatsAppMarketing?: number
-  defaultWhatsAppSpendCapTry?: number
+  /** Aylık mesaj kredisi harcama tavanı önerisi (WhatsApp + SMS); 0 = platform varsayılanı. */
+  defaultSpendCapCredits?: number
   features?: string | null
   displayOrder?: number
   isActive?: boolean
   tenantCount?: number
+  /** Fiyat şube başına mı? Paket fiyatları KDV HARİÇTİR. */
+  chargePerBranch?: boolean
+  customerTiers?: PricingTier[] | null
+  consentTiers?: PricingTier[] | null
+  yearlyTierMultiplier?: number
+}
+
+/** Hacim kademesi: sayaç `above` DEĞERİNİ AŞINCA aylık ek ücret (KDV hariç). Birikmez — aşılan en yüksek kademe geçerli. */
+export interface PricingTier {
+  above: number
+  monthlyFee: number
+}
+
+/** Teklif kalemi (KDV hariç). */
+export interface QuoteLine {
+  code: 'plan' | 'branches' | 'customers' | 'consent' | 'branch-prorated' | string
+  label: string
+  quantity: number
+  unitNet: number
+  net: number
+}
+
+/** Abonelik teklifi — tahsilatın ve faturanın tek fiyat kaynağı (sunucuda hesaplanır). */
+export interface SubscriptionQuote {
+  planName: string
+  period: 'Monthly' | 'Yearly'
+  lines: QuoteLine[]
+  subtotal: number
+  vatRate: number
+  vat: number
+  total: number
+  branches: number
+  customers: number
+  consentDocuments: number
+}
+
+/** Platform › Faturalama — tüm tutarlar sunucuda fiyatlama motoruyla hesaplanır. */
+export interface PlatformBillingOverview {
+  kpis: {
+    mrrNet: number
+    arrNet: number
+    collectedThisMonthGross: number
+    collectedThisMonthNet: number
+    collectedLastMonthGross: number
+    outstandingGross: number
+    overdueInvoices: number
+    activeSubscriptions: number
+    trialTenants: number
+    cardOnFile: number
+    failedPaymentsLast30Days: number
+    pendingPayments: number
+    nextThirtyDaysRenewalsGross: number
+  }
+  subscriptions: PlatformSubscriptionRow[]
+  recentPayments: PlatformPaymentRow[]
+  monthlyCollections: { year: number; month: number; gross: number; net: number; invoiceCount: number }[]
+  generatedAtUtc: string
+}
+
+export interface PlatformSubscriptionRow {
+  tenantId: string
+  tenantName: string
+  status: 'Trial' | 'Active' | 'Suspended' | 'Cancelled' | string
+  planName?: string | null
+  period?: 'Monthly' | 'Yearly' | null
+  subscriptionEndsAtUtc?: string | null
+  trialEndsAtUtc?: string | null
+  hasCard: boolean
+  cardMasked?: string | null
+  branches: number
+  customers: number
+  signedConsentForms: number
+  monthlyEquivalentNet: number
+  nextRenewalQuote?: SubscriptionQuote | null
+}
+
+export interface PlatformPaymentRow {
+  id: string
+  tenantId: string
+  tenantName: string
+  kind: 'Subscription' | 'BranchAddon' | string
+  status: 'Pending' | 'Succeeded' | 'Failed' | 'Refunded' | string
+  amountTRY: number
+  errorMessage?: string | null
+  attemptNumber: number
+  createdAtUtc: string
+  completedAtUtc?: string | null
+}
+
+export interface PlatformInvoice {
+  id: string
+  tenantId: string
+  tenantName: string
+  number: string
+  periodStartUtc: string
+  periodEndUtc: string
+  amountTRY: number
+  status: 'Draft' | 'Sent' | 'Paid' | 'Overdue' | 'Cancelled' | string
+  issuedAtUtc: string
+  dueDateUtc: string
+  paidAtUtc?: string | null
+  notes?: string | null
+  netAmountTRY: number
+  vatAmountTRY: number
+  vatRate: number
+  paymentReference?: string | null
+  lines?: QuoteLine[] | null
+  /** Card = karttan otomatik tahsil, Manual = elle kesilen. */
+  source: 'Card' | 'Manual' | string
+  /** Fatura ÖDENDİĞİNDE dönemi boyunca açılan onam kademesi eşiği; null = kademe açmaz. */
+  consentTierAbove?: number | null
+  /** Fatura ÖDENDİĞİNDE dönemi boyunca açılan müşteri kademesi eşiği; null = kademe açmaz. */
+  customerTierAbove?: number | null
+  /** Ödeme bekleyen şube talebi — fatura "Ödendi" yapılınca bu adla şube açılır; null = yok / açıldı. */
+  pendingBranchName?: string | null
+}
+
+export interface BranchChargeQuote {
+  chargeRequired: boolean
+  canPurchase: boolean
+  reason?: string | null
+  quote?: SubscriptionQuote | null
+  subscriptionEndsAtUtc?: string | null
+  cardMasked?: string | null
+  /** Card = kayıtlı karttan çekilir · Invoice = açık fatura kesilir (kart yok / ödeme kapalı) · None = ücret yok. */
+  chargeMethod?: 'Card' | 'Invoice' | 'None' | string
+}
+
+/**
+ * Hacim hakkı (kayıtlı müşteri / dijital onam) — "sınırı geçen ödemeden kullanamaz". Kapasite yalnız ÖDENMİŞ
+ * faturalardaki kademeden gelir; açık fatura kilidi açmaz (Invoice yolunda platform "Ödendi" yapınca açılır).
+ */
+export interface TierAllowance {
+  /** Customers = kayıtlı müşteri (silinen düşer) · ConsentDocuments = imzalı onam evrakı (silinen de sayılır). */
+  dimension: 'Customers' | 'ConsentDocuments' | string
+  allowed: boolean
+  /** Sayaç: kayıtlı müşteri ya da imzalı evrak. */
+  count: number
+  /** Ödenmiş kapasite; null = sınırsız. */
+  capacity?: number | null
+  paidTierAbove?: number | null
+  nextTierAbove?: number | null
+  nextTierMonthlyFee?: number | null
+  canPurchase: boolean
+  reason?: string | null
+  quote?: SubscriptionQuote | null
+  chargeMethod: 'Card' | 'Invoice' | 'None' | string
+  cardMasked?: string | null
+  /** Bu kademe için kesilmiş, henüz ÖDENMEMİŞ fatura. */
+  openInvoiceNumber?: string | null
+  subscriptionEndsAtUtc?: string | null
+}
+
+export interface TierUpgradeResult {
+  /** Kademe ŞİMDİ açıldı mı? (Fatura yolunda ödeme gelene kadar false.) */
+  unlocked: boolean
+  pending: boolean
+  message: string
+  amountTRY: number
+  invoiceNumber?: string | null
 }
 
 export interface SubscriptionPlan {
@@ -387,11 +548,16 @@ export interface SubscriptionPlan {
   maxMonthlyWhatsAppCount: number
   maxMonthlyEmailCount: number
   maxMonthlyWhatsAppMarketing?: number
-  defaultWhatsAppSpendCapTry?: number
+  /** Aylık mesaj kredisi harcama tavanı önerisi (WhatsApp + SMS); 0 = platform varsayılanı. */
+  defaultSpendCapCredits?: number
   features: string[]
   displayOrder: number
   isActive: boolean
   tenantCount: number
+  chargePerBranch: boolean
+  customerTiers: PricingTier[]
+  consentTiers: PricingTier[]
+  yearlyTierMultiplier: number
 }
 
 export interface ApiUsageMetric {
@@ -1525,7 +1691,8 @@ export interface ApiWhatsAppSettings {
   webhookUrl?: string
   marketingEnabled?: boolean
   allowWalletOverage?: boolean
-  monthlySpendCapTry?: number | null
+  /** Aylık mesaj kredisi harcama tavanı (WhatsApp + SMS). null = paket/platform varsayılanı. */
+  monthlySpendCapCredits?: number | null
   /** Meta onaylı şablon adları — 24 saat penceresi kapalıyken serbest metin iletilmez. */
   kvkkTemplateName?: string | null
   reminderTemplateName?: string | null
@@ -1533,20 +1700,34 @@ export interface ApiWhatsAppSettings {
   waitlistOfferTemplateName?: string | null
   waitlistActivatedTemplateName?: string | null
   ratingTemplateName?: string | null
+  /** Tek yönlü bildirimlerin kanalı. SMS seçilirse plan SMS kotasından / mesaj kredisinden düşer. */
+  ratingLinkChannel?: OneWayChannel
+  waitlistActivatedChannel?: OneWayChannel
+  /** WhatsApp: açık rıza isteği (ONAYLIYORUM). SMS: yalnız aydınlatma metni linki — rıza alınmaz. */
+  kvkkChannel?: OneWayChannel
 }
 
-// --- WhatsApp kontör/faturalama ---
+/** Tek yönlü bildirimlerde kurumun seçebildiği kanal. */
+export type OneWayChannel = 'WhatsApp' | 'Sms'
+
+// --- Mesaj kredisi (WhatsApp + SMS ortak cüzdan) ---
+// 12 Kas 2026'da ₺ "kontör"den krediye geçildi: 1 kredi = 1 WhatsApp hatırlatma.
 export type WhatsAppMessageCategory = 'Utility' | 'Marketing' | 'Authentication' | 'Service'
-export type WhatsAppBillingSource = 'None' | 'Quota' | 'Wallet' | 'Simulation'
-export type WalletTransactionType = 'TopUp' | 'Reserve' | 'Capture' | 'Refund' | 'Adjustment'
-export type CreditPurchaseStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled'
+/** OwnAccount = kurumun kendi SMS hesabından (kota/kredi düşmez). */
+export type WhatsAppBillingSource = 'None' | 'Quota' | 'Wallet' | 'Simulation' | 'OwnAccount'
+export type WalletTransactionType = 'TopUp' | 'Reserve' | 'Capture' | 'Refund' | 'Adjustment' | 'Conversion'
+/** Defter satırının birimi: dönüşüm öncesi satırlar ₺ (Try), sonrakiler kredi. */
+export type WalletUnit = 'Try' | 'Credit'
+export type CreditPurchaseStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled' | 'Failed'
 
 export interface ApiCreditPackage {
   id: string
   name: string
   description?: string | null
+  /** Ödenen tutar (₺). */
   priceTry: number
-  grantsTry: number
+  /** Cüzdana eklenen kredi. */
+  grantsCredits: number
   displayOrder: number
   isActive: boolean
   estimatedUtilityMessages: number
@@ -1554,24 +1735,33 @@ export interface ApiCreditPackage {
 
 export interface ApiMessagingWallet {
   tenantId: string
-  balanceTry: number
-  reservedTry: number
-  availableTry: number
-  lifetimeTopUpTry: number
-  lifetimeSpentTry: number
-  lowBalanceThresholdTry: number
+  balanceCredits: number
+  reservedCredits: number
+  availableCredits: number
+  lifetimeTopUpCredits: number
+  lifetimeSpentCredits: number
+  lowBalanceThresholdCredits: number
   isLowBalance: boolean
   utilityUsed: number
   utilityLimit: number
   marketingUsed: number
   marketingLimit: number
-  monthlyWalletSpentTry: number
-  monthlySpendCapTry?: number | null
+  smsUsed: number
+  smsLimit: number
+  monthlySpentCredits: number
+  monthlySpendCapCredits?: number | null
   marketingEnabled: boolean
   allowWalletOverage: boolean
-  utilityPriceTry: number
-  marketingPriceTry: number
+  /** WhatsApp hatırlatma (Utility) mesaj başı kredi. */
+  utilityCreditCost: number
+  /** WhatsApp kampanya (Marketing) mesaj başı kredi. */
+  marketingCreditCost: number
+  /** SMS parça başı kredi (Unicode: 70 karaktere kadar 1 parça, üstü 67'lik parçalar). */
+  smsCreditsPerPart: number
   estimatedUtilityMessages: number
+  estimatedSmsMessages: number
+  /** Paket dışı kredi alımında 1 kredinin ₺ fiyatı. */
+  creditUnitPriceTry: number
   billingEnabled: boolean
   creditPackages: ApiCreditPackage[]
 }
@@ -1579,10 +1769,12 @@ export interface ApiMessagingWallet {
 export interface ApiWalletTransaction {
   id: string
   type: WalletTransactionType
-  amountTry: number
-  balanceAfterTry: number
+  unit: WalletUnit
+  amount: number
+  balanceAfter: number
   description?: string | null
   category?: WhatsAppMessageCategory | null
+  channel?: 'Sms' | 'WhatsApp' | 'Email' | null
   createdAtUtc: string
 }
 
@@ -1593,7 +1785,7 @@ export interface ApiCreditPurchase {
   creditPackageId?: string | null
   packageName: string
   priceTry: number
-  grantsTry: number
+  grantsCredits: number
   status: CreditPurchaseStatus
   note?: string | null
   createdAtUtc: string
@@ -1606,7 +1798,8 @@ export interface ApiWhatsAppPricingRule {
   id: string
   category: WhatsAppMessageCategory
   metaUsdPrice: number
-  sellPriceTry: number
+  /** Bu kategoride mesaj başı düşen kredi. */
+  creditCost: number
   effectiveFromUtc: string
   note?: string | null
   isActive: boolean
@@ -1617,9 +1810,80 @@ export interface ApiWhatsAppBillingSettings {
   billingEnabled: boolean
   chargeSimulated: boolean
   usdTryRate: number
-  lowBalanceThresholdTry: number
-  defaultMonthlySpendCapTry?: number | null
+  lowBalanceThresholdCredits: number
+  defaultMonthlySpendCapCredits?: number | null
   autoApproveTopUps: boolean
+  smsCreditsPerPart: number
+  creditUnitPriceTry: number
+}
+
+/** Toplu gönderim ÖNCESİ tahmin (gönderimle aynı kitle + metin kuralı; kesin karar gönderimde). */
+export interface ApiNotificationSendEstimate {
+  channel: 'Sms' | 'WhatsApp' | 'Email'
+  marketing: boolean
+  recipients: number
+  reachable: number
+  totalSmsParts: number
+  maxSmsParts: number
+  /** Plan kotasında kalan mesaj; -1 sınırsız. */
+  quotaRemaining: number
+  quotaCovered: number
+  creditMessages: number
+  creditsNeeded: number
+  availableCredits: number
+  costPerUnit: number
+  expectedToSend: number
+  live: boolean
+  warnings: string[]
+  sampleBody: string
+  sampleRecipientName?: string | null
+  /** SMS kurumun KENDİ hesabından gidecek: kota/kredi düşmez, ücreti sağlayıcısı keser. */
+  ownAccount?: boolean
+}
+
+/** Kurumun kendi SMS hesabı bağlantısının durumu. */
+export type SmsConnectionStatus = 'NotConnected' | 'PendingTest' | 'Failed' | 'Connected' | 'Disabled'
+
+/**
+ * Kurumun KENDİ SMS hesabı (Verimor / Netgsm). Açık + test SMS'iyle doğrulanmışsa müşteri SMS'leri
+ * bu hesaptan gider. Parola hiçbir yanıtta gelmez; kullanıcı adı yalnız son 4 hanesiyle.
+ */
+export interface ApiSmsConnection {
+  status: SmsConnectionStatus
+  /** Gönderim şu an bu hesaptan mı yapılıyor? */
+  active: boolean
+  provider?: string | null
+  usernameHint?: string | null
+  hasPassword: boolean
+  sender?: string | null
+  enabled: boolean
+  verifiedAtUtc?: string | null
+  lastTestAtUtc?: string | null
+  lastError?: string | null
+  /** Yalnız kurum sahibi (ve platform yöneticisi) değiştirebilir. */
+  canManage: boolean
+  /** Sağlayıcı panelinde izin verilmesi gereken sunucu IP'si. */
+  serverIp?: string | null
+  suggestedTestPhone?: string | null
+  providers: string[]
+  /** Paket SMS içeriyor mu? false ise bağlama/test reddedilir (kendi hesap da paket kapısına tabidir). */
+  smsFeatureAllowed?: boolean
+}
+
+export interface ApiSmsConnectionTestResult {
+  sent: boolean
+  error?: string | null
+  connection: ApiSmsConnection
+}
+
+export interface ApiSmsSendResult {
+  sent: boolean
+  simulated: boolean
+  toPhone: string
+  body: string
+  parts: number
+  chargedCredits: number
+  error?: string | null
 }
 
 export interface ApiWhatsAppConnection {
@@ -1633,6 +1897,21 @@ export interface ApiWhatsAppConnection {
   isConnected: boolean
   hasTokenOverride: boolean
   webhookUrl: string
+  /** Meta onaylı şablon adları — Meta Business Manager platformun olduğu için platform yönetir. */
+  kvkkTemplateName?: string | null
+  reminderTemplateName?: string | null
+  templateLanguageCode?: string
+  waitlistOfferTemplateName?: string | null
+  waitlistActivatedTemplateName?: string | null
+  ratingTemplateName?: string | null
+}
+
+/** Platform listesindeki satır: kurum + paketi + kendi SMS hesabı bağlantısı. */
+export interface ApiPlatformSmsConnection {
+  tenantId: string
+  tenantName: string
+  planName?: string | null
+  connection: ApiSmsConnection
 }
 
 export interface ApiWhatsAppMessage {
@@ -1649,7 +1928,7 @@ export interface ApiWhatsAppMessage {
   createdAtUtc?: string
   category?: WhatsAppMessageCategory
   billingSource?: WhatsAppBillingSource
-  chargedAmountTry?: number
+  chargedCredits?: number
 }
 
 export interface ApiWhatsAppReminderResult {
@@ -2291,6 +2570,11 @@ export interface ApiNotificationLog {
   errorMessage?: string | null
   sentAtUtc?: string | null
   createdAtUtc?: string
+  /** Şablonsuz sistem mesajının amacı ("rating-link", "gift-card"…); şablonlu gönderimde null. */
+  purpose?: string | null
+  billingSource?: WhatsAppBillingSource
+  chargedCredits?: number
+  smsParts?: number
 }
 
 export interface NotificationLog {
@@ -2310,6 +2594,14 @@ export interface NotificationLog {
   sentAtFormatted: string
   createdAt: string
   createdAtFormatted: string
+  purpose: string | null
+  purposeLabel: string
+  /** Ücretin kaynağı: kota / kredi / simülasyon. */
+  billingSource: WhatsAppBillingSource
+  /** Krediden düşen (iade edildiyse 0). */
+  chargedCredits: number
+  /** SMS parça sayısı (SMS dışında 0). */
+  smsParts: number
 }
 
 export interface ApiNotificationSummary {

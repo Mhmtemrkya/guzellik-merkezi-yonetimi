@@ -21,9 +21,11 @@ public sealed class NotificationLog : Entity
         string body,
         NotificationLogStatus status,
         string? errorMessage = null,
-        string? dedupeKey = null)
+        string? dedupeKey = null,
+        string? purpose = null)
     {
         DedupeKey = string.IsNullOrWhiteSpace(dedupeKey) ? null : dedupeKey.Trim();
+        Purpose = string.IsNullOrWhiteSpace(purpose) ? null : purpose.Trim();
         TenantId = tenantId;
         BranchId = branchId;
         TemplateId = templateId;
@@ -68,6 +70,57 @@ public sealed class NotificationLog : Entity
     /// <para>Elle gönderimlerde boştur: yönetici aynı mesajı bilerek tekrar gönderebilmelidir.</para>
     /// </summary>
     public string? DedupeKey { get; private set; }
+
+    /// <summary>
+    /// Şablonsuz SİSTEM mesajının amacı (ör. "rating-link", "waitlist-activated", "kvkk-info",
+    /// "gift-card"). Şablondan gelen gönderimde null — geçmişte şablon adı gösterilir.
+    /// </summary>
+    public string? Purpose { get; private set; }
+
+    // ---- SMS ÜCRETİ (mesaj kredisi) ----
+    // SMS'in teslim webhook'u yok: kredi gönderimden ÖNCE rezerve edilir, sağlayıcı kabul edince
+    // kesinleşir, reddedince iade edilir. Rezervasyon bu satıra bağlıdır ki süreç arada çökerse
+    // süpürme hangi kredinin askıda kaldığını bulabilsin.
+
+    /// <summary>Ücretin kaynağı: kota / kredi cüzdanı / simülasyon. Eski satırlar None.</summary>
+    public WhatsAppBillingSource BillingSource { get; private set; } = WhatsAppBillingSource.None;
+
+    /// <summary>Bu mesaj için krediden rezerve edilen/kesilen miktar. Kota veya iade sonrası 0.</summary>
+    public decimal ChargedCredits { get; private set; }
+
+    /// <summary>SMS parça sayısı (Unicode: 70 karaktere kadar 1, üstü 67'lik parçalar).</summary>
+    public int SmsParts { get; private set; }
+
+    /// <summary>Kredi rezervasyonunun kesinleştiği an. Doluysa süpürme bu satıra dokunmaz.</summary>
+    public DateTime? ChargeCapturedAtUtc { get; private set; }
+
+    // ÜCRET METOTLARI Touch() ÇAĞIRMAZ — BİLEREK.
+    //
+    // UpdatedAtUtc bu tabloda "sağlayıcıya gidildi" damgasıdır (bkz. MarkDispatching): kurtarma,
+    // damgalı bayat satırı "sonucu bilinmiyor" sayıp TEKRAR GÖNDERMEZ, damgasızı devralıp gönderir.
+    // Rezervasyon sağlayıcı çağrısından ÖNCE yazıldığı için burada damga basılsaydı, rezervasyonla
+    // gönderim arasında çöken satır hiç gidilmemişken "gidildi" görünür ve mesaj bir daha HİÇ
+    // gönderilmezdi.
+
+    /// <summary>Faturalama kararını satıra işler (cüzdan rezervasyonuyla AYNI kayıtta yazılmalı).</summary>
+    public void AttachCharge(WhatsAppBillingSource source, decimal credits, int smsParts)
+    {
+        BillingSource = source;
+        ChargedCredits = decimal.Round(Math.Max(0m, credits), 4);
+        SmsParts = Math.Max(0, smsParts);
+        ChargeCapturedAtUtc = null;
+    }
+
+    /// <summary>Kredi kesinleşti (sağlayıcı mesajı kabul etti).</summary>
+    public void MarkChargeCaptured(DateTime nowUtc) => ChargeCapturedAtUtc = nowUtc;
+
+    /// <summary>Kredi iade edildi — tekrar iade edilmesin ve aylık harcamadan düşsün.</summary>
+    public void ClearCharge()
+    {
+        ChargedCredits = 0m;
+        BillingSource = WhatsAppBillingSource.None;
+        ChargeCapturedAtUtc = null;
+    }
 
     /// <summary>
     /// SAĞLAYICI ÇAĞRISI BAŞLIYOR — dış etkiden ÖNCE bırakılan iz.

@@ -15,6 +15,40 @@ public sealed record Error(string Code, string Message)
     public static Error SessionUsed(string message) => new("AdisyonSessionUsed", message);
 
     /// <summary>
+    /// Yeni şube ücretli ve istek onaylanmış tutarı taşımıyor ya da tutar değişti (409). İstemci şube
+    /// teklifini (GET /api/admin/billing/branch-quote) gösterip onaylatmalı — ücret ASLA sessizce çekilmez.
+    /// </summary>
+    public static Error BranchChargeRequired(string message) => new("BranchChargeRequired", message);
+
+    /// <summary>Önceki şube ödemesinin sonucu sağlayıcıdan henüz kesin alınamadı (409) — ikinci çekim yapılmaz.</summary>
+    public static Error BranchChargePending(string message) => new("BranchChargePending", message);
+
+    /// <summary>
+    /// Ödenmiş dijital onam kademesi doldu (409): bir sonraki imza, bedeli ÖDENMEMİŞ bir kademeye düşer.
+    /// Mesaj NÖTR tutulur (satın alma çağrısı içermez) — iOS'ta App Store 3.1.1 gereği; istemci makine
+    /// kodunu görüp yükseltme düğmesini yalnız satın almaya izin verilen yüzeyde ekler.
+    /// </summary>
+    public static Error ConsentLimitReached(string message) => new("ConsentLimitReached", message);
+
+    /// <summary>Onam kademesi yükseltme tutarı onaylanmadı ya da değişti (409) — hiçbir şey yazılmadı.</summary>
+    public static Error ConsentUpgradeRequired(string message) => new("ConsentUpgradeRequired", message);
+
+    /// <summary>
+    /// Ödenmiş MÜŞTERİ kademesi doldu (409): yeni müşteri bedeli ödenmemiş bir kademeye düşer. Mesaj NÖTR
+    /// (bkz. <see cref="ConsentLimitReached"/>); salon müşterisine gösterilen yollarda faturalama içeriği yok.
+    /// </summary>
+    public static Error CustomerLimitReached(string message) => new("CustomerLimitReached", message);
+
+    /// <summary>Müşteri kademesi yükseltme tutarı onaylanmadı ya da değişti (409) — hiçbir şey yazılmadı.</summary>
+    public static Error CustomerUpgradeRequired(string message) => new("CustomerUpgradeRequired", message);
+
+    /// <summary>
+    /// Kartsız kurumun şube talebi alındı, şube FATURA ÖDENİNCE açılacak (409 — oluşturulmadı ama hata
+    /// değil; istemci bilgi olarak gösterir).
+    /// </summary>
+    public static Error BranchAwaitingPayment(string message) => new("BranchAwaitingPayment", message);
+
+    /// <summary>
     /// Müşteri KAYDI yarıda: telefon doğrulandı, sıra e-posta kodunda (400).
     /// </summary>
     /// <remarks>

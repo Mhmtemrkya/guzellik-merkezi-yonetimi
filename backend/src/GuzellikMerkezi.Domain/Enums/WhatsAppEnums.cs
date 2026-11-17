@@ -56,16 +56,37 @@ public enum WhatsAppBillingSource
     Quota = 1,       // pakete dahil aylık kotadan (kuruma ücretsiz)
     Wallet = 2,      // ön ödemeli kontör bakiyesinden düşüldü
     Simulation = 3,  // simülasyon (gerçek gönderim yok, para hareketi yok)
+    OwnAccount = 4,  // kurumun KENDİ SMS hesabından (TenantSmsConnection) — kota/kredi düşmez, ücreti sağlayıcısı keser
 }
 
-/// <summary>Kontör cüzdanı hareket tipi (muhasebe defteri).</summary>
+/// <summary>Mesaj kredisi cüzdanı hareket tipi (muhasebe defteri).</summary>
 public enum WalletTransactionType
 {
-    TopUp = 0,       // kontör yükleme (kurum satın aldı / platform ekledi)
+    TopUp = 0,       // kredi yükleme (kurum satın aldı / platform ekledi)
     Reserve = 1,     // gönderim anında rezervasyon (bakiyeden ayrıldı)
     Capture = 2,     // teslim onayıyla kesinleşme (rezervasyon harcandı)
     Refund = 3,      // başarısız/iptal → rezervasyon iadesi
     Adjustment = 4,  // platform manuel düzeltme (+/-)
+    /// <summary>
+    /// ₺ kontörden krediye TEK SEFERLİK dönüşüm (12 Kas 2026). Migration her cüzdan için bir satır
+    /// yazar; tutar dönüşümle açılan kredi bakiyesidir, açıklama eski ₺ bakiyeyi ve kuru taşır.
+    /// </summary>
+    Conversion = 5,
+}
+
+/// <summary>
+/// Defter satırındaki tutarların BİRİMİ.
+///
+/// <para>
+/// Cüzdan 12 Kas 2026'da ₺ kontörden mesaj kredisine geçti. Eski defter satırları ₺ cinsindendir
+/// ve öyle KALIR — geçmiş muhasebe yeniden yazılmaz. Yeni satırlar kredi taşır. Birimi satırın
+/// kendisi söyler; tarih karşılaştırmasıyla tahmin edilmez.
+/// </para>
+/// </summary>
+public enum WalletUnit
+{
+    Try = 0,     // dönüşüm öncesi ₺ kontör satırı (salt-okunur geçmiş)
+    Credit = 1,  // mesaj kredisi
 }
 
 /// <summary>Kurumun WhatsApp numarasının platform tarafından Meta'ya bağlanma durumu.</summary>

@@ -31,6 +31,13 @@ const GUARDED: Record<string, { args: number; callSites?: 'required' | 'optional
   'adminApi.addAdisyonItem(': { args: 4 },
   // Hediye çeki kullanımı bakiyeden para düşer: tekrar denenen istek çeki İKİNCİ KEZ harcar.
   'adminApi.redeemGiftCard(': { args: 4, callSites: 'optional' },
+  // Şube başı pakette şube açmak orantılı ücret yazar (karttan çekim ya da açık fatura): tekrar
+  // denenen istek İKİNCİ şube + ikinci ücret üretirdi.
+  'adminApi.createBranch(': { args: 3 },
+  // Onam kademesi yükseltme karttan çeker ya da fatura keser: tekrar denenen istek İKİNCİ ücret üretirdi.
+  'adminApi.purchaseConsentUpgrade(': { args: 3 },
+  // Müşteri kademesi yükseltme: aynı para yolu (karttan çekim ya da fatura).
+  'adminApi.purchaseCustomerUpgrade(': { args: 3 },
 }
 
 const ROOT = join(__dirname, '..')

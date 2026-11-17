@@ -1327,30 +1327,33 @@ public static class DatabaseBootstrap
             if (!await db.WhatsAppBillingSettings.AnyAsync())
             {
                 var settings = new Domain.Entities.WhatsAppBillingSettings();
-                // 22 Tem 2026 yaklaşık kur; tavan ₺500; otomatik onay KAPALI (her yükleme platform onayından geçer).
+                // 22 Tem 2026 yaklaşık kur. Mesaj kredisi: 1 kredi = 1 hatırlatma (≈₺0,15), SMS parça
+                // başına 2 kredi; tavan 3.500 kredi (≈₺525); otomatik onay KAPALI.
                 settings.Update(billingEnabled: true, chargeSimulated: false, usdTryRate: 47.21m,
-                    lowBalanceThresholdTry: 50m, defaultMonthlySpendCapTry: 500m, autoApproveTopUps: false);
+                    lowBalanceThresholdCredits: 350m, defaultMonthlySpendCapCredits: 3500m, autoApproveTopUps: false,
+                    smsCreditsPerPart: 2m, creditUnitPriceTry: 0.15m);
                 db.WhatsAppBillingSettings.Add(settings);
             }
 
-            // 2) Kategori fiyatları — yoksa Meta liste fiyatı + makul satış marjı ile ekle.
+            // 2) Kategori kredi maliyetleri — Meta liste fiyatı (maliyet) + kurumdan düşen kredi.
+            //    1 kredi = 1 hatırlatma; kampanya Meta'da ~10 kat pahalı olduğu için 6 kredi.
             if (!await db.WhatsAppPricingRules.AnyAsync())
             {
                 var from = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
                 db.WhatsAppPricingRules.AddRange(
-                    new Domain.Entities.WhatsAppPricingRule(Domain.Enums.WhatsAppMessageCategory.Utility, 0.0009m, 0.15m, from, "İşlemsel hatırlatma/onay"),
-                    new Domain.Entities.WhatsAppPricingRule(Domain.Enums.WhatsAppMessageCategory.Authentication, 0.0009m, 0.15m, from, "Doğrulama kodu"),
-                    new Domain.Entities.WhatsAppPricingRule(Domain.Enums.WhatsAppMessageCategory.Marketing, 0.0109m, 0.90m, from, "Kampanya/indirim"),
+                    new Domain.Entities.WhatsAppPricingRule(Domain.Enums.WhatsAppMessageCategory.Utility, 0.0009m, 1m, from, "İşlemsel hatırlatma/onay"),
+                    new Domain.Entities.WhatsAppPricingRule(Domain.Enums.WhatsAppMessageCategory.Authentication, 0.0009m, 1m, from, "Doğrulama kodu"),
+                    new Domain.Entities.WhatsAppPricingRule(Domain.Enums.WhatsAppMessageCategory.Marketing, 0.0109m, 6m, from, "Kampanya/indirim"),
                     new Domain.Entities.WhatsAppPricingRule(Domain.Enums.WhatsAppMessageCategory.Service, 0m, 0m, from, "Müşteri 24s serbest yanıt (ücretsiz)"));
             }
 
-            // 3) Kontör paketleri — yoksa 3 varsayılan paket.
+            // 3) Kredi paketleri — yoksa 3 varsayılan paket (büyüdükçe kredi başı fiyat düşer).
             if (!await db.WhatsAppCreditPackages.AnyAsync())
             {
                 db.WhatsAppCreditPackages.AddRange(
-                    new Domain.Entities.WhatsAppCreditPackage("Başlangıç Kontör", 150m, 150m, 1, "≈1.000 hatırlatma mesajı"),
-                    new Domain.Entities.WhatsAppCreditPackage("Standart Kontör", 350m, 375m, 2, "≈2.500 hatırlatma + bonus"),
-                    new Domain.Entities.WhatsAppCreditPackage("Büyük Kontör", 650m, 750m, 3, "≈5.000 hatırlatma + bonus"));
+                    new Domain.Entities.WhatsAppCreditPackage("Başlangıç Kredi", 150m, 1000m, 1, "≈1.000 WhatsApp hatırlatma ya da 500 SMS"),
+                    new Domain.Entities.WhatsAppCreditPackage("Standart Kredi", 350m, 2500m, 2, "≈2.500 WhatsApp hatırlatma ya da 1.250 SMS"),
+                    new Domain.Entities.WhatsAppCreditPackage("Büyük Kredi", 650m, 5000m, 3, "≈5.000 WhatsApp hatırlatma ya da 2.500 SMS"));
             }
 
             await db.SaveChangesAsync();
@@ -1375,9 +1378,12 @@ public static class DatabaseBootstrap
         }
     }
 
+    /// <summary>Tek paketin kalıcı anahtarı (13 Kas 2026 fiyatlama modeli — satıştaki TEK paket).</summary>
+    public const string SinglePlanKey = "BeautyAsist";
+
     /// <summary>
-    /// Yalnızca varsayılan abonelik planlarını ekler (key bazlı, idempotent). Collation/DDL veya demo verisi
-    /// YAPMAZ. Her ortamda güvenle çağrılabilir; production'da opsiyonel (Database:SeedReferenceData=true) olarak
+    /// Yalnızca TEK PAKETİ ekler (key bazlı, idempotent). Collation/DDL veya demo verisi YAPMAZ. Her
+    /// ortamda güvenle çağrılabilir; production'da opsiyonel (Database:SeedReferenceData=true) olarak
     /// kullanılır. Şema henüz yoksa hata loglanır ve sessizce geçilir.
     /// </summary>
     public static async Task EnsureDefaultSubscriptionPlansAsync(IServiceProvider services, IConfiguration configuration)
@@ -1465,205 +1471,66 @@ public static class DatabaseBootstrap
 
     private static async Task SeedSubscriptionPlansAsync(GuzellikDbContext db, ILogger logger)
     {
-        // 5 default plan — sadece PlanKey yoksa eklenir, idempotent.
-        // (Name LONGTEXT şifreli, ham SQL yok; EF üzerinden insert ediyoruz.)
-        // Feature CSV'leri FeatureCatalog sabitlerini referans alır.
-
-        var starter = string.Join(',', new[]
-        {
-            FeatureCatalog.ExcelCustomers,
-            FeatureCatalog.NotificationsEmail,
-            FeatureCatalog.NotificationsTemplates,
-        });
-
-        var pro = string.Join(',', new[]
-        {
-            FeatureCatalog.ExcelCustomers, FeatureCatalog.ExcelAppointments,
-            FeatureCatalog.ExcelServices, FeatureCatalog.ExcelStaff,
-            FeatureCatalog.PdfReports, FeatureCatalog.PdfCredentials,
-            FeatureCatalog.ReportsFinance, FeatureCatalog.ReportsCustomer,
-            FeatureCatalog.NotificationsEmail, FeatureCatalog.NotificationsSms,
-            FeatureCatalog.NotificationsTemplates, FeatureCatalog.NotificationsAutomation,
-            FeatureCatalog.AccountingInstallments, FeatureCatalog.AccountingPayments,
-            FeatureCatalog.BillingAdisyon,
-            FeatureCatalog.MultiBranch, FeatureCatalog.StaffPermissions,
-            FeatureCatalog.StaffCommission, FeatureCatalog.StaffSchedule,
-            FeatureCatalog.MarketingCampaigns, FeatureCatalog.LoyaltyPoints,
-            FeatureCatalog.MarketingGiftCards, FeatureCatalog.FinanceCashClosing, FeatureCatalog.AppointmentsWaitlist,
-            FeatureCatalog.AppointmentsOnlineBooking,
-            FeatureCatalog.AuditLogs,
-            FeatureCatalog.ClinicalConsultation, FeatureCatalog.ClinicalBeforeAfter, FeatureCatalog.ClinicalCustomFields,
-            FeatureCatalog.ClinicalConsentForms,
-            FeatureCatalog.CustomersBlacklist, FeatureCatalog.CustomersPassive,
-            FeatureCatalog.StockProducts,
-        });
-
-        var premium = string.Join(',', new[]
-        {
-            FeatureCatalog.ExcelCustomers, FeatureCatalog.ExcelAppointments,
-            FeatureCatalog.ExcelServices, FeatureCatalog.ExcelStaff,
-            FeatureCatalog.ExcelBranches, FeatureCatalog.ExcelReports,
-            FeatureCatalog.PdfReports, FeatureCatalog.PdfCredentials,
-            FeatureCatalog.ReportsFinance, FeatureCatalog.ReportsCustomer,
-            FeatureCatalog.ReportsStaff, FeatureCatalog.ReportsServices,
-            FeatureCatalog.NotificationsSms, FeatureCatalog.NotificationsWhatsApp,
-            FeatureCatalog.NotificationsEmail, FeatureCatalog.NotificationsBulk,
-            FeatureCatalog.NotificationsTemplates, FeatureCatalog.NotificationsAutomation,
-            FeatureCatalog.AccountingInstallments, FeatureCatalog.AccountingPayments,
-            FeatureCatalog.BillingAdisyon,
-            FeatureCatalog.StockProducts, FeatureCatalog.StockMovements,
-            FeatureCatalog.CategoriesExpenseCustom, FeatureCatalog.CategoriesServiceCustom,
-            FeatureCatalog.AuditLogs,
-            FeatureCatalog.StaffPermissions, FeatureCatalog.ApprovalWorkflow,
-            FeatureCatalog.StaffCommission, FeatureCatalog.StaffSchedule,
-            FeatureCatalog.MarketingCampaigns, FeatureCatalog.LoyaltyPoints,
-            FeatureCatalog.MarketingGiftCards, FeatureCatalog.FinanceCashClosing, FeatureCatalog.AppointmentsWaitlist,
-            FeatureCatalog.AppointmentsOnlineBooking,
-            FeatureCatalog.ClinicalConsultation, FeatureCatalog.ClinicalBeforeAfter, FeatureCatalog.ClinicalCustomFields,
-            FeatureCatalog.ClinicalConsentForms,
-            FeatureCatalog.CustomersBlacklist, FeatureCatalog.CustomersPassive,
-            FeatureCatalog.MultiBranch,
-            FeatureCatalog.SecurityDeviceControl,
-        });
-
-        var aiKlinik = string.Join(',', new[]
-        {
-            premium, FeatureCatalog.ApiAccess, FeatureCatalog.AiInsights,
-        });
-
-        var enterprise = string.Join(',', FeatureCatalog.All.Select(f => f.Key));
-
-        var defaults = new (string Key, string Name, string Desc, decimal Price, int Branches, int Staff, int Customers, int Appts, int Sms, int WhatsApp, int Email, string Features, int Order)[]
-        {
-            ("Starter",   "Başlangıç",   "Tek şube, küçük ekipler için temel plan",
-                599m,  1, 3, 300, 200, 0, 0, 300,
-                starter, 1),
-            ("Pro",       "Profesyonel", "Çok şubeli işletmeler için tam paket",
-                1499m, 3, 10, 2000, 1500, 500, 300, 3000,
-                pro, 2),
-            ("Premium",   "Premium",     "Yüksek hacimli güzellik merkezleri için",
-                2990m, 6, 25, 8000, 5000, 2500, 1500, 10000,
-                premium, 3),
-            ("AIKlinik",  "AI Klinik",   "AI öneriler ve müşteri segmentasyonu dahil",
-                4990m, 10, 50, 20000, 12000, 8000, 5000, -1,
-                aiKlinik, 4),
-            ("Enterprise","Enterprise",  "Özel limitler ve dedicated destek",
-                0m,    -1, -1, -1, -1, -1, -1, -1,
-                enterprise, 5),
-        };
+        // TEK PAKET (13 Kas 2026): yalnız tek paket seed edilir (PlanKey yoksa — idempotent). Eski beş
+        // varsayılan paket (Starter/Pro/Premium/AIKlinik/Enterprise) KALDIRILDI: migration
+        // 20261113171114_SingleSubscriptionPlan kurumlarını tek pakete taşır ve onları siler. Burada
+        // yeniden eklenmeleri, silinmiş paketlerin her açılışta geri gelmesi demek olurdu. Platform
+        // yöneticisi panelden yeni (ek) paket ekleyebilir; bu seed onlara dokunmaz.
+        // (Ham SQL yok; EF üzerinden insert.)
+        var allFeatures = string.Join(',', FeatureCatalog.All.Select(f => f.Key));
 
         try
         {
-            var existingKeys = (await db.SubscriptionPlans.AsNoTracking().Select(p => p.PlanKey).ToListAsync())
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            var toAdd = defaults.Where(d => !existingKeys.Contains(d.Key))
-                .Select(d => new GuzellikMerkezi.Domain.Entities.SubscriptionPlan(
-                    d.Key, d.Name, d.Price,
-                    d.Branches, d.Staff, d.Customers, d.Appts, d.Sms,
-                    d.Features, d.Desc, d.Order, d.WhatsApp, d.Email,
-                    d.Price * 12)) // varsayılan yıllık fiyat = aylık × 12 (platform admin elle düzenleyebilir)
-                .ToList();
-
-            if (toAdd.Count > 0)
+            // Silinmiş (soft-delete) kayıt da sayılır: platformun bilerek kaldırdığı paket diriltilmez ve
+            // PlanKey benzersiz indeksine çarpılmaz.
+            var singleExists = await db.SubscriptionPlans.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(p => p.PlanKey == SinglePlanKey);
+            if (!singleExists)
             {
-                db.SubscriptionPlans.AddRange(toAdd);
-                await db.SaveChangesAsync();
-                logger.LogInformation("{Count} default plan seed edildi.", toAdd.Count);
-            }
-
-            // Legacy feature key migration: eski 8 generic key'in herhangi birini içeren plan'ı
-            // yeni granular default set'e taşı. Sadece varsayılan plan key'lerinde (Starter/Pro/...)
-            // çalışır; özel plan'lar dokunulmaz.
-            var legacyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "BasicReports", "Reports", "Notifications", "MultiBranch",
-                "AdvancedAnalytics", "APIAccess", "AIInsights", "SLA",
-            };
-            // 'MultiBranch' yeni key set'inde de var (case-sensitive 'multiBranch'),
-            // o yüzden tanılamada yeni ile karşılaştırırken FeatureCatalog.Exists kullanıyoruz.
-
-            var defaultByKey = defaults.ToDictionary(d => d.Key, d => d.Features, StringComparer.OrdinalIgnoreCase);
-            var existingPlans = await db.SubscriptionPlans.ToListAsync();
-            var migratedCount = 0;
-
-            foreach (var plan in existingPlans)
-            {
-                if (!defaultByKey.TryGetValue(plan.PlanKey, out var newFeatures)) continue;
-                if (string.IsNullOrWhiteSpace(plan.Features)) continue;
-
-                var parts = plan.Features.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                var hasLegacy = parts.Any(p => legacyKeys.Contains(p) && !FeatureCatalog.Exists(p));
-                if (!hasLegacy) continue;
-
-                plan.SetFeatures(newFeatures);
-                migratedCount++;
-            }
-            if (migratedCount > 0)
-            {
-                await db.SaveChangesAsync();
-                logger.LogInformation("{Count} plan legacy feature CSV'sinden yeni granular feature set'ine taşındı.", migratedCount);
-            }
-
-            // Geriye dönük: mevcut default plan'lara yeni mesajlaşma limitlerini + klinik feature'ları uygula
-            // (mevcut feature'lar silinmez, yalnızca eklenir; limitler kolon default'u 0 ise doldurulur).
-            var defaultFull = defaults.ToDictionary(d => d.Key, d => d, StringComparer.OrdinalIgnoreCase);
-            var newFeatureKeys = new[]
-            {
-                FeatureCatalog.ClinicalConsultation, FeatureCatalog.ClinicalBeforeAfter, FeatureCatalog.ClinicalCustomFields,
-            FeatureCatalog.ClinicalConsentForms,
-                FeatureCatalog.CustomersBlacklist, FeatureCatalog.CustomersPassive,
-                FeatureCatalog.MarketingGiftCards, FeatureCatalog.FinanceCashClosing, FeatureCatalog.AppointmentsWaitlist,
-                FeatureCatalog.SecurityDeviceControl,
-            };
-            var backfilled = 0;
-            foreach (var plan in existingPlans)
-            {
-                if (!defaultFull.TryGetValue(plan.PlanKey, out var def)) continue;
-                var changed = false;
-
-                if (plan.MaxMonthlyWhatsAppCount == 0 && plan.MaxMonthlyEmailCount == 0 && (def.WhatsApp != 0 || def.Email != 0))
+                // Şube başı aylık 1.000 / yıllık 10.000 TL + KDV; 10.000 / 15.000 / 20.000 ÜZERİ müşteri ve
+                // imzalı onam formu için aylık 250 / 500 / 1.000 TL + KDV (yıllıkta × 10). Tüm özellikler
+                // dahil (dijital onam 10.000 evraka kadar ücretsiz).
+                var single = new GuzellikMerkezi.Domain.Entities.SubscriptionPlan(
+                    SinglePlanKey, "BeautyAsist",
+                    1000m,
+                    maxBranches: -1, maxStaff: -1, maxCustomers: -1, maxMonthlyAppointments: -1,
+                    maxMonthlySmsCount: 2500,
+                    features: allFeatures,
+                    description: "Tüm özellikler dahil · şube başına ücretlendirme",
+                    displayOrder: 0,
+                    maxMonthlyWhatsAppCount: 1500,
+                    maxMonthlyEmailCount: 10000,
+                    yearlyPriceTRY: 10000m);
+                var tiers = new[]
                 {
-                    plan.SetMessagingLimits(def.WhatsApp, def.Email);
-                    changed = true;
-                }
-
-                var current = (plan.Features ?? string.Empty)
-                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
-                foreach (var key in newFeatureKeys)
-                {
-                    if (def.Features.Contains(key) && !current.Any(c => string.Equals(c, key, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        current.Add(key);
-                        changed = true;
-                    }
-                }
-                if (changed)
-                {
-                    plan.SetFeatures(string.Join(',', current));
-                    backfilled++;
-                }
-            }
-            if (backfilled > 0)
-            {
+                    new GuzellikMerkezi.Domain.Billing.PricingTier(10_000, 250m),
+                    new GuzellikMerkezi.Domain.Billing.PricingTier(15_000, 500m),
+                    new GuzellikMerkezi.Domain.Billing.PricingTier(20_000, 1_000m),
+                };
+                single.SetPricingModel(chargePerBranch: true, tiers, tiers, yearlyTierMultiplier: 10m);
+                db.SubscriptionPlans.Add(single);
                 await db.SaveChangesAsync();
-                logger.LogInformation("{Count} plan yeni mesajlaşma limiti/klinik feature ile güncellendi.", backfilled);
+                logger.LogInformation("Tek paket ({Key}) seed edildi.", SinglePlanKey);
             }
 
-            // Mevcut Tenant.Plan string'lerini eşleştirilebilen plana otomatik bağla.
+            // Plansız kurumları (Tenant.Plan metni) eşleşen pakete, eşleşme yoksa TEK PAKETE bağla.
             var allPlans = await db.SubscriptionPlans.AsNoTracking().ToListAsync();
             var byKey = allPlans.ToDictionary(p => p.PlanKey, StringComparer.OrdinalIgnoreCase);
             var byName = allPlans.GroupBy(p => p.Name).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            byKey.TryGetValue(SinglePlanKey, out var fallback);
 
             var unbound = await db.Tenants.Where(t => t.SubscriptionPlanId == null).ToListAsync();
+            var bound = 0;
             foreach (var t in unbound)
             {
                 var match = byKey.TryGetValue(t.Plan, out var p) ? p
                           : byName.TryGetValue(t.Plan, out var p2) ? p2
-                          : byKey.TryGetValue("Pro", out var p3) ? p3 : null;
-                if (match is not null) t.AssignSubscriptionPlan(match);
+                          : fallback;
+                if (match is null) continue;
+                t.AssignSubscriptionPlan(match);
+                bound++;
             }
-            if (unbound.Count > 0) await db.SaveChangesAsync();
+            if (bound > 0) await db.SaveChangesAsync();
         }
         catch (Exception ex)
         {

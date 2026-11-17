@@ -69,3 +69,12 @@ public sealed record SavePlatformMessagingRequest(
 public sealed record MessagingTestRequest(string Target);
 
 public sealed record MessagingTestResult(bool Success, bool Simulated, string? ProviderMessageId, string? Error);
+
+/// <summary>
+/// Kurumun kendi SMS hesabının ÇÖZÜLMÜŞ kimlik bilgisi (yalnız gönderim anında, bellekte).
+/// <see cref="ToString"/> parolayı yazmaz — kayıt/istisna metnine sızmasın.
+/// </summary>
+public sealed record SmsAccountCredentials(string Provider, string Username, string Password, string Sender)
+{
+    public override string ToString() => $"SmsAccountCredentials {{ Provider = {Provider}, Sender = {Sender} }}";
+}

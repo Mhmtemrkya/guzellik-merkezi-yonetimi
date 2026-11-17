@@ -45,7 +45,53 @@ public sealed record NotificationLogDto(
     NotificationLogStatus Status,
     string? ErrorMessage,
     DateTime? SentAtUtc,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    /// <summary>Şablonsuz sistem mesajının amacı ("rating-link", "kvkk-info"…); şablonlu gönderimde null.</summary>
+    string? Purpose = null,
+    /// <summary>Ücretin kaynağı (kota / kredi / simülasyon). Eski satırlarda None.</summary>
+    WhatsAppBillingSource BillingSource = WhatsAppBillingSource.None,
+    /// <summary>Krediden düşülen (iade edildiyse 0).</summary>
+    decimal ChargedCredits = 0m,
+    /// <summary>SMS parça sayısı (SMS dışı kanallarda 0).</summary>
+    int SmsParts = 0);
+
+/// <summary>
+/// ŞABLONSUZ SİSTEM SMS'İ isteği — puanlama linki, bekleme listesi bildirimi, KVKK aydınlatma
+/// linki, hediye çeki kodu. Gövde ÇAĞIRAN tarafından hazırlanır (metin akışa özeldir).
+/// </summary>
+/// <param name="Purpose">Bildirim geçmişinde görünen amaç anahtarı (ör. "rating-link").</param>
+/// <param name="DedupeKey">
+/// Verilirse aynı anahtar ikinci kez GÖNDERİLMEZ (iş kuyruğu yeniden denediğinde müşteriye
+/// mükerrer SMS gitmesin). Elle gönderimde kısa bir zaman kovası taşır (çift tıklama koruması).
+/// </param>
+public sealed record SystemSmsRequest(
+    Guid TenantId,
+    Guid? BranchId,
+    Guid? CustomerId,
+    string Phone,
+    string Body,
+    string Purpose,
+    string? DedupeKey);
+
+public enum SystemSmsStatus
+{
+    /// <summary>Sağlayıcı kabul etti.</summary>
+    Sent,
+    /// <summary>Aynı anahtarla gönderim zaten yapılmış/işleniyor — tekrar GÖNDERİLMEDİ.</summary>
+    AlreadyHandled,
+    /// <summary>Kota/kredi/tavan izin vermedi — sağlayıcıya gidilmedi (sebep Error'da).</summary>
+    Blocked,
+    /// <summary>Sağlayıcı reddetti ya da yapılandırılmamış (simülasyon) — sebep Error'da.</summary>
+    Failed,
+}
+
+public sealed record SystemSmsOutcome(
+    SystemSmsStatus Status,
+    string Body,
+    int Parts,
+    decimal ChargedCredits,
+    bool Simulated,
+    string? Error);
 
 /// <summary>
 /// Bir şablonu belirli müşterilere gönderir. CustomerIds boşsa Audience'a göre toplu kitle bulunur.
@@ -63,6 +109,36 @@ public sealed record SendNotificationRequest(
     /// tekrar gönderebilmelidir.
     /// </summary>
     string? DedupeBucket = null);
+
+/// <summary>
+/// Gönderim ÖNCESİ özet: kaç kişiye gidecek, kaç SMS parçası, kotadan/krediden ne düşecek ve
+/// gönderimi kısıtlayan durumlar. Kesin karar gönderimde verilir (eşzamanlı gönderimler araya girebilir).
+/// </summary>
+public sealed record NotificationSendEstimateDto(
+    NotificationChannel Channel,
+    /// <summary>WhatsApp'ta Meta faturalama sınıfı: hatırlatma/ödeme dışındaki her şey kampanyadır.</summary>
+    bool Marketing,
+    /// <summary>Kitledeki müşteri.</summary>
+    int Recipients,
+    /// <summary>Telefonu (SMS/WhatsApp) ya da e-postası olan.</summary>
+    int Reachable,
+    int TotalSmsParts,
+    int MaxSmsParts,
+    /// <summary>Plan kotasında kalan mesaj; -1 sınırsız.</summary>
+    int QuotaRemaining,
+    int QuotaCovered,
+    int CreditMessages,
+    decimal CreditsNeeded,
+    decimal AvailableCredits,
+    decimal CostPerUnit,
+    int ExpectedToSend,
+    bool Live,
+    IReadOnlyList<string> Warnings,
+    /// <summary>İlk alıcıya göre doldurulmuş örnek metin.</summary>
+    string SampleBody,
+    string? SampleRecipientName,
+    /// <summary>SMS kurumun KENDİ hesabından gidecek: kota/kredi düşmez, ücreti sağlayıcısı keser.</summary>
+    bool OwnAccount = false);
 
 public sealed record SendNotificationResultDto(
     int Sent,

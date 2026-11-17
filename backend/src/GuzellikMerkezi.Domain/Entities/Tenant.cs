@@ -14,7 +14,8 @@ public sealed class Tenant : Entity
     {
         Rename(name);
         Slug = NormalizeSlug(slug);
-        Plan = string.IsNullOrWhiteSpace(plan) ? "Başlangıç" : plan.Trim();
+        // TEK PAKET (13 Kas 2026): varsayılan paket adı tek paketin adıdır.
+        Plan = string.IsNullOrWhiteSpace(plan) ? "BeautyAsist" : plan.Trim();
         Status = status;
         // Trial sayaç artık kurum oluşturulduğu anda değil, kurum yöneticisinin ilk girişinde başlar.
         TrialEndsAtUtc = null;
@@ -22,7 +23,7 @@ public sealed class Tenant : Entity
 
     public string Name { get; private set; } = string.Empty;
     public string Slug { get; private set; } = string.Empty;
-    public string Plan { get; private set; } = "Başlangıç";
+    public string Plan { get; private set; } = "BeautyAsist";
     public TenantStatus Status { get; private set; } = TenantStatus.Trial;
     public string? Domain { get; private set; }
     public string? OwnerName { get; private set; }

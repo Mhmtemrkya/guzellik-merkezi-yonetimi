@@ -13,6 +13,13 @@ public interface IPlatformMessagingService
 
     /// <summary>Diğer servislerin kullanması için yeniden kullanılabilir gönderim (yapılandırılmamışsa simülasyon).</summary>
     Task<MessagingTestResult> SendSmsAsync(string toPhone, string message, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// KURUMUN KENDİ SMS HESABIYLA gönderim (Verimor / Netgsm). Platform ayarına hiç bakmaz ve
+    /// simülasyona düşmez: hesap çalışmıyorsa sonuç başarısızdır. Sağlayıcı adresi kodda sabittir —
+    /// kurumdan URL alınmaz.
+    /// </summary>
+    Task<MessagingTestResult> SendSmsWithAccountAsync(SmsAccountCredentials account, string toPhone, string message, CancellationToken cancellationToken = default);
     Task<MessagingTestResult> SendEmailAsync(string toEmail, string subject, string htmlBody, CancellationToken cancellationToken = default);
     /// <summary>Platform geneli WhatsApp (Meta Cloud API) ile serbest metin gönderir; yapılandırılmamışsa simülasyon. Müşteri OTP/2FA kodu bunu kullanır.</summary>
     Task<MessagingTestResult> SendWhatsAppAsync(string toPhone, string message, CancellationToken cancellationToken = default);

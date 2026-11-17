@@ -44,7 +44,7 @@ public sealed class WhatsAppCreditCheckoutTests
         tenant.AddBranch("Merkez", "İstanbul", true);
         db.Tenants.Add(tenant);
         // Ücretlendirme AÇIK olmalı: kapalıyken cüzdan yolu hiç çalışmaz ve test hiçbir şey ölçmez.
-        db.WhatsAppBillingSettings.Add(new WhatsAppBillingSettings());
+        db.WhatsAppBillingSettings.Add(PaymentTestDoubles.BillingOneTryPerCredit());
         await db.SaveChangesAsync();
         return tenant.Id;
     }
@@ -78,7 +78,7 @@ public sealed class WhatsAppCreditCheckoutTests
         await using var db = NewDb(options);
         var wallet = await db.TenantMessagingWallets.IgnoreQueryFilters().AsNoTracking()
             .FirstOrDefaultAsync(w => w.TenantId == tenantId);
-        return wallet?.BalanceTry ?? 0m;
+        return wallet?.BalanceCredits ?? 0m;
     }
 
     /// <summary>Mutlu yol: tahsilat doğrulanınca bakiye tam olarak yüklenen kadar artar.</summary>
@@ -96,7 +96,7 @@ public sealed class WhatsAppCreditCheckoutTests
             var done = await NewService(db).CompleteCreditCheckoutAsync(await SimulationTokenAsync(conversationId, 250m));
             Assert.True(done.IsSuccess, done.IsFailure ? done.Error.Message : null);
             Assert.True(done.Value!.Succeeded, done.Value.Message);
-            Assert.Equal(250m, done.Value.GrantedTry);
+            Assert.Equal(250m, done.Value.GrantedCredits);
         }
 
         Assert.Equal(250m, await BalanceAsync(options, tenantId));
@@ -110,6 +110,43 @@ public sealed class WhatsAppCreditCheckoutTests
             Assert.Single(await check.WalletTransactions.IgnoreQueryFilters().AsNoTracking()
                 .Where(t => t.Type == WalletTransactionType.TopUp).ToListAsync());
         }
+    }
+
+    /// <summary>
+    /// PAKET DIŞI KREDİNİN FİYATINI SUNUCU BELİRLER: kurum kredi miktarını yazar, ödenecek ₺ =
+    /// kredi × platformun birim fiyatı. Kurumun kendi seçtiği bir ₺ tutarıyla dönen ödeme kabul
+    /// edilmez — aksi hâlde fiyat/kredi oranını kurum belirlerdi.
+    /// </summary>
+    [Fact]
+    public async Task CustomCredits_ArePricedByServer_AndClientChosenAmountIsRejected()
+    {
+        var options = NewOptions();
+        Guid tenantId;
+        await using (var seed = NewDb(options))
+        {
+            var tenant = new Tenant("Kredi Fiyat QA", $"kredi-fiyat-{Guid.NewGuid():N}"[..24], "Premium", TenantStatus.Active);
+            tenant.AddBranch("Merkez", "İstanbul", true);
+            seed.Tenants.Add(tenant);
+            seed.WhatsAppBillingSettings.Add(new WhatsAppBillingSettings());   // varsayılan: 1 kredi = ₺0,15
+            await seed.SaveChangesAsync();
+            tenantId = tenant.Id;
+        }
+
+        var (_, conversationId) = await StartAsync(options, tenantId, 1000m);
+        await using (var db = NewDb(options))
+        {
+            var purchase = await db.WhatsAppCreditPurchases.IgnoreQueryFilters().AsNoTracking().SingleAsync();
+            Assert.Equal(150m, purchase.PriceTry);        // 1.000 × ₺0,15
+            Assert.Equal(1000m, purchase.GrantsCredits);
+        }
+
+        // İstemci kredi sayısını ₺ sanıp 1.000 TL'lik bir ödemeyle dönerse: tutar uyuşmaz, kredi yüklenmez.
+        await using (var db = NewDb(options))
+        {
+            var wrong = await NewService(db).CompleteCreditCheckoutAsync(await SimulationTokenAsync(conversationId, 1000m));
+            Assert.False(wrong.Value!.Succeeded);
+        }
+        Assert.Equal(0m, await BalanceAsync(options, tenantId));
     }
 
     /// <summary>

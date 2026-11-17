@@ -228,7 +228,7 @@ export default function TenantSignupPage() {
       .then((r) => {
         if (cancelled) return
         setReadiness(r)
-        // Varsayılan: WhatsApp kuruluysa o (kontör maliyeti düşük), değilse SMS.
+        // Varsayılan: WhatsApp kuruluysa o (maliyeti düşük), değilse SMS.
         setPhoneChannelPref(r.whatsApp ? 'whatsapp' : 'sms')
       })
       // Uç okunamazsa formu göster: sunucu zaten son sözü söyleyecek.

@@ -13,7 +13,7 @@ import PressButton from '@/components/landing/apple/PressButton'
 import PlanPicker from '@/components/landing/apple/PlanPicker'
 import AmbientVideo from '@/components/landing/apple/AmbientVideo'
 import JourneyBackdrop from '@/components/landing/apple/JourneyBackdrop'
-import { fetchPublicPlans, planFeatureLabels, planLimitLabels, type PublicPlan } from '@/lib/landingPlans'
+import { fetchPublicPlans, planFeatureLabels, planLimitLabels, tierLabels, type PublicPlan } from '@/lib/landingPlans'
 import {
   ArrowRight, BellRing, Boxes, CalendarDays, Check, ClipboardList, FileBarChart, Globe,
   Landmark, MessageCircle, Package, Quote, ShieldCheck, Star, UserCog, Users, Wallet,
@@ -435,7 +435,7 @@ function Pricing({ plans }: { plans: PublicPlan[] | null }) {
           <SectionHead
             eyebrow="Fiyatlandırma"
             title="Merkezinize göre bir plan."
-            body="Kurulum, veri aktarımı ve eğitim bizde. Planınızı istediğiniz zaman yükseltebilirsiniz."
+            body="Tek paket, tüm özellikler. Kurulum, veri aktarımı ve eğitim bizde; şube başına ödersiniz."
           />
         </Reveal>
 
@@ -453,11 +453,13 @@ function Pricing({ plans }: { plans: PublicPlan[] | null }) {
             </div>
           </Reveal>
         ) : (
-          <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className={`mt-14 grid gap-4 ${shown.length === 1 ? 'mx-auto max-w-[440px] grid-cols-1' : shown.length === 2 ? 'mx-auto max-w-[900px] sm:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-4'}`}>
             {shown.map((p, i) => {
               const featured = i === featuredIndex
               const rows = [...planLimitLabels(p), ...planFeatureLabels(p.features, 4)]
               const yearlyPerMonth = p.yearlyPriceTRY > 0 ? p.yearlyPriceTRY / 12 : 0
+              // Fiyatlar KDV HARİÇ (+ KDV) ve şube başına olabilir; kademeler ayrıca listelenir.
+              const tierRows = [...tierLabels(p.customerTiers, 'müşteri'), ...tierLabels(p.consentTiers, 'imzalı onam')]
               return (
                 <Reveal key={p.id} delay={i * 80}>
                   <article
@@ -479,10 +481,25 @@ function Pricing({ plans }: { plans: PublicPlan[] | null }) {
                       <span className="text-[36px] font-semibold tabular-nums tracking-[-0.035em] text-[#352432]">
                         {tl(p.monthlyPriceTRY)}
                       </span>
-                      <span className="text-[13px] text-[#705A66]">/ay</span>
+                      <span className="whitespace-nowrap text-[13px] text-[#705A66]">/ay + KDV</span>
                     </div>
-                    {yearlyPerMonth > 0 && yearlyPerMonth < p.monthlyPriceTRY && (
-                      <p className="mt-1 text-[11.5px] text-[#8E3F5B]">Yıllık ödemede {tl(yearlyPerMonth)}/ay</p>
+                    {p.chargePerBranch && (
+                      <span className="mt-1.5 inline-flex w-fit items-center rounded-full border border-[#F3D9E3] bg-[#FFF7FA] px-2.5 py-0.5 text-[11px] font-medium text-[#8E3F5B]">
+                        Şube başına
+                      </span>
+                    )}
+                    {/* Yalnız gerçek bir indirim varsa (yıllık = 12 × aylık iken "₺499/ay" tekrarı anlamsız). */}
+                    {yearlyPerMonth > 0 && yearlyPerMonth < p.monthlyPriceTRY * 0.99 && (
+                      <p className="mt-1 text-[11.5px] text-[#8E3F5B]">Yıllık ödemede {tl(yearlyPerMonth)}/ay + KDV ({tl(p.yearlyPriceTRY)}/yıl)</p>
+                    )}
+
+                    {tierRows.length > 0 && (
+                      <div className="mt-4 rounded-[14px] border border-[#F3D9E3] bg-[#FFF7FA] px-3.5 py-2.5">
+                        <p className="text-[11px] font-medium text-[#8E3F5B]">Hacme göre ek ücret (+ KDV)</p>
+                        <ul className="mt-1 space-y-0.5">
+                          {tierRows.map((r) => <li key={r} className="text-[11.5px] leading-snug text-[#4A3A44]">{r}</li>)}
+                        </ul>
+                      </div>
                     )}
 
                     <ul className="mt-6 flex-1 space-y-2.5">

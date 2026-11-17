@@ -44,7 +44,7 @@ export default function AppointmentReminderControl({
     } catch (e) {
       // SUNUCUNUN SEBEBİNİ GÖSTER. Buradaki mesaj kullanıcının çözebileceği tek bilgi:
       // "24 saat penceresi kapalı, onaylı şablon tanımlı değil", "aylık kota doldu",
-      // "kontör yetersiz", "kampanya mesajları kapalı"… Genel "Gönderilemedi" yazmak bunu yutuyordu
+      // "mesaj krediniz yetersiz", "kampanya mesajları kapalı"… Genel "Gönderilemedi" yazmak bunu yutuyordu
       // (mobilde zaten sebep gösteriliyordu — parite).
       setFailed(true)
       setMsg(e instanceof Error && e.message ? e.message : 'Gönderilemedi')

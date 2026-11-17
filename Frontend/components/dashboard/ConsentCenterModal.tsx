@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   CheckCircle2, ClipboardList, Download, FileSignature, Loader2, MonitorSmartphone,
@@ -8,7 +9,7 @@ import {
 } from 'lucide-react'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import { useBranch } from '@/components/dashboard/BranchContext'
-import { adminApi, consentApi } from '@/lib/apiClient'
+import { adminApi, ApiClientError, consentApi } from '@/lib/apiClient'
 import { guidOrUndefined } from '@/lib/apiMappers'
 import { generateConsentPdf, fillConsentPlaceholders } from '@/lib/consentPdf'
 import {
@@ -120,14 +121,20 @@ export default function ConsentCenterModal({
   const requirements = status?.requirements ?? []
   const missing = missingRequirements(status)
 
+  // Onam kotası doldu (409 ConsentLimitReached): sunucu mesajı NÖTR gelir; kademe yükseltme yolu
+  // (Paketim) yalnız bu web panelinde gösterilir.
+  const [limitReached, setLimitReached] = useState(false)
+
   const run = async (id: string, fn: () => Promise<unknown>): Promise<void> => {
     setBusyId(id)
     setError('')
+    setLimitReached(false)
     try {
       await fn()
       await load()
       await onChanged?.()
     } catch (e) {
+      setLimitReached(e instanceof ApiClientError && e.code === 'ConsentLimitReached')
       setError(e instanceof Error ? e.message : 'İşlem başarısız.')
     } finally {
       setBusyId(null)
@@ -242,7 +249,18 @@ export default function ConsentCenterModal({
               )}
             </AnimatePresence>
 
-            {error && <div className="rounded-[12px] border border-rose-200 bg-rose-50 px-4 py-2.5 text-[12.5px] font-medium text-rose-700">{error}</div>}
+            {error && (
+              <div className="rounded-[12px] border border-rose-200 bg-rose-50 px-4 py-2.5 text-[12.5px] font-medium text-rose-700">
+                {error}
+                {limitReached && (
+                  <span className="mt-1 block text-[12px] font-normal">
+                    Kurum yetkilisi onam kademesini{' '}
+                    <Link href="/panel/paket" className="font-semibold underline underline-offset-2">Paketim</Link>
+                    {' '}sayfasından yükseltebilir.
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Özet */}
             {!loading && requirements.length > 0 && (

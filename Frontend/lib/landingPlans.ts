@@ -14,7 +14,7 @@ import 'server-only'
 
 export type { PublicPlan } from './plans'
 // Etiket çeviricileri istemcide de gerekiyor; tek tanım `./plans` dosyasındadır.
-export { planFeatureLabels, planLimitLabels } from './plans'
+export { planFeatureLabels, planLimitLabels, tierLabels, vatRateOf } from './plans'
 
 import type { PublicPlan } from './plans'
 

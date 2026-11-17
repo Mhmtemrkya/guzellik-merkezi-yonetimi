@@ -2,6 +2,7 @@ using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Billing;
 using GuzellikMerkezi.Application.Features.Features;
+using GuzellikMerkezi.Domain.Billing;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
@@ -21,7 +22,7 @@ namespace GuzellikMerkezi.Infrastructure.Services;
 /// önce sağlayıcıya sorulur (<see cref="IPaymentGateway.RetrievePaymentAsync"/>).</item>
 /// </list>
 /// </summary>
-public sealed class BillingService : IBillingService
+public sealed partial class BillingService : IBillingService
 {
     private readonly GuzellikDbContext _db;
     private readonly IPaymentGatewayResolver _gateways;
@@ -39,9 +40,6 @@ public sealed class BillingService : IBillingService
 
     /// <summary>Vade bu kadar önce tahsil edilmeye başlanır; üç deneme vade gelmeden tamamlanır.</summary>
     public static readonly TimeSpan RenewalLeadTime = TimeSpan.FromDays(3);
-
-    /// <summary>Paket fiyatları KDV DAHİL liste fiyatıdır; fatura brütten kurulur, KDV türetilir.</summary>
-    private const decimal DefaultVatRate = 0.20m;
 
     public BillingService(
         GuzellikDbContext db,
@@ -73,18 +71,35 @@ public sealed class BillingService : IBillingService
         var invoices = await InvoiceQuery(tenantId).AsNoTracking().Take(6).ToListAsync(ct);
         var settings = await _db.PlatformIntegrationSettings.AsNoTracking().FirstOrDefaultAsync(ct);
 
+        // Bir sonraki yenilemede GÜNCEL sayaçlarla çekilecek tutar (yenileme aynı hesabı yapar).
+        SubscriptionQuote? next = null;
+        if (tenant.SubscriptionPlan is { } currentPlan && tenant.SubscriptionPeriod is { } currentPeriod
+            && SubscriptionPricing.UnitPrice(currentPlan, currentPeriod) > 0)
+        {
+            next = SubscriptionPricing.Quote(currentPlan, currentPeriod, await BillingCountsQuery.CountAsync(_db, tenantId, ct));
+        }
+
         return Result<BillingSummaryDto>.Success(new BillingSummaryDto(
             tenant.Id,
             tenant.SubscriptionPlan?.Name ?? tenant.Plan,
             tenant.SubscriptionPlanId,
             tenant.SubscriptionPeriod?.ToString(),
-            tenant.SubscriptionEndsAtUtc,
-            tenant.TrialEndsAtUtc,
+            AsUtc(tenant.SubscriptionEndsAtUtc),
+            AsUtc(tenant.TrialEndsAtUtc),
             tenant.Status.ToString(),
             settings?.PaymentsEnabled ?? false,
             card is not null && tenant.SubscriptionPeriod.HasValue,
             card is null ? null : ToCardDto(card),
-            invoices.Select(ToInvoiceDto).ToList()));
+            invoices.Select(ToInvoiceDto).ToList(),
+            next));
+    }
+
+    public async Task<Result<SubscriptionQuote>> GetQuoteAsync(Guid tenantId, Guid subscriptionPlanId, BillingPeriod period, CancellationToken ct = default)
+    {
+        var plan = await _db.SubscriptionPlans.AsNoTracking().FirstOrDefaultAsync(p => p.Id == subscriptionPlanId, ct);
+        if (plan is null) return Result<SubscriptionQuote>.Failure(Error.NotFound("Paket bulunamadı."));
+        return Result<SubscriptionQuote>.Success(
+            SubscriptionPricing.Quote(plan, period, await BillingCountsQuery.CountAsync(_db, tenantId, ct)));
     }
 
     public async Task<Result<IReadOnlyList<BillingInvoiceDto>>> ListInvoicesAsync(Guid tenantId, CancellationToken ct = default)
@@ -107,12 +122,16 @@ public sealed class BillingService : IBillingService
         if (plan is null) return Result<CheckoutStartedDto>.Failure(Error.NotFound("Paket bulunamadı."));
         if (!plan.IsActive) return Result<CheckoutStartedDto>.Failure(Error.Conflict("Pasif pakete geçilemez."));
 
-        var amount = PriceFor(plan, period);
-        if (amount <= 0)
+        if (SubscriptionPricing.UnitPrice(plan, period) <= 0)
         {
             return Result<CheckoutStartedDto>.Failure(Error.Validation(
                 "Bu paket için ödeme gerekmiyor. Ücretsiz paketler doğrudan atanır."));
         }
+
+        // TUTAR = TEKLİF (şube × birim + müşteri/onam kademeleri + KDV), kurumun GÜNCEL sayaçlarıyla.
+        // İstemcinin gösterdiği rakam ödemeye esas alınmaz; döküm ödeme satırına anlık görüntü olarak yazılır.
+        var quote = SubscriptionPricing.Quote(plan, period, await BillingCountsQuery.CountAsync(_db, tenantId, ct));
+        var amount = quote.Total;
 
         if (string.IsNullOrWhiteSpace(callbackUrl))
         {
@@ -127,13 +146,14 @@ public sealed class BillingService : IBillingService
         // Sonra yazsaydık, hızlı dönen bir callback karşılığını bulamayıp ödemeyi kayıtsız bırakırdı.
         var payment = new SubscriptionPayment(
             tenantId, plan.Id, period, amount, context.Value!.Gateway.Provider, conversationId, attemptNumber: 1);
+        payment.AttachBreakdown(quote);
         _db.SubscriptionPayments.Add(payment);
         await _db.SaveChangesAsync(ct);
 
         var init = await context.Value.Gateway.InitCheckoutAsync(new CheckoutInitRequest(
             conversationId,
             amount,
-            $"{plan.Name} · {(period == BillingPeriod.Yearly ? "Yıllık" : "Aylık")} abonelik",
+            Describe(plan, period, quote),
             tenantId.ToString("N"),
             tenant.OwnerName ?? tenant.Name,
             "Yetkili",
@@ -276,6 +296,14 @@ public sealed class BillingService : IBillingService
             return Result<CheckoutCompletedDto>.Failure(Error.NotFound("Ödeme kaydı bulunamadı."));
         }
 
+        // EK ÜCRET (şube / onam kademesi) BU YOLDAN GEÇEMEZ: abonelik başlatma yolu onu dönem ödemesi
+        // sanıp aboneliği uzatırdı. Ek ücretler saklı karttan çekilir ve kendi akışında sonuçlanır.
+        if (payment.IsAddon)
+        {
+            _logger.LogError("Ek ücret ödemesi checkout dönüşüne düştü: {ConversationId} ({Kind})", result.ConversationId, payment.Kind);
+            return Result<CheckoutCompletedDto>.Failure(Error.Conflict("Bu ödeme abonelik ödemesi değil."));
+        }
+
         if (tx is not null)
         {
             await RowLock.LockRowAsync(_db, "subscription_payments", payment.Id, ct);
@@ -367,8 +395,7 @@ public sealed class BillingService : IBillingService
         await StoreCardAsync(payment.TenantId, context.Value.Gateway.Provider, result, ct);
 
         payment.MarkSucceeded(result.ProviderPaymentId, nowUtc);
-        var invoice = await CreatePaidInvoiceAsync(tenant, plan, payment.Period, payment.AmountTRY,
-            nowUtc, nowUtc, result.ProviderPaymentId, ct);
+        var invoice = await CreatePaidInvoiceAsync(tenant, plan, payment, nowUtc, nowUtc, result.ProviderPaymentId, ct);
         payment.AttachInvoice(invoice.Id);
 
         tenant.StartSubscription(plan, payment.Period, nowUtc);
@@ -418,9 +445,13 @@ public sealed class BillingService : IBillingService
         if (card is null)
             return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(false, 0, "Kayıtlı kart yok.", tenant.SubscriptionEndsAtUtc));
 
-        var amount = PriceFor(plan, period);
-        if (amount <= 0)
+        if (SubscriptionPricing.UnitPrice(plan, period) <= 0)
             return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(false, 0, "Ücretsiz pakette tahsilat yapılmaz.", tenant.SubscriptionEndsAtUtc));
+
+        // TUTAR = TEKLİF, yenileme anındaki sayaçlarla (şube / müşteri / imzalı onam). Bu iş kurum
+        // kapsamı olmadan çalışır; sayaçlar bu yüzden filtre dışı + açık TenantId ile okunur.
+        var renewalQuote = SubscriptionPricing.Quote(plan, period, await BillingCountsQuery.CountAsync(_db, tenantId, ct));
+        var amount = renewalQuote.Total;
 
         // VADESİ GELMEDEN TAHSİLAT YAPILMAZ. Tarayıcı zaten vadeye yaklaşanları seçiyor ama karar
         // SERVİSE ait olmalı: kuyruk aynı işi yeniden deneyebilir, iş iki kez sıraya girebilir ya
@@ -436,8 +467,10 @@ public sealed class BillingService : IBillingService
         // Dönem anahtarı: aynı dönem için açılan tüm denemeler bu ön ekle gruplanır.
         var periodStart = tenant.SubscriptionEndsAtUtc ?? DateTime.UtcNow;
         var prefix = $"sub-{tenantId:N}-{periodStart:yyyyMMdd}";
+        // Yalnız ABONELİK ödemeleri: şube ödemesi ("brn-" ön ekli) bu döneme sayılsaydı "dönem zaten
+        // ödendi" deyip yenilemeyi atlar ya da şube ödemesini dönem ödemesi diye sonuçlandırırdı.
         var attempts = await _db.SubscriptionPayments
-            .Where(p => p.TenantId == tenantId && p.ConversationId.StartsWith(prefix))
+            .Where(p => p.TenantId == tenantId && p.Kind == SubscriptionPayment.KindSubscription && p.ConversationId.StartsWith(prefix))
             .ToListAsync(ct);
 
         if (attempts.Any(a => a.Status == SubscriptionPayment.Succeeded))
@@ -567,13 +600,14 @@ public sealed class BillingService : IBillingService
         var payment = new SubscriptionPayment(
             tenantId, plan.Id, period, amount, context.Value!.Gateway.Provider, conversationId, attemptNumber,
             tenantPaymentMethodId: card.Id);
+        payment.AttachBreakdown(renewalQuote);
         _db.SubscriptionPayments.Add(payment);
         await _db.SaveChangesAsync(ct);
 
         var charge = await context.Value.Gateway.ChargeStoredCardAsync(new StoredCardChargeRequest(
             conversationId,
             amount,
-            $"{plan.Name} · {(period == BillingPeriod.Yearly ? "Yıllık" : "Aylık")} abonelik",
+            Describe(plan, period, renewalQuote),
             _encryption.Decrypt(card.CardUserKeyEncrypted) ?? string.Empty,
             _encryption.Decrypt(card.CardTokenEncrypted) ?? string.Empty,
             tenantId.ToString("N"),
@@ -689,7 +723,7 @@ public sealed class BillingService : IBillingService
         // Abonelik zaten geçmişse (askıda kalmışsa) geçmişe dönük dönem açmamak için bugünden başlar.
         var periodStart = tenant.SubscriptionEndsAtUtc is { } currentEnd && currentEnd > nowUtc ? currentEnd : nowUtc;
 
-        var invoice = await CreatePaidInvoiceAsync(tenant, plan, payment.Period, payment.AmountTRY, periodStart, nowUtc, providerPaymentId, ct);
+        var invoice = await CreatePaidInvoiceAsync(tenant, plan, payment, periodStart, nowUtc, providerPaymentId, ct);
         payment.AttachInvoice(invoice.Id);
         tenant.StartSubscription(plan, payment.Period, periodStart);
         await _db.SaveChangesAsync(ct);
@@ -709,9 +743,6 @@ public sealed class BillingService : IBillingService
     private IQueryable<TenantInvoice> InvoiceQuery(Guid tenantId) =>
         _db.TenantInvoices.Where(i => i.TenantId == tenantId).OrderByDescending(i => i.IssuedAtUtc);
 
-    private static decimal PriceFor(SubscriptionPlan plan, BillingPeriod period) =>
-        period == BillingPeriod.Yearly ? plan.YearlyPriceTRY : plan.MonthlyPriceTRY;
-
     private async Task StoreCardAsync(Guid tenantId, string provider, CheckoutResult result, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(result.CardUserKey) || string.IsNullOrWhiteSpace(result.CardToken)) return;
@@ -730,19 +761,51 @@ public sealed class BillingService : IBillingService
             result.CardBankName));
     }
 
+    /// <summary>
+    /// Ödenmiş dönem faturası. Tutar ödemenin tutarıdır; döküm ödemeye yazılmış teklif anlık
+    /// görüntüsünden gelir (net/KDV aynen). Dökümü olmayan eski ödeme brütten türetilir.
+    /// </summary>
     private async Task<TenantInvoice> CreatePaidInvoiceAsync(
-        Tenant tenant, SubscriptionPlan plan, BillingPeriod period, decimal amount,
+        Tenant tenant, SubscriptionPlan plan, SubscriptionPayment payment,
         DateTime periodStart, DateTime nowUtc, string? providerPaymentId, CancellationToken ct)
     {
+        var period = payment.Period;
         var periodEnd = period == BillingPeriod.Yearly ? periodStart.AddYears(1) : periodStart.AddMonths(1);
         var number = await NextInvoiceNumberAsync(nowUtc, ct);
-        var invoice = new TenantInvoice(tenant.Id, number, periodStart, periodEnd, amount,
+        var invoice = new TenantInvoice(tenant.Id, number, periodStart, periodEnd, payment.AmountTRY,
             $"{plan.Name} · {(period == BillingPeriod.Yearly ? "Yıllık" : "Aylık")} abonelik");
-        invoice.SetVatRate(DefaultVatRate);
+        ApplyBreakdownOrDefaultVat(invoice, payment);
+        // ONAM HAKKI: dönem ödemesi, ödeme anındaki evrak sayısının kademesini DÖNEM BOYUNCA açar (imza
+        // kapısı bunu okur). Dökümü olmayan eski ödeme kademe açmaz — yalnız ücretsiz bölüm.
+        if (SubscriptionQuote.FromJson(payment.BreakdownJson) is { } paidQuote)
+        {
+            invoice.CoverConsentTier(PricingTier.Applicable(plan.ConsentTiers, paidQuote.ConsentDocuments)?.Above);
+            invoice.CoverCustomerTier(PricingTier.Applicable(plan.CustomerTiers, paidQuote.Customers)?.Above);
+        }
         invoice.MarkPaid(nowUtc, providerPaymentId);
         _db.TenantInvoices.Add(invoice);
         return invoice;
     }
+
+    private static void ApplyBreakdownOrDefaultVat(TenantInvoice invoice, SubscriptionPayment payment)
+    {
+        var quote = SubscriptionQuote.FromJson(payment.BreakdownJson);
+        if (quote is not null && quote.Total == invoice.AmountTRY) invoice.ApplyQuote(quote);
+        else invoice.SetVatRate(SubscriptionPricing.DefaultVatRate);
+    }
+
+    /// <summary>Sağlayıcıya giden ödeme açıklaması (kart ekstresinde ve iyzico panelinde görünür).</summary>
+    private static string Describe(SubscriptionPlan plan, BillingPeriod period, SubscriptionQuote quote)
+    {
+        var periodText = period == BillingPeriod.Yearly ? "Yıllık" : "Aylık";
+        return plan.ChargePerBranch
+            ? $"{plan.Name} · {periodText} abonelik · {Math.Max(1, quote.Branches)} şube"
+            : $"{plan.Name} · {periodText} abonelik";
+    }
+
+    /// <summary>MySQL'den okunan DateTime Kind=Unspecified döner; JSON'a 'Z'siz yazılıp istemcide 3 saat kayardı.</summary>
+    private static DateTime? AsUtc(DateTime? value) =>
+        value is { } v ? DateTime.SpecifyKind(v, DateTimeKind.Utc) : null;
 
     /// <summary>
     /// Yıllık seri: BA-2026-000123. Numara benzersiz indekslidir; eşzamanlı iki fatura aynı
@@ -767,6 +830,7 @@ public sealed class BillingService : IBillingService
         c.Id, c.MaskedNumber, c.Association, c.Family, c.BankName, c.LastChargedAtUtc, c.ConsecutiveFailureCount);
 
     private static BillingInvoiceDto ToInvoiceDto(TenantInvoice i) => new(
-        i.Id, i.Number, i.PeriodStartUtc, i.PeriodEndUtc, i.AmountTRY, i.NetAmountTRY, i.VatAmountTRY,
-        i.VatRate, i.Status, i.IssuedAtUtc, i.DueDateUtc, i.PaidAtUtc);
+        i.Id, i.Number, AsUtc(i.PeriodStartUtc)!.Value, AsUtc(i.PeriodEndUtc)!.Value, i.AmountTRY, i.NetAmountTRY, i.VatAmountTRY,
+        i.VatRate, i.Status, AsUtc(i.IssuedAtUtc)!.Value, AsUtc(i.DueDateUtc)!.Value, AsUtc(i.PaidAtUtc),
+        SubscriptionQuote.FromJson(i.LinesJson)?.Lines, i.Notes);
 }

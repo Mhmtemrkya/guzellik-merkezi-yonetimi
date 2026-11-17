@@ -34,8 +34,11 @@ public static class AppReviewAccountSeeder
     private const string DefaultSlug = "beautyasist-app-review";
     private const string DefaultTenantName = "BeautyAsist Demo Merkezi";
 
-    /// <summary>Denetçi hiçbir özellikte "paketiniz izin vermiyor" duvarına çarpmasın: tüm özellikleri açan plan.</summary>
-    private const string PreferredPlanKey = "Enterprise";
+    /// <summary>
+    /// Denetçi hiçbir özellikte "paketiniz izin vermiyor" duvarına çarpmasın: tüm özellikleri açan plan.
+    /// TEK PAKET (13 Kas 2026) tüm özellikleri açar; eski "Enterprise" paketi kaldırıldı.
+    /// </summary>
+    private const string PreferredPlanKey = GuzellikMerkezi.Infrastructure.Persistence.DatabaseBootstrap.SinglePlanKey;
 
     /// <summary>
     /// Bu açılışta inceleme HESABI kurulmalı mı? Yarım yapılandırmada fırlatır.

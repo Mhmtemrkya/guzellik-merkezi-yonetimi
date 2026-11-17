@@ -4,10 +4,10 @@ using GuzellikMerkezi.Domain.Exceptions;
 namespace GuzellikMerkezi.Domain.Entities;
 
 /// <summary>
-/// Kategori bazlı WhatsApp fiyat kuralı — platform admin yönetir, KOD İÇİNE SABİT YAZILMAZ.
-/// Yürürlük tarihiyle (EffectiveFromUtc) tutulur: 1 Ekim 2026 gibi ileri tarihli fiyat değişikliği
-/// önceden girilir; çözümleme "o an geçerli en yeni kural"ı seçer. MetaUsdPrice platformun Meta'ya
-/// ödediği liste fiyatı (maliyet/mutabakat için), SellPriceTry kuruma yansıtılan birim fiyat (marj burada).
+/// Kategori bazlı WhatsApp KREDİ maliyeti kuralı — platform admin yönetir, KOD İÇİNE SABİT YAZILMAZ.
+/// Yürürlük tarihiyle (EffectiveFromUtc) tutulur: ileri tarihli Meta fiyat değişikliği önceden
+/// girilir; çözümleme "o an geçerli en yeni kural"ı seçer. MetaUsdPrice platformun Meta'ya ödediği
+/// liste fiyatı (maliyet/mutabakat için), CreditCost kurumun cüzdanından düşen kredi (marj burada).
 /// </summary>
 public sealed class WhatsAppPricingRule : Entity
 {
@@ -16,12 +16,12 @@ public sealed class WhatsAppPricingRule : Entity
     public WhatsAppPricingRule(
         WhatsAppMessageCategory category,
         decimal metaUsdPrice,
-        decimal sellPriceTry,
+        decimal creditCost,
         DateTime effectiveFromUtc,
         string? note = null)
     {
         Category = category;
-        SetPrices(metaUsdPrice, sellPriceTry);
+        SetPrices(metaUsdPrice, creditCost);
         EffectiveFromUtc = Normalize(effectiveFromUtc);
         Note = Clean(note);
         IsActive = true;
@@ -32,7 +32,13 @@ public sealed class WhatsAppPricingRule : Entity
     /// <summary>Meta'nın teslim edilen mesaj başına aldığı USD ücret (platform maliyeti).</summary>
     public decimal MetaUsdPrice { get; private set; }
 
-    /// <summary>Kuruma yansıtılan birim satış fiyatı (₺) — kontör bu tutardan düşer.</summary>
+    /// <summary>Bu kategoride bir mesajın kurum cüzdanından düşen kredisi (1 kredi = 1 hatırlatma).</summary>
+    public decimal CreditCost { get; private set; }
+
+    /// <summary>
+    /// ESKİ ₺ satış fiyatı (12 Kas 2026 kredi dönüşümü öncesi). Donmuş geçmiş — yeni kurallarda 0,
+    /// faturalama bunu OKUMAZ.
+    /// </summary>
     public decimal SellPriceTry { get; private set; }
 
     /// <summary>Bu fiyatın yürürlüğe girdiği an (UTC). Gelecekteki değişiklikler önceden girilir.</summary>
@@ -41,12 +47,12 @@ public sealed class WhatsAppPricingRule : Entity
     public string? Note { get; private set; }
     public bool IsActive { get; private set; } = true;
 
-    public void SetPrices(decimal metaUsdPrice, decimal sellPriceTry)
+    public void SetPrices(decimal metaUsdPrice, decimal creditCost)
     {
         if (metaUsdPrice < 0) throw new DomainException("Meta fiyatı negatif olamaz.");
-        if (sellPriceTry < 0) throw new DomainException("Satış fiyatı negatif olamaz.");
+        if (creditCost < 0) throw new DomainException("Kredi maliyeti negatif olamaz.");
         MetaUsdPrice = decimal.Round(metaUsdPrice, 6);
-        SellPriceTry = decimal.Round(sellPriceTry, 4);
+        CreditCost = decimal.Round(creditCost, 2);
         Touch();
     }
 

@@ -712,14 +712,14 @@ public sealed class TenantSignupService : ITenantSignupService
     /// olacak her özelliği kapalı bulur.
     /// </para>
     /// <para>
-    /// Varsayılan: <c>TenantSignup:TrialPlanKey</c> (yoksa "Premium"). Bulunamazsa en YÜKSEK
-    /// sıradaki aktif pakete düşer. Paket hiç atanmazsa canlıda her özellik kapanır (feature
+    /// Varsayılan: <c>TenantSignup:TrialPlanKey</c> (yoksa TEK PAKET "BeautyAsist"). Bulunamazsa en
+    /// YÜKSEK sıradaki aktif pakete düşer. Paket hiç atanmazsa canlıda her özellik kapanır (feature
     /// gating plansız kurumda fail-closed çalışır) — o yüzden null dönmek kayıt akışını durdurur.
     /// </para>
     /// </remarks>
     private async Task<SubscriptionPlan?> ResolveTrialPlanAsync(CancellationToken ct)
     {
-        var preferred = string.IsNullOrWhiteSpace(_trialPlanKey) ? "Premium" : _trialPlanKey!.Trim();
+        var preferred = string.IsNullOrWhiteSpace(_trialPlanKey) ? Persistence.DatabaseBootstrap.SinglePlanKey : _trialPlanKey!.Trim();
         var byKey = await _db.SubscriptionPlans
             .FirstOrDefaultAsync(p => p.IsActive && p.PlanKey == preferred, ct);
         if (byKey is not null) return byKey;

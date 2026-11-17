@@ -78,7 +78,7 @@ function initialValues(plan: string): CreateTenantFormValues {
   return {
     name: '',
     slug: '',
-    plan: plan || 'Profesyonel',
+    plan: plan || 'BeautyAsist',
     billingPeriod: 'Yearly',
     domain: '',
     ownerName: '',
@@ -186,9 +186,10 @@ const inputCls =
   'min-h-11 w-full border border-[#EAD8DF]/[0.70] bg-white/[0.90] px-3 py-2.5 text-[13px] text-[#2A2027] outline-none transition-colors placeholder:text-[#2A2027]/[0.25] focus:border-[#BE7690]/[0.75]'
 
 export default function CreateTenantDialog({ plans, onCreate, onCredentials }: CreateTenantDialogProps) {
-  const defaultPlan = plans[0]?.name || 'Profesyonel'
+  // TEK PAKET (13 Kas 2026): katalog yüklenemezse de tek paket önerilir (eski beş paket kaldırıldı).
+  const defaultPlan = plans[0]?.name || 'BeautyAsist'
   const defaults = useMemo(() => initialValues(defaultPlan), [defaultPlan])
-  const planNames = plans.length ? plans.map((p) => p.name) : ['Başlangıç', 'Profesyonel', 'Premium', 'AI Klinik', 'Enterprise']
+  const planNames = plans.length ? plans.map((p) => p.name) : ['BeautyAsist']
 
   const [open, setOpen] = useState(false)
   const [values, setValues] = useState<CreateTenantFormValues>(defaults)

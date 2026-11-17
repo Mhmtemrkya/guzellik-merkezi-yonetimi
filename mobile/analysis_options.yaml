@@ -22,6 +22,11 @@ include: package:flutter_lints/flutter.yaml
 # gerçek hata üretmiyordu. Gürültü, kapının ciddiye alınmamasına yol açar. Ayrı bir turda
 # JSON okuma katmanı tiplendirilirse açılabilir.
 analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - windows/**
   language:
     strict-casts: true
 

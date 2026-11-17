@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { QRCodeCanvas } from 'qrcode.react'
-import { Check, Copy, Download, FileDown, Loader2, Printer, Send, X } from 'lucide-react'
+import { Check, Copy, Download, FileDown, Loader2, MessageSquareText, Printer, Send, X } from 'lucide-react'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import GiftCardArtwork, { giftCardArtworkData } from '@/components/dashboard/GiftCardArtwork'
 import { publicWebBaseUrl } from '@/lib/publicWebUrl'
@@ -24,6 +24,7 @@ export default function GiftCardShareModal({
   open,
   onClose,
   onSendWhatsApp,
+  onSendSms,
   defaultPhone = '',
 }: {
   card: GiftCard | null
@@ -41,6 +42,11 @@ export default function GiftCardShareModal({
    */
   /** `true` dönerse işlem ONAYA gönderilmiştir (gönderilmemiştir). */
   onSendWhatsApp?: (pdfBase64: string, phone: string) => Promise<boolean | void>
+  /**
+   * SMS ile gönderim — kart görseli GİTMEZ, kod ve son kullanma tarihi gider. Kullanıcıya
+   * gösterilecek sonuç metnini döner. Verilmezse SMS seçeneği çizilmez.
+   */
+  onSendSms?: (phone: string) => Promise<string>
   /** Karta bağlı müşterinin kayıtlı numarası — biliniyorsa gönderim kutusuna ön-dolum gelir. */
   defaultPhone?: string
 }) {
@@ -58,8 +64,9 @@ export default function GiftCardShareModal({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  /** Gönderim kutusu açık mı + alıcı numarası. */
+  /** Gönderim kutusu açık mı + hangi kanal + alıcı numarası. */
   const [sendOpen, setSendOpen] = useState(false)
+  const [sendChannel, setSendChannel] = useState<'whatsapp' | 'sms'>('whatsapp')
   const [phone, setPhone] = useState(defaultPhone)
 
   /**
@@ -201,6 +208,33 @@ export default function GiftCardShareModal({
     }
   }
 
+  const sendSms = async (): Promise<void> => {
+    if (!onSendSms) return
+    const target = phone.trim()
+    if (!target && !hasLinkedCustomer) { setError('Gönderilecek telefon numarasını yazın.'); return }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      setNotice(await onSendSms(target))
+      setSendOpen(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gönderilemedi.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const openSend = (channel: 'whatsapp' | 'sms'): void => {
+    setError('')
+    setNotice('')
+    if (sendOpen && sendChannel === channel) { setSendOpen(false); return }
+    setSendChannel(channel)
+    setSendOpen(true)
+  }
+
+  const isSms = sendChannel === 'sms'
+
   return (
     <ModalPortal>
       <AnimatePresence>
@@ -274,9 +308,12 @@ export default function GiftCardShareModal({
                 </p>
               )}
 
-              {/* Gönderim kutusu — numara sorulmadan kontör harcanmaz. */}
-              {sendOpen && onSendWhatsApp && (
+              {/* Gönderim kutusu — numara sorulmadan kota/kredi harcanmaz. */}
+              {sendOpen && (isSms ? onSendSms : onSendWhatsApp) && (
                 <div className="mt-3 rounded-[14px] border border-[#EAD8DF] bg-white p-3.5">
+                  <div className="mb-2 text-[12px] font-semibold text-[#2A2027]">
+                    {isSms ? 'SMS ile gönder' : 'WhatsApp\'tan gönder'}
+                  </div>
                   <label className="block">
                     <span className="mb-1.5 block text-[11px] font-semibold text-[#74616A]">
                       Alıcı telefon numarası{hasLinkedCustomer ? ' (boş bırakılabilir)' : ''}
@@ -299,8 +336,10 @@ export default function GiftCardShareModal({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void sendWhatsApp()}
-                      className="inline-flex min-h-9 items-center gap-1.5 rounded-[11px] bg-[#1E8C60] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#15694A] disabled:opacity-60"
+                      onClick={() => void (isSms ? sendSms() : sendWhatsApp())}
+                      className={`inline-flex min-h-9 items-center gap-1.5 rounded-[11px] px-4 text-[12px] font-semibold text-white transition-colors disabled:opacity-60 ${
+                        isSms ? 'bg-[#2f6fb5] hover:bg-[#245a95]' : 'bg-[#1E8C60] hover:bg-[#15694A]'
+                      }`}
                     >
                       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Gönder
                     </button>
@@ -309,7 +348,9 @@ export default function GiftCardShareModal({
                     {hasLinkedCustomer && !phone.trim()
                       ? 'Boş bırakırsanız karta bağlı müşterinin kayıtlı numarasına gönderilir. '
                       : ''}
-                    Kart PDF olarak gönderilir ve kurumunuzun WhatsApp kontöründen düşer.
+                    {isSms
+                      ? 'SMS\'te kart görseli gitmez; kart kodu ve son kullanma tarihi gider. Paketinizdeki SMS kotasından, kota bitince mesaj kredisinden düşer (kendi SMS hesabınız bağlıysa ücreti sağlayıcınız keser).'
+                      : 'Kart PDF olarak gönderilir; paketinizdeki WhatsApp kotasından, kota bitince mesaj kredisinden düşer.'}
                   </p>
                 </div>
               )}
@@ -346,11 +387,21 @@ export default function GiftCardShareModal({
               >
                 <FileDown className="h-4 w-4" /> PDF indir
               </button>
+              {onSendSms && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => openSend('sms')}
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] bg-[#2f6fb5] px-4 text-[12px] font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-[#245a95] disabled:opacity-60 disabled:hover:translate-y-0"
+                >
+                  <MessageSquareText className="h-4 w-4" /> SMS ile gönder
+                </button>
+              )}
               {onSendWhatsApp && (
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => { setError(''); setNotice(''); setSendOpen((v) => !v) }}
+                  onClick={() => openSend('whatsapp')}
                   className="inline-flex min-h-10 items-center gap-1.5 rounded-[12px] bg-[#1E8C60] px-4 text-[12px] font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-[#15694A] disabled:opacity-60 disabled:hover:translate-y-0"
                 >
                   <Send className="h-4 w-4" /> WhatsApp'tan gönder

@@ -26,6 +26,13 @@ public static class ResultExtensions
             "Forbidden" => Results.Json(response, statusCode: StatusCodes.Status403Forbidden),
             "Conflict" => Results.Conflict(response),
             "SlotFull" => Results.Conflict(response),
+            "BranchChargeRequired" => Results.Conflict(response),
+            "BranchChargePending" => Results.Conflict(response),
+            "ConsentLimitReached" => Results.Conflict(response),
+            "ConsentUpgradeRequired" => Results.Conflict(response),
+            "CustomerLimitReached" => Results.Conflict(response),
+            "CustomerUpgradeRequired" => Results.Conflict(response),
+            "BranchAwaitingPayment" => Results.Conflict(response),
             "Validation" => Results.BadRequest(response),
             _ => Results.BadRequest(response)
         };

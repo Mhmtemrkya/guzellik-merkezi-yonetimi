@@ -5,8 +5,9 @@ namespace GuzellikMerkezi.Domain.Entities;
 /// <summary>
 /// Kuruma özel WhatsApp yapılandırması. YENİ MODEL: Meta bağlantısı (numara → phone_number_id / WABA) artık
 /// PLATFORM tarafından bağlanır (tek Business Manager + tek sistem token'ı; token
-/// <see cref="PlatformIntegrationSettings"/>'te). Kurum yalnızca içeriği (şablon metni) ve faturalama tercihlerini
-/// (kampanya izni, kontör taşması, harcama tavanı) yönetir. Eski per-tenant token alanı geriye uyumluluk için
+/// <see cref="PlatformIntegrationSettings"/>'te). Kurum yalnızca içeriği (şablon metni), faturalama tercihlerini
+/// (kampanya izni, kredi taşması, harcama tavanı) ve tek yönlü bildirimlerin kanalını (WhatsApp/SMS) yönetir.
+/// Eski per-tenant token alanı geriye uyumluluk için
 /// korunur ama artık gönderim platform token'ıyla yapılır.
 /// </summary>
 public sealed class WhatsAppSettings : Entity
@@ -53,12 +54,30 @@ public sealed class WhatsAppSettings : Entity
     public string TemplateLanguageCode { get; private set; } = "tr";
 
     // --- Faturalama tercihleri (KURUM yönetir, platform tavan koyar) ---
-    /// <summary>Kampanya (Marketing) mesajları açık mı? Varsayılan KAPALI — pahalı kategori istenmeden çalışmaz.</summary>
+    // Mesaj kredisi cüzdanı WhatsApp ve SMS'in ORTAK bakiyesidir; bu tercihler ikisine birden uygulanır.
+    /// <summary>WhatsApp kampanya (Marketing) mesajları açık mı? Varsayılan KAPALI — pahalı kategori istenmeden çalışmaz.</summary>
     public bool MarketingEnabled { get; private set; }
-    /// <summary>Aylık kota bitince kontör bakiyesinden devam edilsin mi? Varsayılan KAPALI — sürpriz fatura önlenir.</summary>
+    /// <summary>Aylık kota bitince mesaj kredisinden devam edilsin mi (WhatsApp + SMS)? Varsayılan KAPALI — sürpriz harcama önlenir.</summary>
     public bool AllowWalletOverage { get; private set; }
-    /// <summary>Aylık kontör harcama tavanı (₺). null = platform varsayılanı kullanılır.</summary>
+    /// <summary>Aylık kredi harcama tavanı (WhatsApp + SMS toplamı). null = paket/platform varsayılanı kullanılır.</summary>
+    public decimal? MonthlySpendCapCredits { get; private set; }
+
+    /// <summary>ESKİ ₺ tavan (12 Kas 2026 kredi dönüşümü öncesi). Faturalama OKUMAZ.</summary>
     public decimal? MonthlySpendCapTry { get; private set; }
+
+    // --- Tek yönlü bildirimlerin KANALI (KURUM seçer) ---
+    // Varsayılan WhatsApp (eski davranış). SMS seçilirse mesaj platformun SMS hattından gider ve
+    // plan SMS kotasından / mesaj kredisinden düşer. Yanıt bekleyen akışlar (Evet/Hayır, bekleme
+    // teklifi, KVKK ONAYLIYORUM) WhatsApp'a bağlıdır ve burada YOKTUR.
+    /// <summary>Randevu tamamlanınca giden değerlendirme (yıldız) linkinin kanalı.</summary>
+    public NotificationChannel RatingLinkChannel { get; private set; } = NotificationChannel.WhatsApp;
+    /// <summary>Bekleme listesinden randevu oluştu bildiriminin kanalı.</summary>
+    public NotificationChannel WaitlistActivatedChannel { get; private set; } = NotificationChannel.WhatsApp;
+    /// <summary>
+    /// KVKK mesajının kanalı. WhatsApp: açık rıza isteği (müşteri ONAYLIYORUM yazar). SMS: yalnız
+    /// aydınlatma metni LİNKİ gider — SMS'te yanıt işlenmediği için rıza bu yoldan ALINMAZ.
+    /// </summary>
+    public NotificationChannel KvkkChannel { get; private set; } = NotificationChannel.WhatsApp;
 
     /// <summary>Canlı gönderim için bağlantı hazır mı? (Numara bağlı ve durum Connected.)</summary>
     public bool IsConnected => ConnectionStatus == WhatsAppConnectionStatus.Connected && !string.IsNullOrWhiteSpace(PhoneNumberId);
@@ -117,14 +136,31 @@ public sealed class WhatsAppSettings : Entity
         Touch();
     }
 
-    /// <summary>KURUM: faturalama tercihleri.</summary>
-    public void UpdateBillingPreferences(bool marketingEnabled, bool allowWalletOverage, decimal? monthlySpendCapTry)
+    /// <summary>KURUM: faturalama tercihleri (tavan KREDİ cinsinden).</summary>
+    public void UpdateBillingPreferences(bool marketingEnabled, bool allowWalletOverage, decimal? monthlySpendCapCredits)
     {
         MarketingEnabled = marketingEnabled;
         AllowWalletOverage = allowWalletOverage;
-        MonthlySpendCapTry = monthlySpendCapTry is { } c && c >= 0 ? decimal.Round(c, 2) : null;
+        MonthlySpendCapCredits = monthlySpendCapCredits is { } c && c >= 0 ? decimal.Round(c, 2) : null;
         Touch();
     }
+
+    /// <summary>
+    /// KURUM: tek yönlü bildirimlerin kanalı. Yalnız WhatsApp ve SMS geçerlidir — e-posta bu
+    /// mesajlar için tanımlı değil (müşteride e-posta çoğu zaman yok, link telefonda açılıyor).
+    /// </summary>
+    public void UpdateChannelPreferences(NotificationChannel ratingLink, NotificationChannel waitlistActivated, NotificationChannel kvkk)
+    {
+        RatingLinkChannel = EnsurePhoneChannel(ratingLink);
+        WaitlistActivatedChannel = EnsurePhoneChannel(waitlistActivated);
+        KvkkChannel = EnsurePhoneChannel(kvkk);
+        Touch();
+    }
+
+    private static NotificationChannel EnsurePhoneChannel(NotificationChannel channel) =>
+        channel is NotificationChannel.WhatsApp or NotificationChannel.Sms
+            ? channel
+            : throw new Exceptions.DomainException("Bu bildirim için yalnız WhatsApp ya da SMS seçilebilir.");
 
     private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 }

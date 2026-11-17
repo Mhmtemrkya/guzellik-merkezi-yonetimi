@@ -2279,6 +2279,13 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("BillingSource")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasDefaultValue("None");
+
                     b.Property<string>("Body")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -2290,6 +2297,15 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("ChargeCapturedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<decimal>("ChargedCredits")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)")
+                        .HasDefaultValue(0m);
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
@@ -2313,12 +2329,21 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("Purpose")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
                     b.Property<string>("Recipient")
                         .IsRequired()
                         .HasColumnType("longtext");
 
                     b.Property<DateTime?>("SentAtUtc")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<int>("SmsParts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -2344,6 +2369,8 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.HasIndex("CustomerId");
 
                     b.HasIndex("TemplateId");
+
+                    b.HasIndex("BillingSource", "ChargeCapturedAtUtc");
 
                     b.HasIndex("TenantId", "CreatedAtUtc");
 
@@ -3767,6 +3794,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<int>("AttemptNumber")
                         .HasColumnType("int");
 
+                    b.Property<string>("BreakdownJson")
+                        .HasColumnType("LONGTEXT");
+
                     b.Property<DateTime?>("CompletedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -3794,6 +3824,17 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasDefaultValue("Subscription");
+
+                    b.Property<string>("PayloadJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
 
                     b.Property<int>("Period")
                         .HasColumnType("int");
@@ -3837,6 +3878,8 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "CreatedAtUtc");
 
+                    b.HasIndex("TenantId", "Kind", "Status");
+
                     b.ToTable("subscription_payments", (string)null);
                 });
 
@@ -3846,11 +3889,27 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<bool>("ChargePerBranch")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("ConsentTiersJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
+
+                    b.Property<string>("CustomerTiersJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<decimal>("DefaultSpendCapCredits")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("DefaultWhatsAppSpendCapTry")
                         .HasColumnType("decimal(18,2)");
@@ -3924,6 +3983,12 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("YearlyPriceTRY")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("YearlyTierMultiplier")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)")
+                        .HasDefaultValue(10m);
 
                     b.HasKey("Id");
 
@@ -4307,11 +4372,17 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<int?>("ConsentTierAbove")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
+
+                    b.Property<int?>("CustomerTierAbove")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("datetime(6)");
@@ -4324,6 +4395,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("IssuedAtUtc")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<string>("LinesJson")
+                        .HasColumnType("LONGTEXT");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(512)
@@ -4341,11 +4415,23 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
+                    b.Property<string>("PendingBranchJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
                     b.Property<DateTime>("PeriodEndUtc")
                         .HasColumnType("datetime(6)");
 
                     b.Property<DateTime>("PeriodStartUtc")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<decimal?>("QuotedNetTRY")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("QuotedVatTRY")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -4381,6 +4467,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<decimal>("BalanceCredits")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<decimal>("BalanceTry")
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
@@ -4397,11 +4487,23 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<decimal>("LifetimeSpentCredits")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<decimal>("LifetimeSpentTry")
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<decimal>("LifetimeTopUpCredits")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<decimal>("LifetimeTopUpTry")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("ReservedCredits")
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
 
@@ -4625,6 +4727,77 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.ToTable("tenant_signup_reservations", (string)null);
                 });
 
+            modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.TenantSmsConnection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime?>("LastTestAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Password")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<string>("Sender")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("UsernameHint")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<DateTime?>("VerifiedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("tenant_sms_connections", (string)null);
+                });
+
             modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.TenantUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4786,15 +4959,19 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
-                    b.Property<decimal>("AmountTry")
+                    b.Property<decimal>("Amount")
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
 
-                    b.Property<decimal>("BalanceAfterTry")
+                    b.Property<decimal>("BalanceAfter")
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<string>("Category")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<string>("Channel")
                         .HasMaxLength(16)
                         .HasColumnType("varchar(16)");
 
@@ -4817,10 +4994,13 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<Guid?>("NotificationLogId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid?>("PerformedByUserId")
                         .HasColumnType("char(36)");
 
-                    b.Property<decimal>("ReservedAfterTry")
+                    b.Property<decimal>("ReservedAfter")
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
 
@@ -4831,6 +5011,13 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("varchar(16)");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasDefaultValue("Try");
 
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime(6)");
@@ -4869,6 +5056,14 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<decimal>("CreditUnitPriceTry")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("DefaultMonthlySpendCapCredits")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<decimal?>("DefaultMonthlySpendCapTry")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -4879,7 +5074,15 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<decimal>("LowBalanceThresholdCredits")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<decimal>("LowBalanceThresholdTry")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("SmsCreditsPerPart")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
@@ -4919,6 +5122,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("DisplayOrder")
                         .HasColumnType("int");
+
+                    b.Property<decimal>("GrantsCredits")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("GrantsTry")
                         .HasPrecision(18, 2)
@@ -4971,6 +5178,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<decimal>("GrantsCredits")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("GrantsTry")
                         .HasPrecision(18, 2)
@@ -5076,6 +5287,12 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .HasColumnType("decimal(18,4)")
                         .HasDefaultValue(0m);
 
+                    b.Property<decimal>("ChargedCredits")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)")
+                        .HasDefaultValue(0m);
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -5176,6 +5393,10 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("char(36)");
 
+                    b.Property<decimal>("CreditCost")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -5255,12 +5476,21 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("KvkkChannel")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
                     b.Property<string>("KvkkTemplateName")
                         .HasMaxLength(128)
                         .HasColumnType("varchar(128)");
 
                     b.Property<bool>("MarketingEnabled")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<decimal?>("MonthlySpendCapCredits")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal?>("MonthlySpendCapTry")
                         .HasPrecision(18, 2)
@@ -5274,6 +5504,11 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("varchar(32)");
+
+                    b.Property<string>("RatingLinkChannel")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
 
                     b.Property<string>("RatingTemplateName")
                         .HasMaxLength(128)
@@ -5306,6 +5541,11 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<string>("VerifyToken")
                         .HasMaxLength(128)
                         .HasColumnType("varchar(128)");
+
+                    b.Property<string>("WaitlistActivatedChannel")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
 
                     b.Property<string>("WaitlistActivatedTemplateName")
                         .HasMaxLength(128)

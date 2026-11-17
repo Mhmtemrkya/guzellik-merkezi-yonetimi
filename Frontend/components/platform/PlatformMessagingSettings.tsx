@@ -206,14 +206,14 @@ export default function PlatformMessagingSettings() {
         )}
       </div>
 
-      {/* WHATSAPP — müşteri OTP/2FA kanalı (platform geneli, Meta Cloud API) */}
+      {/* WHATSAPP — kurum bildirimlerinin sistem anahtarı (platform geneli, Meta Cloud API). Müşteri giriş kodu WhatsApp'tan gitmez (yalnız e-posta). */}
       <div className={`${card} lg:col-span-2 flex flex-col gap-4 p-5`}>
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2.5">
             <div className="flex h-10 w-10 items-center justify-center border border-emerald-400/25 bg-emerald-400/[0.06]"><MessageCircle className="h-5 w-5 text-emerald-300/80" strokeWidth={1.4} /></div>
             <div>
               <div className="font-display text-xl tracking-tight text-[#fff4f8]">WhatsApp Altyapısı</div>
-              <div className="text-[11px] text-[#fff4f8]/45">Meta Cloud API · müşteri giriş kodları (2FA) bu numaradan gönderilir</div>
+              <div className="text-[11px] text-[#fff4f8]/45">Meta Cloud API · kurumların WhatsApp bildirimleri bu sistem anahtarıyla gönderilir</div>
             </div>
           </div>
           <StatusPill configured={data?.whatsAppConfigured} enabled={data?.whatsAppEnabled} />

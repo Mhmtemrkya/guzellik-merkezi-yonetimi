@@ -473,6 +473,7 @@ app.MapTenantSignupEndpoints();
 app.MapAccountDeletionEndpoints();
 app.MapSupportEndpoints();
 app.MapWhatsAppEndpoints();
+app.MapSmsEndpoints();
 app.MapCustomerAccountEndpoints();
 app.MapAdisyonEndpoints();
 app.MapCommissionEndpoints();

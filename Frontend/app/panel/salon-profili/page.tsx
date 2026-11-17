@@ -145,6 +145,9 @@ function LogoUploader({ logo, onChanged }: { logo: string | null; onChanged: () 
   )
 }
 
+/** Salon vitrini görsel sınırı — salon başına TOPLAM (backend: TenantProfileService.MaxPhotosPerSalon). */
+const MAX_SALON_PHOTOS = 15
+
 function GalleryManager({
   title,
   hint,
@@ -164,6 +167,9 @@ function GalleryManager({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const list = photos.filter((p) => p.kind === kind)
+  // SALON BAŞINA TOPLAM SINIR (vitrin + hizmet galerisi birlikte) — sunucu da aynı kuralı uygular.
+  const total = photos.length
+  const full = total >= MAX_SALON_PHOTOS
 
   const upload = async (file: File): Promise<void> => {
     setError('')
@@ -203,7 +209,8 @@ function GalleryManager({
         </div>
         <button
           type="button"
-          disabled={busy || list.length >= 10}
+          disabled={busy || full}
+          title={full ? `En fazla ${MAX_SALON_PHOTOS} görsel (iki galeri toplamı). Önce bir görsel silin.` : undefined}
           onClick={() => fileRef.current?.click()}
           className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full bg-gradient-to-r from-[#ef6f94] to-[#d65f83] px-4 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
         >
@@ -221,11 +228,14 @@ function GalleryManager({
           }}
         />
       </div>
+      <div className={`mt-2 text-[11px] ${full ? 'font-semibold text-amber-700' : 'text-[#7c6170]'}`}>
+        Salon toplamı: {total}/{MAX_SALON_PHOTOS} görsel{full ? ' — sınıra ulaşıldı; yeni görsel için önce birini silin.' : ''}
+      </div>
       {error && <div className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-[12px] text-rose-700">{error}</div>}
       <div className="mt-4 flex flex-wrap gap-3">
         {list.length === 0 && (
           <div className="w-full rounded-xl border border-dashed border-[#EAD8DF] px-4 py-8 text-center text-[12px] text-[#9d7386]">
-            Henüz fotoğraf yok. En fazla 10 fotoğraf ekleyebilirsiniz.
+            Henüz fotoğraf yok. İki galeride toplam en fazla {MAX_SALON_PHOTOS} görsel ekleyebilirsiniz.
           </div>
         )}
         {list.map((p) => (

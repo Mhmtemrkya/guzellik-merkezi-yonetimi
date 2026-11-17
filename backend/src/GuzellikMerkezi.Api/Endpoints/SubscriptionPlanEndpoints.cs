@@ -51,7 +51,9 @@ public static class SubscriptionPlanEndpoints
                 .OrderBy(p => p.DisplayOrder).ThenBy(p => p.MonthlyPriceTRY)
                 .Select(p => new PublicPlanDto(
                     p.Id, p.Name, p.Description, p.MonthlyPriceTRY, p.YearlyPriceTRY,
-                    p.MaxBranches, p.MaxStaff, p.MaxCustomers, p.Features, p.DisplayOrder))
+                    p.MaxBranches, p.MaxStaff, p.MaxCustomers, p.Features, p.DisplayOrder,
+                    p.ChargePerBranch, p.CustomerTiers ?? [], p.ConsentTiers ?? [], p.YearlyTierMultiplier,
+                    GuzellikMerkezi.Domain.Billing.SubscriptionPricing.DefaultVatRate))
                 .ToArray();
 
             return Results.Json(ApiResponse<IReadOnlyList<PublicPlanDto>>.Ok(items, http.TraceIdentifier));
@@ -99,7 +101,10 @@ public static class SubscriptionPlanEndpoints
             ? BillingPeriod.Yearly
             : BillingPeriod.Monthly;
 
-    /// <summary>Tanıtım sayfasının fiyat bölümü için paketin vitrine açık alanları.</summary>
+    /// <summary>
+    /// Tanıtım sayfasının fiyat bölümü için paketin vitrine açık alanları. Fiyatlar KDV HARİÇTİR
+    /// (<paramref name="VatRate"/> gösterim içindir); şube başınaysa birim fiyattır.
+    /// </summary>
     public sealed record PublicPlanDto(
         Guid Id,
         string Name,
@@ -110,7 +115,12 @@ public static class SubscriptionPlanEndpoints
         int MaxStaff,
         int MaxCustomers,
         string? Features,
-        int DisplayOrder);
+        int DisplayOrder,
+        bool ChargePerBranch,
+        IReadOnlyList<GuzellikMerkezi.Domain.Billing.PricingTier> CustomerTiers,
+        IReadOnlyList<GuzellikMerkezi.Domain.Billing.PricingTier> ConsentTiers,
+        decimal YearlyTierMultiplier,
+        decimal VatRate);
 
     public sealed record AssignTenantPayload(Guid TenantId, string? BillingPeriod = null);
     public sealed record AdminUpgradePayload(Guid SubscriptionPlanId, string? BillingPeriod = null);

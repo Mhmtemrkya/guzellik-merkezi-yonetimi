@@ -113,6 +113,29 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         catch (Exception ex) { return new MessagingTestResult(false, false, null, ex.Message); }
     }
 
+    /// <inheritdoc />
+    public async Task<MessagingTestResult> SendSmsWithAccountAsync(SmsAccountCredentials account, string toPhone, string message, CancellationToken ct = default)
+    {
+        var phone = NormalizePhone(toPhone);
+        if (string.IsNullOrWhiteSpace(account.Username) || string.IsNullOrWhiteSpace(account.Password))
+            return new MessagingTestResult(false, false, null, "SMS hesabının kullanıcı adı ya da parolası eksik.");
+        try
+        {
+            // apiUrl BİLEREK null: kurum hesabında adres geçersiz kılınamaz, sağlayıcının sabit adresi kullanılır.
+            return (account.Provider ?? string.Empty).ToLowerInvariant() switch
+            {
+                "verimor" => await SendViaVerimorAsync(account.Username, account.Password, account.Sender, phone, message, apiUrl: null, ct),
+                "netgsm" => await SendViaNetgsmAsync(account.Username, account.Password, account.Sender, phone, message, apiUrl: null, ct),
+                _ => new MessagingTestResult(false, false, null, $"Desteklenmeyen SMS sağlayıcısı: {account.Provider}"),
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Kurum SMS hesabıyla gönderim başarısız ({Provider}).", account.Provider);
+            return new MessagingTestResult(false, false, null, ex.Message);
+        }
+    }
+
     public async Task<MessagingTestResult> SendEmailAsync(string toEmail, string subject, string htmlBody, CancellationToken ct = default)
     {
         var s = await _db.PlatformIntegrationSettings.AsNoTracking().FirstOrDefaultAsync(ct);
@@ -187,7 +210,10 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
     {
         var client = _httpFactory.CreateClient("WhatsApp");
         var url = $"https://graph.facebook.com/v21.0/{phoneNumberId}/messages";
-        var payload = new { messaging_product = "whatsapp", recipient_type = "individual", to = toPhone, type = "text", text = new { preview_url = false, body } };
+        // Alıcı "+" ve ülke koduyla (bkz. WhatsAppRecipient): "+"sız numaraya Meta işletmenin
+        // ülke kodunu ekler, "0532…" yanlış numaraya dönüşür.
+        var to = WhatsAppRecipient.Format(toPhone);
+        var payload = new { messaging_product = "whatsapp", recipient_type = "individual", to, type = "text", text = new { preview_url = false, body } };
         using var req = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"),
@@ -203,6 +229,7 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
             using var d = JsonDocument.Parse(raw);
             if (d.RootElement.TryGetProperty("messages", out var m) && m.GetArrayLength() > 0 && m[0].TryGetProperty("id", out var id))
                 messageId = id.GetString();
+            WhatsAppRecipient.LogAccepted(_logger, d.RootElement, to, messageId);
         }
         catch (JsonException) { /* id parse edilemese de gönderim başarılı */ }
         return new MessagingTestResult(true, false, messageId, null);

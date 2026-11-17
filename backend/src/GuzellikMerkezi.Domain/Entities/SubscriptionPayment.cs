@@ -79,6 +79,64 @@ public sealed class SubscriptionPayment : Entity
     /// <summary>Bu fatura dönemi için kaçıncı deneme (dunning sayacı).</summary>
     public int AttemptNumber { get; private set; }
 
+    // ---- Tür + fiyat anlık görüntüsü ----
+
+    /// <summary>Abonelik dönemi (checkout/yenileme).</summary>
+    public const string KindSubscription = "Subscription";
+    /// <summary>Dönem ortasında eklenen şubenin orantılı ücreti — aboneliği UZATMAZ, şube açar.</summary>
+    public const string KindBranchAddon = "BranchAddon";
+    /// <summary>Dijital onam kademesi yükseltmesi (orantılı fark) — aboneliği UZATMAZ, kademeyi açar.</summary>
+    public const string KindConsentUpgrade = "ConsentUpgrade";
+    /// <summary>Müşteri kademesi yükseltmesi (orantılı fark) — aboneliği UZATMAZ, kademeyi açar.</summary>
+    public const string KindCustomerUpgrade = "CustomerUpgrade";
+
+    /// <summary>
+    /// Ödemenin türü. Yenileme/checkout tamamlama yolları YALNIZ <see cref="KindSubscription"/> satırını
+    /// işler: şube ödemesi o yollardan geçseydi aboneliği uzatırdı. Eski satırlar abonelik sayılır.
+    /// </summary>
+    public string Kind { get; private set; } = KindSubscription;
+
+    /// <summary>Tahsil edilen tutarın kalem kalem dökümü (SubscriptionQuote JSON) — fatura buradan kurulur.</summary>
+    public string? BreakdownJson { get; private set; }
+
+    /// <summary>Şube ödemesinde açılacak şubenin bilgisi (ad/şehir) — sonucu sonradan doğrulanan ödeme şubeyi buradan açar.</summary>
+    public string? PayloadJson { get; private set; }
+
+    public bool IsBranchAddon => Kind == KindBranchAddon;
+    public bool IsConsentUpgrade => Kind == KindConsentUpgrade;
+    public bool IsCustomerUpgrade => Kind == KindCustomerUpgrade;
+    /// <summary>Dönem ödemesi DEĞİL (şube / kademe ek ücreti) — checkout/yenileme yollarına giremez.</summary>
+    public bool IsAddon => Kind != KindSubscription;
+
+    /// <summary>Ödemeyi onam kademesi yükseltmesi olarak işaretler; açılacak kademe saklanır.</summary>
+    public void MarkAsConsentUpgrade(string payloadJson) => MarkAsTierUpgrade(KindConsentUpgrade, payloadJson);
+
+    /// <summary>Ödemeyi müşteri kademesi yükseltmesi olarak işaretler; açılacak kademe saklanır.</summary>
+    public void MarkAsCustomerUpgrade(string payloadJson) => MarkAsTierUpgrade(KindCustomerUpgrade, payloadJson);
+
+    private void MarkAsTierUpgrade(string kind, string payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson)) throw new DomainException("Kademe bilgisi zorunlu.");
+        Kind = kind;
+        PayloadJson = payloadJson;
+    }
+
+    /// <summary>Tutarın dökümünü bağlar. Tutar teklifin toplamıyla aynı olmalı (fatura ile tahsilat ayrışmasın).</summary>
+    public void AttachBreakdown(Billing.SubscriptionQuote quote)
+    {
+        if (quote.Total != AmountTRY)
+            throw new DomainException("Teklif toplamı tahsilat tutarıyla aynı değil.");
+        BreakdownJson = quote.ToJson();
+    }
+
+    /// <summary>Ödemeyi şube ek ücreti olarak işaretler; açılacak şubenin bilgisi saklanır.</summary>
+    public void MarkAsBranchAddon(string payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson)) throw new DomainException("Şube bilgisi zorunlu.");
+        Kind = KindBranchAddon;
+        PayloadJson = payloadJson;
+    }
+
     public string? ErrorCode { get; private set; }
     public string? ErrorMessage { get; private set; }
     public DateTime? CompletedAtUtc { get; private set; }

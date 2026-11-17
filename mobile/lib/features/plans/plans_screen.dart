@@ -23,15 +23,18 @@ class PlansScreen extends StatelessWidget {
       label: 'Açıklama',
       type: CrudFieldType.multiline,
     ),
+    // Paket fiyatları KDV HARİÇTİR; tahsilatta %20 KDV eklenir. Şube başı ücret ve müşteri / onam
+    // kademeleri web platform panelinden (Plan Kataloğu) düzenlenir — mobil kayıt onları KORUR
+    // (alanları göndermeyen kayıt sunucuda mevcut değerleri değiştirmez).
     CrudField(
       key: 'monthlyPriceTRY',
-      label: 'Aylık fiyat (₺)',
+      label: 'Aylık fiyat (₺, KDV hariç)',
       type: CrudFieldType.decimal,
       required: true,
     ),
     CrudField(
       key: 'yearlyPriceTRY',
-      label: 'Yıllık fiyat (₺)',
+      label: 'Yıllık fiyat (₺, KDV hariç)',
       type: CrudFieldType.decimal,
       defaultValue: 0,
     ),

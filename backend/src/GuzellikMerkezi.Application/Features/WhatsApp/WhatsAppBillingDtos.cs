@@ -2,43 +2,88 @@ using GuzellikMerkezi.Domain.Enums;
 
 namespace GuzellikMerkezi.Application.Features.WhatsApp;
 
-/// <summary>Gönderim öncesi faturalama kararı: gönderilebilir mi, hangi kaynaktan, ne kadar.</summary>
+/// <summary>WhatsApp gönderimi öncesi faturalama kararı: gönderilebilir mi, hangi kaynaktan, kaç kredi.</summary>
 public sealed record BillingDecision(
     bool Allowed,
     WhatsAppMessageCategory Category,
     WhatsAppBillingSource Source,
-    decimal AmountTry,
+    decimal Credits,
     string? BlockReason)
 {
     public static BillingDecision Block(WhatsAppMessageCategory c, string reason) =>
         new(false, c, WhatsAppBillingSource.None, 0m, reason);
     public static BillingDecision Free(WhatsAppMessageCategory c, WhatsAppBillingSource source) =>
         new(true, c, source, 0m, null);
-    public static BillingDecision Charged(WhatsAppMessageCategory c, decimal amount) =>
-        new(true, c, WhatsAppBillingSource.Wallet, amount, null);
+    public static BillingDecision Charged(WhatsAppMessageCategory c, decimal credits) =>
+        new(true, c, WhatsAppBillingSource.Wallet, credits, null);
 }
 
-/// <summary>Kurum kontör cüzdanı + aylık kullanım özeti (kurum yöneticisine gösterilir).</summary>
+/// <summary>
+/// SMS gönderimi öncesi faturalama kararı. SMS'in Meta kategorisi yoktur; maliyeti PARÇA sayısıdır
+/// (parça × platformun belirlediği kredi).
+/// </summary>
+public sealed record SmsBillingDecision(
+    bool Allowed,
+    WhatsAppBillingSource Source,
+    decimal Credits,
+    int Parts,
+    string? BlockReason)
+{
+    public static SmsBillingDecision Block(string reason, int parts) =>
+        new(false, WhatsAppBillingSource.None, 0m, parts, reason);
+    public static SmsBillingDecision Free(WhatsAppBillingSource source, int parts) =>
+        new(true, source, 0m, parts, null);
+    public static SmsBillingDecision Charged(decimal credits, int parts) =>
+        new(true, WhatsAppBillingSource.Wallet, credits, parts, null);
+}
+
+/// <summary>
+/// Toplu gönderim ÖNCESİ maliyet tahmini: hangi mesaj kotadan, hangisi krediden, kaçı gerçekten
+/// gidebilir. Gönderimdeki karar kurallarının (kota → izin → kredi → tavan) aynısıyla hesaplanır;
+/// eşzamanlı gönderimler araya girebileceği için TAHMİNDİR, kesin karar gönderimde verilir.
+/// </summary>
+/// <param name="QuotaRemaining">Plan kotasında kalan mesaj; -1 sınırsız.</param>
+/// <param name="CostPerUnit">WhatsApp: mesaj başı kredi; SMS: parça başı kredi; e-posta: 0.</param>
+/// <param name="Warnings">Kullanıcıya gösterilecek, gönderimi kısıtlayan durumlar (boşsa engel yok).</param>
+public sealed record MessagingCostEstimate(
+    int QuotaRemaining,
+    int QuotaCovered,
+    int CreditMessages,
+    decimal CreditsNeeded,
+    decimal AvailableCredits,
+    decimal CostPerUnit,
+    int ExpectedToSend,
+    bool Live,
+    IReadOnlyList<string> Warnings,
+    /// <summary>SMS kurumun KENDİ hesabından gidecek (kota/kredi düşmez, ücreti sağlayıcısı keser).</summary>
+    bool OwnAccount = false);
+
+/// <summary>Kurum mesaj kredisi cüzdanı + aylık kullanım özeti (kurum yöneticisine gösterilir).</summary>
 public sealed record MessagingWalletDto(
     Guid TenantId,
-    decimal BalanceTry,
-    decimal ReservedTry,
-    decimal AvailableTry,
-    decimal LifetimeTopUpTry,
-    decimal LifetimeSpentTry,
-    decimal LowBalanceThresholdTry,
+    decimal BalanceCredits,
+    decimal ReservedCredits,
+    decimal AvailableCredits,
+    decimal LifetimeTopUpCredits,
+    decimal LifetimeSpentCredits,
+    decimal LowBalanceThresholdCredits,
     bool IsLowBalance,
     int UtilityUsed,
     int UtilityLimit,
     int MarketingUsed,
     int MarketingLimit,
-    decimal MonthlyWalletSpentTry,
-    decimal? MonthlySpendCapTry,
+    int SmsUsed,
+    int SmsLimit,
+    decimal MonthlySpentCredits,
+    decimal? MonthlySpendCapCredits,
     bool MarketingEnabled,
     bool AllowWalletOverage,
-    decimal UtilityPriceTry,
-    decimal MarketingPriceTry,
+    decimal UtilityCreditCost,
+    decimal MarketingCreditCost,
+    decimal SmsCreditsPerPart,
     int EstimatedUtilityMessages,
+    int EstimatedSmsMessages,
+    decimal CreditUnitPriceTry,
     bool BillingEnabled,
     IReadOnlyCollection<CreditPackageDto> CreditPackages);
 
@@ -47,23 +92,30 @@ public sealed record CreditPackageDto(
     string Name,
     string? Description,
     decimal PriceTry,
-    decimal GrantsTry,
+    decimal GrantsCredits,
     int DisplayOrder,
     bool IsActive,
     int EstimatedUtilityMessages);
 
+/// <param name="Unit">
+/// Tutarların birimi. 12 Kas 2026 öncesi satırlar ₺ kontördür (<see cref="WalletUnit.Try"/>) ve
+/// öyle gösterilmelidir; yeni satırlar kredidir.
+/// </param>
 public sealed record WalletTransactionDto(
     Guid Id,
     WalletTransactionType Type,
-    decimal AmountTry,
-    decimal BalanceAfterTry,
+    WalletUnit Unit,
+    decimal Amount,
+    decimal BalanceAfter,
     string? Description,
     WhatsAppMessageCategory? Category,
+    NotificationChannel? Channel,
     DateTime CreatedAtUtc);
 
-public sealed record TopUpRequest(Guid? CreditPackageId, decimal? AmountTry);
+/// <summary>Kredi alım talebi: paket seçilir ya da paket dışı kredi miktarı girilir.</summary>
+public sealed record TopUpRequest(Guid? CreditPackageId, decimal? Credits);
 
-/// <summary>Kontör satın alma talebi (kurum) / platform onay kuyruğu satırı.</summary>
+/// <summary>Kredi satın alma talebi (kurum) / platform onay kuyruğu satırı.</summary>
 public sealed record CreditPurchaseDto(
     Guid Id,
     Guid TenantId,
@@ -71,7 +123,7 @@ public sealed record CreditPurchaseDto(
     Guid? CreditPackageId,
     string PackageName,
     decimal PriceTry,
-    decimal GrantsTry,
+    decimal GrantsCredits,
     CreditPurchaseStatus Status,
     string? Note,
     DateTime CreatedAtUtc,
@@ -79,10 +131,10 @@ public sealed record CreditPurchaseDto(
     /// <summary>Kartla ödendiyse sağlayıcı adı; havale talebinde null (platform kuyruğunda ayırt etmek için).</summary>
     string? Provider = null);
 
-/// <param name="Succeeded">Tahsilat doğrulandı ve bakiye yüklendi mi.</param>
-/// <param name="NewBalanceTry">Yükleme sonrası cüzdan bakiyesi (başarısızsa null).</param>
+/// <param name="Succeeded">Tahsilat doğrulandı ve kredi yüklendi mi.</param>
+/// <param name="NewBalanceCredits">Yükleme sonrası cüzdan kredisi (başarısızsa null).</param>
 public sealed record CreditCheckoutCompletedDto(
-    bool Succeeded, string? Message, decimal? GrantedTry, decimal? NewBalanceTry);
+    bool Succeeded, string? Message, decimal? GrantedCredits, decimal? NewBalanceCredits);
 
 // --- Platform tarafı DTO'lar ---
 
@@ -90,7 +142,7 @@ public sealed record WhatsAppPricingRuleDto(
     Guid Id,
     WhatsAppMessageCategory Category,
     decimal MetaUsdPrice,
-    decimal SellPriceTry,
+    decimal CreditCost,
     DateTime EffectiveFromUtc,
     string? Note,
     bool IsActive,
@@ -99,7 +151,7 @@ public sealed record WhatsAppPricingRuleDto(
 public sealed record SavePricingRuleRequest(
     WhatsAppMessageCategory Category,
     decimal MetaUsdPrice,
-    decimal SellPriceTry,
+    decimal CreditCost,
     DateTime EffectiveFromUtc,
     string? Note);
 
@@ -107,7 +159,7 @@ public sealed record SaveCreditPackageRequest(
     string Name,
     string? Description,
     decimal PriceTry,
-    decimal GrantsTry,
+    decimal GrantsCredits,
     int DisplayOrder,
     bool IsActive);
 
@@ -115,18 +167,22 @@ public sealed record WhatsAppBillingSettingsDto(
     bool BillingEnabled,
     bool ChargeSimulated,
     decimal UsdTryRate,
-    decimal LowBalanceThresholdTry,
-    decimal? DefaultMonthlySpendCapTry,
-    bool AutoApproveTopUps);
+    decimal LowBalanceThresholdCredits,
+    decimal? DefaultMonthlySpendCapCredits,
+    bool AutoApproveTopUps,
+    decimal SmsCreditsPerPart,
+    decimal CreditUnitPriceTry);
 
 public sealed record SaveBillingSettingsRequest(
     bool BillingEnabled,
     bool ChargeSimulated,
     decimal UsdTryRate,
-    decimal LowBalanceThresholdTry,
-    decimal? DefaultMonthlySpendCapTry,
-    bool AutoApproveTopUps = false);
+    decimal LowBalanceThresholdCredits,
+    decimal? DefaultMonthlySpendCapCredits,
+    bool AutoApproveTopUps,
+    decimal SmsCreditsPerPart,
+    decimal CreditUnitPriceTry);
 
 public sealed record RejectPurchaseRequest(string? Note);
 
-public sealed record AdjustWalletRequest(decimal DeltaTry, string? Description);
+public sealed record AdjustWalletRequest(decimal DeltaCredits, string? Description);

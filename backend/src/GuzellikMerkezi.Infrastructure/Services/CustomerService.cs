@@ -804,6 +804,15 @@ FROM (
 
     public async Task<Result<CustomerDto>> CreateAsync(Guid tenantId, UpsertCustomerRequest request, CancellationToken cancellationToken = default)
     {
+        // MÜŞTERİ KOTASI — KESİN KAPI: sayım (paket sınırı + ödenmiş müşteri kademesi) KURUM SATIRI KİLİTLİYKEN
+        // yapılır ve kayıt aynı işlemde yazılır; kilitsiz "say, sonra yaz" eşzamanlı iki kaydı sınırın bir
+        // eksiğinde ikisini birden geçirirdi. Kilit sırası (RowLock.TableOrder): pending_operations (onay
+        // dağıtıcısı) → tenants → … — dış işlemde tutulan kilitlerle çakışmaz.
+        await using var tx = IsRelational && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+        if (IsRelational) await RowLock.LockRowAsync(_db, "tenants", tenantId, cancellationToken);
+
         var limit = await _usage.CheckLimitAsync(tenantId, UsageMetricKeys.Customers, cancellationToken);
         if (limit.IsFailure) return Result<CustomerDto>.Failure(limit.Error);
 
@@ -845,6 +854,7 @@ FROM (
             customer.MarkCreated(registeredAt, customer.CreatedBy);
             await _db.SaveChangesAsync(cancellationToken);
         }
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
 
         await _audit.LogAsync(tenantId, customer.BranchId, "Create", "Customer", customer.Id,
             $"Müşteri oluşturuldu: {customer.FullName}",

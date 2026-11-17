@@ -756,7 +756,7 @@ export const platformApi = {
   testWhatsApp: <T = unknown>(target: string): Promise<T> =>
     apiRequest<T>('/api/platform/messaging/test-whatsapp', { method: 'POST', body: { target } }),
 
-  // WhatsApp merkezi yönetim (bağlantı + kontör faturalama)
+  // WhatsApp merkezi yönetim (bağlantı) + mesaj kredisi faturalaması (WhatsApp + SMS)
   waBillingSettings: <T = unknown>(): Promise<T> =>
     apiRequest<T>('/api/platform/whatsapp/billing-settings'),
   saveWaBillingSettings: <T = unknown>(body: PlatformPayload): Promise<T> =>
@@ -783,6 +783,17 @@ export const platformApi = {
     apiRequest<T>(`/api/platform/whatsapp/connections/${tenantId}`, { method: 'POST', body }),
   testWaConnection: <T = unknown>(tenantId: string, body: PlatformPayload): Promise<T> =>
     apiRequest<T>(`/api/platform/whatsapp/connections/${tenantId}/test`, { method: 'POST', body }),
+  /** Kurumların kendi SMS hesapları (Verimor / Netgsm) — bağlantıyı BeautyAsist kurar. */
+  smsConnections: <T = unknown>(): Promise<T[]> =>
+    apiRequest<T[]>('/api/platform/whatsapp/sms-connections'),
+  /** Kullanıcı adı/parola boş gönderilirse sunucu mevcut değeri korur. */
+  saveSmsConnection: <T = unknown>(tenantId: string, body: PlatformPayload): Promise<T> =>
+    apiRequest<T>(`/api/platform/whatsapp/sms-connections/${tenantId}`, { method: 'PUT', body }),
+  /** Kayıtlı hesapla test SMS'i — başarılıysa bağlantı doğrulanır ve kurumun SMS'leri o hesaptan gider. */
+  testSmsConnection: <T = unknown>(tenantId: string, phone: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/whatsapp/sms-connections/${tenantId}/test`, { method: 'POST', body: { phone } }),
+  deleteSmsConnection: <T = unknown>(tenantId: string): Promise<T> =>
+    apiRequest<T>(`/api/platform/whatsapp/sms-connections/${tenantId}`, { method: 'DELETE' }),
   waWallet: <T = unknown>(tenantId: string): Promise<T> =>
     apiRequest<T>(`/api/platform/whatsapp/wallets/${tenantId}`),
   waWalletTransactions: <T = unknown>(tenantId: string, take?: number): Promise<T[]> =>
@@ -797,7 +808,7 @@ export const platformApi = {
     apiRequest<T>(`/api/platform/whatsapp/purchases/${id}/reject`, { method: 'POST', body: { note } }),
   /**
    * Takılan KARTLI talebi sağlayıcıya sorarak çözer. Kartlı talep elle onaylanamaz (tahsilatsız
-   * kontör yüklenmesin); tek çıkış budur ve yalnız doğrulanmış başarı bakiyeyi artırır.
+   * kredi yüklenmesin); tek çıkış budur ve yalnız doğrulanmış başarı bakiyeyi artırır.
    */
   reconcileWaPurchase: <T = unknown>(id: string): Promise<T> =>
     apiRequest<T>(`/api/platform/whatsapp/purchases/${id}/reconcile`, { method: 'POST', body: {} }),
@@ -828,6 +839,12 @@ export const platformApi = {
     apiRequest<T>(`/api/platform/invoices/${id}/status`, { method: 'PUT', body: { status } }),
   deleteInvoice: <T = unknown>(id: string): Promise<T> =>
     apiRequest<T>(`/api/platform/invoices/${id}`, { method: 'DELETE' }),
+  /** Faturalama ekranı: KPI + abonelikler (sonraki yenileme teklifi) + tahsilat denemeleri + 12 ay tahsilat. */
+  billingOverview: <T = unknown>(): Promise<T> =>
+    apiRequest<T>('/api/platform/invoices/overview'),
+  /** Sonucu bekleyen ek şube ödemelerini şimdi sağlayıcıya sor. */
+  resolvePendingCharges: <T = unknown>(): Promise<T> =>
+    apiRequest<T>('/api/platform/invoices/resolve-pending', { method: 'POST' }),
 
   // Feature catalog — projedeki tüm flag'lenebilir özellikler (plan formu için)
   featuresCatalog: <T = unknown>(): Promise<T> =>
@@ -863,6 +880,40 @@ export const adminApi = {
     apiRequest<T>('/api/admin/billing/checkout', { method: 'POST', query: { tenantId }, body: { subscriptionPlanId, billingPeriod } }),
   removeBillingCard: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/billing/card', { method: 'DELETE', query: { tenantId } }),
+  /** Paket + dönem için kurumun güncel sayaçlarıyla (şube, müşteri, imzalı onam) KDV dahil teklif. */
+  billingQuote: <T = unknown>(planId: string, period: 'Monthly' | 'Yearly', tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/billing/quote', { query: { planId, period, tenantId } }),
+  /** Yeni şube açmak bugün ücret gerektiriyor mu, ne kadar (orantılı, KDV dahil)? */
+  branchChargeQuote: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/billing/branch-quote', { query: { tenantId } }),
+  /** Dijital onam hakkı: imzalı evrak, ödenmiş kapasite ve bir sonraki kademenin bedeli. */
+  consentAllowance: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/billing/consent-allowance', { query: { tenantId } }),
+  /**
+   * Onam kademesi yükseltme — PARA YAZAR → `Idempotency-Key` ZORUNLU (bkz. lib/moneyWriteIdempotency.test.ts).
+   * Kart yolunda hemen çekilir; fatura yolunda kilit, platform faturayı "Ödendi" yapınca açılır.
+   */
+  purchaseConsentUpgrade: <T = unknown>(confirmedChargeTRY: number, tenantId?: string, idempotencyKey?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/billing/consent-upgrade', {
+      method: 'POST',
+      query: { tenantId },
+      body: { confirmedChargeTRY },
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    }),
+  /** Kayıtlı müşteri hakkı: müşteri sayısı, ödenmiş kapasite ve bir sonraki kademenin bedeli. */
+  customerAllowance: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/billing/customer-allowance', { query: { tenantId } }),
+  /**
+   * Müşteri kademesi yükseltme — PARA YAZAR → `Idempotency-Key` ZORUNLU (bkz. lib/moneyWriteIdempotency.test.ts).
+   * Kart yolunda hemen çekilir; fatura yolunda kilit, platform faturayı "Ödendi" yapınca açılır.
+   */
+  purchaseCustomerUpgrade: <T = unknown>(confirmedChargeTRY: number, tenantId?: string, idempotencyKey?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/billing/customer-upgrade', {
+      method: 'POST',
+      query: { tenantId },
+      body: { confirmedChargeTRY },
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    }),
 
   // Aktif paket özellik listesi — useFeature hook tarafından çekilir
   tenantFeatures: <T = unknown>(tenantId?: string): Promise<T> =>
@@ -912,8 +963,18 @@ export const adminApi = {
 
   branches: <T = unknown>(tenantId?: string): Promise<PagedResult<T>> =>
     apiRequest<PagedResult<T>>('/api/admin/branches/', { query: { tenantId } }),
-  createBranch: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
-    apiRequest<T>('/api/admin/branches/', { method: 'POST', query: { tenantId }, body }),
+  /**
+   * Şube açma PARA YAZABİLİR (şube başı pakette orantılı ücret: karttan çekim ya da açık fatura) →
+   * `Idempotency-Key` ZORUNLU (bkz. lib/moneyWriteIdempotency.test.ts). Yanıtı kaybolan isteğin
+   * tekrarı aynı anahtarla gider; sunucu ilk yanıtı oynatır, ikinci şube / ücret yazılmaz.
+   */
+  createBranch: <T = unknown>(body: AdminPayload, tenantId?: string, idempotencyKey?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/branches/', {
+      method: 'POST',
+      query: { tenantId },
+      body,
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    }),
   updateBranch: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/branches/${id}`, { method: 'PUT', query: { tenantId }, body }),
 
@@ -1053,19 +1114,28 @@ export const adminApi = {
     tenantId?: string,
   ): Promise<T> =>
     apiRequest<T>('/api/admin/whatsapp/gift-card', { method: 'POST', query: { tenantId }, body }),
+  /**
+   * Hediye çekinin KODUNU SMS ile gönderir (PDF SMS'le gitmez). Plan SMS kotasından / mesaj
+   * kredisinden düşer; karta bağlı müşteri varsa yalnız onun kayıtlı numarasına gider.
+   */
+  sendGiftCardSms: <T = unknown>(body: { giftCardId: string; phone: string | null }, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/sms/gift-card', { method: 'POST', query: { tenantId }, body }),
   whatsappMessages: <T = unknown>(appointmentId?: string, tenantId?: string): Promise<T[]> =>
     apiRequest<T[]>('/api/admin/whatsapp/messages', { query: { appointmentId, tenantId } }),
-  /** WhatsApp kontör cüzdanı: bakiye + aylık kullanım + satın alınabilir paketler. */
+  /** Mesaj kredisi cüzdanı (WhatsApp + SMS ortak): bakiye + aylık kullanım + satın alınabilir paketler. */
   whatsappWallet: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/whatsapp/wallet', { query: { tenantId } }),
   whatsappWalletTransactions: <T = unknown>(tenantId?: string, take?: number): Promise<T[]> =>
     apiRequest<T[]>('/api/admin/whatsapp/wallet/transactions', { query: { tenantId, take } }),
-  /** Ek kontör satın alma talebi oluşturur (havale yolu — platform onayına düşer). */
+  /**
+   * Ek kredi satın alma talebi (havale yolu — platform onayına düşer). Gövde: paket
+   * (`creditPackageId`) ya da paket dışı kredi miktarı (`credits`); fiyatı sunucu belirler.
+   */
   requestWhatsappTopUp: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/whatsapp/wallet/topup', { method: 'POST', query: { tenantId }, body }),
   /**
-   * Kartla kontör alma: ödeme formunu başlatır (abonelikteki /billing/checkout ile aynı sözleşme).
-   * Bakiye BURADA artmaz — sağlayıcı dönüşü doğrulandığında artar.
+   * Kartla kredi alma: ödeme formunu başlatır (abonelikteki /billing/checkout ile aynı sözleşme).
+   * Kredi BURADA yüklenmez — sağlayıcı dönüşü doğrulandığında yüklenir.
    */
   startWhatsappTopUpCheckout: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/whatsapp/wallet/checkout', { method: 'POST', query: { tenantId }, body }),
@@ -1533,6 +1603,16 @@ export const adminApi = {
     apiRequest<unknown>(`/api/admin/notification-templates/${id}`, { method: 'DELETE', query: { tenantId } }),
   sendNotification: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/notification-templates/send', { method: 'POST', query: { tenantId }, body }),
+  /**
+   * Gönderim ÖNCESİ tahmin: kaç kişiye gider, kaç SMS parçası, kotadan/krediden ne düşer.
+   * Gönderimle aynı gövdeyi alır (`templateId` + `audience` ya da `customerIds`); hiçbir şey yazmaz.
+   */
+  estimateNotification: <T = unknown>(body: AdminPayload, tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/notification-templates/estimate', { method: 'POST', query: { tenantId }, body }),
+
+  /** Kurumun SMS hesabı durumu — SALT-OKUNUR; bağlantıyı platform kurar (platformApi.saveSmsConnection). */
+  smsConnection: <T = unknown>(tenantId?: string): Promise<T> =>
+    apiRequest<T>('/api/admin/sms/connection', { query: { tenantId } }),
   runPaymentReminders: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/notification-templates/payment-reminders/run', { method: 'POST', query: { tenantId } }),
   notificationLogs: <T = unknown>(query: QueryRecord = {}): Promise<PagedResult<T>> =>

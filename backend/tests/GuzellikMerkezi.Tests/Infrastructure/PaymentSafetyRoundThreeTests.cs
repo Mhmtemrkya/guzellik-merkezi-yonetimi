@@ -47,7 +47,7 @@ public sealed class PaymentSafetyRoundThreeTests
         tenant.AddBranch("Merkez", "İstanbul", true);
         db.Tenants.Add(tenant);
         // Otomatik onay KAPALI olmalı: talep Pending kalsın ki elle onay yolu ölçülebilsin.
-        db.WhatsAppBillingSettings.Add(new WhatsAppBillingSettings());
+        db.WhatsAppBillingSettings.Add(PaymentTestDoubles.BillingOneTryPerCredit());
         await db.SaveChangesAsync();
         return tenant.Id;
     }
@@ -91,7 +91,7 @@ public sealed class PaymentSafetyRoundThreeTests
             var wallet = await verify.TenantMessagingWallets.IgnoreQueryFilters()
                 .SingleAsync(w => w.TenantId == tenantId);
             // Bakiye BİR kez artmalı: iki onay geçseydi 1.000 olurdu.
-            Assert.Equal(500m, wallet.BalanceTry);
+            Assert.Equal(500m, wallet.BalanceCredits);
 
             // Defterde de tek yükleme satırı olmalı.
             var topUps = await verify.WalletTransactions.IgnoreQueryFilters()

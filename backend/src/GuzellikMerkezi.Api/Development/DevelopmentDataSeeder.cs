@@ -45,7 +45,7 @@ public static class DevelopmentDataSeeder
 
         const string password = "Guzellik123!";
 
-        var tenant = new Tenant("BeautyAsist Demo Güzellik Merkezi", "beautyasist-demo", "Premium", TenantStatus.Active);
+        var tenant = new Tenant("BeautyAsist Demo Güzellik Merkezi", "beautyasist-demo", DatabaseBootstrap.SinglePlanKey, TenantStatus.Active);
         tenant.SetProfile("demo.beautyasist.app", "Deniz Kaya");
         var nisantasi = tenant.AddBranch("Nişantaşı", "İstanbul", true);
         var kadikoy = tenant.AddBranch("Kadıköy", "İstanbul", false);
@@ -57,7 +57,7 @@ public static class DevelopmentDataSeeder
         var staffUser = tenant.GrantAccess("personel@beautyasist.test", UserRole.Staff, nisantasi.Id, "Elif Aydın");
         staffUser.SetPasswordHash(passwordHasher.Hash(password));
 
-        var secondTenant = new Tenant("Lotus Klinik", "lotus-klinik", "Başlangıç", TenantStatus.Trial);
+        var secondTenant = new Tenant("Lotus Klinik", "lotus-klinik", DatabaseBootstrap.SinglePlanKey, TenantStatus.Trial);
         secondTenant.SetProfile("lotus.beautyasist.app", "Selin Demir");
         var lotusBranch = secondTenant.AddBranch("Merkez", "Ankara", true);
         var secondOwner = secondTenant.GrantAccess("lotus@beautyasist.test", UserRole.InstitutionOwner, null, "Selin Demir");
