@@ -25,17 +25,21 @@ public sealed class ExternalCheckout : Entity
     public const string KindSubscription = "Subscription";
     public const string KindCredit = "Credit";
 
+    /// <summary>Platformun kestiği açık fatura (ek şube, müşteri/onam kademesi, dönem faturası).</summary>
+    public const string KindInvoice = "Invoice";
+
     /// <summary>Ödeme sayfası bu süreden sonra açılmaz (yeni ödeme panelden başlatılır).</summary>
     public static readonly TimeSpan Lifetime = TimeSpan.FromHours(24);
 
     private ExternalCheckout() { }
 
     public ExternalCheckout(string publicRef, string conversationId, string kind, Guid tenantId, decimal amountTry,
-        string description, string callbackUrl, DateTime nowUtc)
+        string description, string callbackUrl, DateTime nowUtc, Guid? invoiceId = null)
     {
         if (string.IsNullOrWhiteSpace(publicRef) || publicRef.Length != 32) throw new DomainException("Ödeme anahtarı geçersiz.");
         if (string.IsNullOrWhiteSpace(conversationId)) throw new DomainException("İşlem anahtarı zorunlu.");
-        if (kind is not (KindSubscription or KindCredit)) throw new DomainException("Ödeme türü geçersiz.");
+        if (kind is not (KindSubscription or KindCredit or KindInvoice)) throw new DomainException("Ödeme türü geçersiz.");
+        if ((kind == KindInvoice) != invoiceId.HasValue) throw new DomainException("Fatura ödemesi faturaya bağlı olmalı.");
         if (amountTry <= 0) throw new DomainException("Ödeme tutarı sıfırdan büyük olmalı.");
         if (string.IsNullOrWhiteSpace(callbackUrl)) throw new DomainException("Dönüş adresi zorunlu.");
         PublicRef = publicRef;
@@ -46,7 +50,11 @@ public sealed class ExternalCheckout : Entity
         Description = description.Length > 200 ? description[..200] : description;
         CallbackUrl = callbackUrl.Trim();
         ExpiresAtUtc = nowUtc.Add(Lifetime);
+        InvoiceId = invoiceId;
     }
+
+    /// <summary>Fatura ödemesinde ödenen fatura (diğer türlerde boş).</summary>
+    public Guid? InvoiceId { get; private set; }
 
     /// <summary>Adreste görünen tahmin edilemez anahtar (128 bit, küçük harf onaltılık).</summary>
     public string PublicRef { get; private set; } = string.Empty;

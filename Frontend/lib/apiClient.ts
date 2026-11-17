@@ -878,6 +878,9 @@ export const adminApi = {
     apiRequest<T[]>('/api/admin/billing/invoices', { query: { tenantId } }),
   startBillingCheckout: <T = unknown>(subscriptionPlanId: string, tenantId?: string, billingPeriod?: string): Promise<T> =>
     apiRequest<T>('/api/admin/billing/checkout', { method: 'POST', query: { tenantId }, body: { subscriptionPlanId, billingPeriod } }),
+  /** Açık faturayı öde: yanıttaki redirectUrl Maydanoz'un ödeme sayfasıdır (fatura ödenince kapanır). */
+  payBillingInvoice: <T = unknown>(invoiceId: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/billing/invoices/${invoiceId}/pay`, { method: 'POST', query: { tenantId } }),
   removeBillingCard: <T = unknown>(tenantId?: string): Promise<T> =>
     apiRequest<T>('/api/admin/billing/card', { method: 'DELETE', query: { tenantId } }),
   /** Paket + dönem için kurumun güncel sayaçlarıyla (şube, müşteri, imzalı onam) KDV dahil teklif. */

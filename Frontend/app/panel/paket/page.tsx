@@ -120,6 +120,9 @@ interface BillingSummary {
   nextRenewalQuote?: SubscriptionQuote | null
   /** Ödemeyi alan sağlayıcı; "Maydanoz" ise ödeme maydanozasist.com'da alınır, kart saklanmaz. */
   paymentProvider?: string | null
+  /** Kurum durumu (Trial | Active | Suspended | Cancelled) ve dönem (Monthly | Yearly | yok = elle faturalanan). */
+  status?: string | null
+  billingPeriod?: string | null
 }
 
 interface CheckoutStarted { checkoutToken: string; formContent?: string | null; redirectUrl?: string | null; amountTRY: number }
@@ -175,7 +178,7 @@ export default function PaketPage() {
     const message = params.get('message') || ''
     if (payment === 'success') setActionMsg(message || 'Ödeme alındı, aboneliğiniz aktif.')
     else setActionErr(message || 'Ödeme tamamlanamadı.')
-    params.delete('payment'); params.delete('message')
+    params.delete('payment'); params.delete('message'); params.delete('scope')
     const rest = params.toString()
     window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''))
   }, [])
@@ -235,6 +238,15 @@ export default function PaketPage() {
     }
   }, [data?.customers, data?.consent, tenantId, reload])
 
+  // MEVCUT PAKETİ ÖDE: tek paket olduğu için kurumlar zaten bu pakette; deneme, askı ya da dönemli
+  // abonelikte ödeme bu karttan başlar (Maydanoz'a yönlenir). Elle faturalanan (dönemsiz) kurum
+  // ödemeyi faturalardan yapar.
+  const currentPayLabel = !billing?.paymentsEnabled ? null
+    : billing.status === 'Trial' ? 'Aboneliği başlat'
+    : billing.status === 'Suspended' ? 'Ödeyip yeniden aç'
+    : billing.billingPeriod ? 'Dönemi şimdi öde'
+    : null
+
   const handleChangePlan = useCallback(async (plan: SubscriptionPlan) => {
     const price = upgradePeriod === 'Yearly' ? plan.yearlyPriceTRY : plan.monthlyPriceTRY
     const periodText = upgradePeriod === 'Yearly' ? 'yıllık' : 'aylık'
@@ -250,8 +262,14 @@ export default function PaketPage() {
       } catch { /* birim fiyatla devam */ }
     }
 
+    const renewing = plan.id === normalizeTenantUsage(data?.usage).subscriptionPlanId
+    const continuesFrom = renewing && billing?.status === 'Active' && billing.subscriptionEndsAtUtc && new Date(billing.subscriptionEndsAtUtc) > new Date()
+      ? ` Yeni dönem mevcut bitişten (${new Date(billing.subscriptionEndsAtUtc).toLocaleDateString('tr-TR')}) devam eder.`
+      : ''
     const question = isPaid
-      ? `"${plan.name}" paketine ${periodText} dönemle geçiyorsun. Tutar: ${amountText}. Güvenli ödeme sayfasına yönlendirileceksin. Devam edilsin mi?`
+      ? renewing
+        ? `"${plan.name}" aboneliğin için ${periodText} ödeme. Tutar: ${amountText}.${continuesFrom} Güvenli ödeme sayfasına yönlendirileceksin. Devam edilsin mi?`
+        : `"${plan.name}" paketine ${periodText} dönemle geçiyorsun. Tutar: ${amountText}. Güvenli ödeme sayfasına yönlendirileceksin. Devam edilsin mi?`
       : `"${plan.name}" paketine ${periodText} dönemle geçeceksin. Bu paket için ödeme alınmıyor. Devam edilsin mi?`
     if (!confirm(question)) return
 
@@ -278,7 +296,27 @@ export default function PaketPage() {
     } finally {
       setBusyPlanId(null)
     }
-  }, [tenantId, reload, upgradePeriod])
+  }, [tenantId, reload, upgradePeriod, data?.usage, billing])
+
+  // AÇIK FATURAYI ÖDE: ödeme Maydanoz'da alınır; fatura ödendi bildirimiyle kapanır, bekleyen şube /
+  // kademe o anda açılır. Dönüşte bu sayfa ?payment=… ile açılır.
+  const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null)
+  const handlePayInvoice = useCallback(async (inv: BillingInvoice) => {
+    if (!confirm(`${inv.number} numaralı faturayı ödüyorsun. Tutar: ${tlExact(inv.amountTRY)} (KDV dahil). Maydanoz Yazılım'ın güvenli ödeme sayfasına yönlendirileceksin. Devam edilsin mi?`)) return
+    setPayingInvoiceId(inv.id); setActionMsg(null); setActionErr(null)
+    try {
+      const started = await adminApi.payBillingInvoice<CheckoutStarted>(inv.id, tenantId)
+      if (started?.redirectUrl) {
+        window.location.href = started.redirectUrl
+        return
+      }
+      setActionErr('Ödeme sayfası açılamadı. Lütfen tekrar deneyin.')
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : 'Ödeme sayfası açılamadı.')
+    } finally {
+      setPayingInvoiceId(null)
+    }
+  }, [tenantId])
 
   const handleRemoveCard = useCallback(async () => {
     if (!confirm('Kayıtlı kart kaldırılsın mı? Otomatik yenileme durur; aboneliğin dönem sonuna kadar devam eder.')) return
@@ -539,8 +577,17 @@ export default function PaketPage() {
                               ) : inv.status === 'Cancelled' ? (
                                 <span className="rounded-full border border-[#e6d3db] bg-[#faf4f6] px-2 py-0.5 text-[10px] text-[#74616A]">İptal</span>
                               ) : (
-                                <span className="rounded-full border border-amber-300/40 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
-                                  {inv.status === 'Overdue' ? 'Gecikmiş' : inv.status === 'Draft' ? 'Taslak' : 'Ödeme bekliyor'}
+                                <span className="inline-flex flex-col items-end gap-1">
+                                  <span className="rounded-full border border-amber-300/40 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
+                                    {inv.status === 'Overdue' ? 'Gecikmiş' : inv.status === 'Draft' ? 'Taslak' : 'Ödeme bekliyor'}
+                                  </span>
+                                  {/* Ödeme Maydanoz'daysa açık fatura buradan ödenir (şube/kademe ödeme alınınca açılır). */}
+                                  {billing.paymentsEnabled && billing.paymentProvider === 'Maydanoz' && (inv.status === 'Sent' || inv.status === 'Overdue') && (
+                                    <button type="button" onClick={() => void handlePayInvoice(inv)} disabled={payingInvoiceId !== null}
+                                      className="inline-flex items-center gap-1 rounded-full bg-[#A5556E] px-2.5 py-1 text-[10.5px] font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
+                                      {payingInvoiceId === inv.id && <Loader2 className="h-3 w-3 animate-spin" />} Öde
+                                    </button>
+                                  )}
                                 </span>
                               )}
                             </td>
@@ -627,6 +674,7 @@ export default function PaketPage() {
               <PlanCard
                 key={p.id} plan={p}
                 isCurrent={p.id === usage.subscriptionPlanId}
+                payLabel={currentPayLabel}
                 isRecommended={recommendedPlan?.id === p.id && p.id !== usage.subscriptionPlanId}
                 busy={busyPlanId === p.id}
                 onChoose={() => handleChangePlan(p)}
@@ -807,9 +855,11 @@ function TierAllowanceCard({ kind, allowance, busy, onUpgrade }: {
 }
 
 function PlanCard({
-  plan, isCurrent, isRecommended, busy, onChoose,
+  plan, isCurrent, isRecommended, busy, onChoose, payLabel,
 }: {
   plan: SubscriptionPlan; isCurrent: boolean; isRecommended: boolean; busy: boolean; onChoose: () => void
+  /** Mevcut paket için ödeme düğmesi (ör. "Aboneliği başlat"); yoksa "Mevcut paketiniz" gösterilir. */
+  payLabel?: string | null
 }) {
   const isCustom = plan.monthlyPriceTRY === 0
   const highlights = planHighlights(plan)
@@ -881,7 +931,12 @@ function PlanCard({
 
       {/* aksiyon */}
       <div className="relative mt-5 pt-1">
-        {isCurrent ? (
+        {isCurrent && payLabel && plan.monthlyPriceTRY > 0 ? (
+          <button type="button" disabled={busy} onClick={onChoose}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-[12px] bg-white px-3 py-2.5 text-[11px] font-semibold text-[#A5556E] transition hover:opacity-90 disabled:opacity-60">
+            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Yönlendiriliyor…</> : <><CreditCard className="h-4 w-4" /> {payLabel}</>}
+          </button>
+        ) : isCurrent ? (
           <button type="button" disabled className="inline-flex w-full items-center justify-center gap-2 rounded-[12px] border border-white/25 bg-white/12 px-3 py-2.5 text-[11px] font-medium text-white">
             <CheckCircle2 className="h-4 w-4" /> Mevcut paketiniz
           </button>

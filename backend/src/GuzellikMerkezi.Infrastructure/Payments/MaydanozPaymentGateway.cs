@@ -42,10 +42,37 @@ public sealed class MaydanozPaymentGateway(GuzellikDbContext db, string siteBase
             request.BasketItemName, request.CallbackUrl, DateTime.UtcNow);
         db.ExternalCheckouts.Add(checkout);
         await db.SaveChangesAsync(ct);
-        var url = $"{siteBaseUrl.TrimEnd('/')}/odeme/asist/{AsistCode}/{checkout.PublicRef}";
         // Form gömülmez: ödeme Maydanoz'un kendi sayfasında alınır; istemci yalnız yönlenir.
-        return Result<CheckoutInitResult>.Success(new CheckoutInitResult(checkout.PublicRef, null, url));
+        return Result<CheckoutInitResult>.Success(new CheckoutInitResult(checkout.PublicRef, null, PageUrl(checkout.PublicRef)));
     }
+
+    /// <summary>
+    /// Açık faturanın ödeme sayfası. Aynı fatura için süresi dolmamış, tutarı aynı bekleyen bir ödeme
+    /// varsa o yeniden kullanılır: kurum iki sekmeden iki ayrı ödeme başlatamaz.
+    /// </summary>
+    public async Task<CheckoutInitResult> InitInvoiceCheckoutAsync(TenantInvoice invoice, string callbackUrl, CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var checkout = await db.ExternalCheckouts.AsNoTracking()
+            .Where(c => c.InvoiceId == invoice.Id && c.Status == ExternalCheckout.StatusPending
+                        && c.ExpiresAtUtc > now && c.AmountTRY == invoice.AmountTRY)
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+        if (checkout is null)
+        {
+            var notes = string.IsNullOrWhiteSpace(invoice.Notes) ? string.Empty : $" · {invoice.Notes.Trim()}";
+            var description = $"Fatura {invoice.Number}{notes}";
+            checkout = new ExternalCheckout(NewRef(), $"inv-{invoice.Id:N}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
+                ExternalCheckout.KindInvoice, invoice.TenantId, invoice.AmountTRY,
+                description.Length > 120 ? description[..120] : description, callbackUrl, now, invoice.Id);
+            db.ExternalCheckouts.Add(checkout);
+            await db.SaveChangesAsync(ct);
+        }
+
+        return new CheckoutInitResult(checkout.PublicRef, null, PageUrl(checkout.PublicRef));
+    }
+
+    private string PageUrl(string reference) => $"{siteBaseUrl.TrimEnd('/')}/odeme/asist/{AsistCode}/{reference}";
 
     public async Task<Result<CheckoutResult>> RetrieveCheckoutAsync(string checkoutToken, CancellationToken ct = default)
     {

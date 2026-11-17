@@ -44,6 +44,16 @@ public static class BillingEndpoints
             return (await svc.StartCheckoutAsync(t, payload.SubscriptionPlanId, ParsePeriod(payload.BillingPeriod), callbackUrl, ct)).ToHttpResult(http);
         });
 
+        // AÇIK FATURAYI ÖDE: kurum Maydanoz'un ödeme sayfasına yönlenir; fatura ödendi bildirimiyle kapanır.
+        group.MapPost("/invoices/{invoiceId:guid}/pay", async (Guid invoiceId, Guid? tenantId, ICurrentUser cu, IInvoicePaymentService svc, HttpContext http, CancellationToken ct) =>
+        {
+            if (Forbidden(cu, http) is { } denied) return denied;
+            var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
+            if (t == Guid.Empty) return EndpointHelpers.MissingTenant(http);
+            var callbackUrl = PaymentCallbacks.PaymentCallbackUrl(http, "/api/payments/invoice-callback");
+            return (await svc.StartAsync(t, invoiceId, callbackUrl, ct)).ToHttpResult(http);
+        });
+
         // TEKLİF: seçilen paket + dönem için kurumun güncel sayaçlarıyla (şube, müşteri, imzalı onam)
         // kalem kalem tutar. Ödeme ekranı bunu gösterir; tahsilat aynı hesabı yapar.
         group.MapGet("/quote", async (Guid planId, string? period, Guid? tenantId, ICurrentUser cu, IBillingService svc, HttpContext http, CancellationToken ct) =>
@@ -129,6 +139,15 @@ public static class BillingEndpoints
 
         callback.MapGet("/credit-callback", (HttpContext http, IWhatsAppBillingService svc, IPaymentGatewayResolver resolver, CancellationToken ct) =>
             HandleCreditCallbackAsync(http, svc, resolver, ct));
+
+        // FATURA DÖNÜŞÜ: Maydanoz'da ödenen açık fatura. Fatura tarayıcı dönmeden önce Maydanoz'un
+        // imzalı bildirimiyle kapanmıştır; burada yalnız sonuç okunur ve panele dönülür.
+        callback.MapGet("/invoice-callback", async (HttpContext http, IInvoicePaymentService svc, IPaymentGatewayResolver resolver, CancellationToken ct) =>
+        {
+            var token = await ReadCallbackTokenAsync(http, ct);
+            var outcome = await svc.OutcomeAsync(token, ct);
+            return await RedirectAfterPaymentAsync(http, resolver, outcome.Paid, outcome.Message, "&scope=invoice", ct);
+        });
 
         return app;
     }

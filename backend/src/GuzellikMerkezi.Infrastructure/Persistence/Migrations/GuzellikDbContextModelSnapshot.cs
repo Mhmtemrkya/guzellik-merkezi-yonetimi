@@ -2051,6 +2051,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ExpiresAtUtc")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid?>("InvoiceId")
+                        .HasColumnType("char(36)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
@@ -2098,6 +2101,8 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ConversationId")
                         .IsUnique();
+
+                    b.HasIndex("InvoiceId");
 
                     b.HasIndex("PublicRef")
                         .IsUnique();

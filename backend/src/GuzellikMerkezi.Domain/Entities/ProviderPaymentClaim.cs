@@ -42,6 +42,9 @@ public sealed class ProviderPaymentClaim : Entity
     /// <summary>WhatsApp kontör defteri.</summary>
     public const string WhatsAppCreditLedger = "WhatsAppCredit";
 
+    /// <summary>Platform faturası (Maydanoz'da ödenen açık fatura).</summary>
+    public const string TenantInvoiceLedger = "TenantInvoice";
+
     public string Provider { get; private set; } = string.Empty;
     public string ProviderPaymentId { get; private set; } = string.Empty;
 

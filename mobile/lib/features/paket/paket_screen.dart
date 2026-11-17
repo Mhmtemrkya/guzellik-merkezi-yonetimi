@@ -124,6 +124,7 @@ class _PaketScreenState extends State<PaketScreen> {
   late Future<_PaketData> _future;
   String _period = 'Yearly'; // Monthly | Yearly
   String? _busyPlanId;
+  String? _payingInvoiceId;
   String? _actionMsg;
   bool _actionErr = false;
 
@@ -354,7 +355,67 @@ class _PaketScreenState extends State<PaketScreen> {
     return (d.difference(DateTime.now()).inMinutes / 1440).ceil();
   }
 
-  Future<void> _choose(Map<String, dynamic> plan) async {
+  /// Mevcut paketin ödeme düğmesi (web ile aynı kural): deneme / askı / dönemli abonelik.
+  /// Elle faturalanan (dönemsiz) kurum ödemeyi faturalardan yapar; iOS'ta ödeme yüzeyi yok.
+  String? _currentPayLabel(Map<String, dynamic> billing) {
+    if (StorePolicy.hidesPurchaseFlows || billing['paymentsEnabled'] != true) return null;
+    final status = '${billing['status'] ?? ''}';
+    if (status == 'Trial') return 'Aboneliği başlat';
+    if (status == 'Suspended') return 'Ödeyip yeniden aç';
+    final period = '${billing['billingPeriod'] ?? ''}';
+    return period.isNotEmpty ? 'Dönemi şimdi öde' : null;
+  }
+
+  /// Açık faturayı öde: ödeme Maydanoz'da alınır, fatura ödenince kapanır (şube / kademe o an açılır).
+  Future<void> _payInvoice(Map<String, dynamic> inv) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Faturayı öde'),
+        content: Text(
+            '${inv['number'] ?? ''} numaralı faturayı ödüyorsun.\n\nTutar: ${_tl(numberOf(inv, const ['amountTRY']))} (KDV dahil)\n\nGüvenli ödeme sayfası tarayıcıda açılacak. Ödeme tamamlanınca bu sayfayı aşağı çekip yenile.\n\nDevam edilsin mi?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Vazgeç')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Ödemeye git')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() {
+      _payingInvoiceId = '${inv['id']}';
+      _actionMsg = null;
+    });
+    try {
+      final started = await widget.api.post('/api/admin/billing/invoices/${inv['id']}/pay', const {});
+      final url = started is Map ? '${started['redirectUrl'] ?? ''}' : '';
+      if (url.isEmpty || !await launchUrlString(url, mode: LaunchMode.externalApplication)) {
+        if (mounted) {
+          setState(() {
+            _actionMsg = 'Ödeme sayfası açılamadı. Lütfen tekrar dene.';
+            _actionErr = true;
+          });
+        }
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _actionMsg = 'Ödeme sayfası açıldı. Ödemeyi tamamladıktan sonra sayfayı aşağı çekip yenile.';
+          _actionErr = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _actionMsg = '$e';
+          _actionErr = true;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _payingInvoiceId = null);
+    }
+  }
+
+  Future<void> _choose(Map<String, dynamic> plan, {bool renewing = false}) async {
     final yearly = _period == 'Yearly';
     final price = numberOf(
         plan, [yearly ? 'yearlyPriceTRY' : 'monthlyPriceTRY']);
@@ -379,9 +440,11 @@ class _PaketScreenState extends State<PaketScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('${plan['name']} paketine geç'),
+        title: Text(renewing ? '${plan['name']} ödemesi' : '${plan['name']} paketine geç'),
         content: Text(isPaid
-            ? '"${plan['name']}" paketine $periodText dönemle geçiyorsun.\n\nTutar: $amountText\n\nGüvenli ödeme sayfası tarayıcıda açılacak. Ödeme tamamlanınca bu sayfayı aşağı çekip yenile.\n\nDevam edilsin mi?'
+            ? renewing
+                ? '"${plan['name']}" aboneliğin için $periodText ödeme.\n\nTutar: $amountText\n\nDönem bitmeden ödersen yeni dönem mevcut bitişten devam eder. Güvenli ödeme sayfası tarayıcıda açılacak. Ödeme tamamlanınca bu sayfayı aşağı çekip yenile.\n\nDevam edilsin mi?'
+                : '"${plan['name']}" paketine $periodText dönemle geçiyorsun.\n\nTutar: $amountText\n\nGüvenli ödeme sayfası tarayıcıda açılacak. Ödeme tamamlanınca bu sayfayı aşağı çekip yenile.\n\nDevam edilsin mi?'
             : '"${plan['name']}" paketine $periodText dönemle geçeceksin.\n\nBu paket için ödeme alınmıyor.\n\nDevam edilsin mi?'),
         actions: [
           TextButton(
@@ -740,6 +803,7 @@ class _PaketScreenState extends State<PaketScreen> {
           ...d.plans.map((p) => _planCard(
                 p,
                 isCurrent: '${p['id']}' == currentPlanId,
+                payLabel: '${p['id']}' == currentPlanId ? _currentPayLabel(d.billing) : null,
                 isRecommended:
                     recommended != null && '${p['id']}' == '${recommended['id']}' &&
                         '${p['id']}' != currentPlanId,
@@ -897,6 +961,23 @@ class _PaketScreenState extends State<PaketScreen> {
                       size: 14,
                       color: paid ? AppColors.success : const Color(0xFFB7791F),
                     ),
+                    // Ödeme Maydanoz'daysa açık fatura buradan ödenir (iOS'ta ödeme yüzeyi yok).
+                    if (!StorePolicy.hidesPurchaseFlows &&
+                        paymentsOn &&
+                        billing['paymentProvider'] == 'Maydanoz' &&
+                        (inv['status'] == 'Sent' || inv['status'] == 'Overdue')) ...[
+                      const SizedBox(width: 6),
+                      TextButton(
+                        onPressed: _payingInvoiceId != null ? null : () => _payInvoice(inv.cast<String, dynamic>()),
+                        style: TextButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(_payingInvoiceId == '${inv['id']}' ? '…' : 'Öde',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                      ),
+                    ],
                   ],
                 ),
               );
@@ -1179,6 +1260,7 @@ class _PaketScreenState extends State<PaketScreen> {
     Map<String, dynamic> p, {
     required bool isCurrent,
     required bool isRecommended,
+    String? payLabel,
   }) {
     final monthly = numberOf(p, const ['monthlyPriceTRY']);
     final yearly = numberOf(p, const ['yearlyPriceTRY']);
@@ -1374,7 +1456,7 @@ class _PaketScreenState extends State<PaketScreen> {
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
-            child: _planAction(p, isCurrent, isCustom, isRecommended, busy),
+            child: _planAction(p, isCurrent, isCustom, isRecommended, busy, payLabel),
           ),
         ],
       ),
@@ -1382,7 +1464,21 @@ class _PaketScreenState extends State<PaketScreen> {
   }
 
   Widget _planAction(Map<String, dynamic> p, bool isCurrent, bool isCustom,
-      bool isRecommended, bool busy) {
+      bool isRecommended, bool busy, String? payLabel) {
+    if (isCurrent && payLabel != null && !isCustom) {
+      return FilledButton.icon(
+        onPressed: busy ? null : () => _choose(p, renewing: true),
+        style: FilledButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: AppColors.primary,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+        icon: busy
+            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.credit_card_rounded, size: 16),
+        label: Text(payLabel, style: const TextStyle(fontWeight: FontWeight.w800)),
+      );
+    }
     if (isCurrent) {
       return Container(
         padding: const EdgeInsets.symmetric(vertical: 11),

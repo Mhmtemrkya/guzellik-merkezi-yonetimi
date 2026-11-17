@@ -1137,6 +1137,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         xc.HasIndex(x => x.PublicRef).IsUnique();
         xc.HasIndex(x => x.ConversationId).IsUnique();
         xc.HasIndex(x => x.TenantId);
+        xc.HasIndex(x => x.InvoiceId);
     }
 
     private void ConfigureWhatsApp(ModelBuilder modelBuilder)

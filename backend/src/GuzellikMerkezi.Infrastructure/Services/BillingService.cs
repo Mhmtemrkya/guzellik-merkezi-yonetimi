@@ -395,11 +395,19 @@ public sealed partial class BillingService : IBillingService
 
         await StoreCardAsync(payment.TenantId, context.Value.Gateway.Provider, result, ct);
 
+        // AYNI PAKETİ DÖNEM BİTMEDEN ÖDEYEN KURUM GÜN KAYBETMEZ: yeni dönem mevcut bitişten devam
+        // eder (kartlı yenilemedeki kuralın ödeme sayfası karşılığı — ödeme artık Maydanoz'da
+        // alındığı için yenileme bu yoldan gelir). Paket değişikliği ve süresi geçmiş abonelik bugünden başlar.
+        var periodStart = tenant.Status == TenantStatus.Active && tenant.SubscriptionPlanId == plan.Id
+                          && tenant.SubscriptionEndsAtUtc is { } currentEnd && currentEnd > nowUtc
+            ? currentEnd
+            : nowUtc;
+
         payment.MarkSucceeded(result.ProviderPaymentId, nowUtc);
-        var invoice = await CreatePaidInvoiceAsync(tenant, plan, payment, nowUtc, nowUtc, result.ProviderPaymentId, ct);
+        var invoice = await CreatePaidInvoiceAsync(tenant, plan, payment, periodStart, nowUtc, result.ProviderPaymentId, ct);
         payment.AttachInvoice(invoice.Id);
 
-        tenant.StartSubscription(plan, payment.Period, nowUtc);
+        tenant.StartSubscription(plan, payment.Period, periodStart);
         await _db.SaveChangesAsync(ct);
         // PARA TARAFI ÖNCE KALICI OLUR: denetim kaydı ve önbellek tazeleme commit'ten sonra gelir,
         // yan işler tahsilatı geri almaz.

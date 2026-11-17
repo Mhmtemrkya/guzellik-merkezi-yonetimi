@@ -238,21 +238,8 @@ public sealed class PlatformOpsService : IPlatformOpsService
             return Result<TenantInvoiceDto>.Failure(Error.Validation(ex.Message));
         }
 
-        Branch? opened = null;
-        if (invoice.Status == "Paid" && invoice.TakePendingBranch() is { } branchJson)
-        {
-            var payload = ReadBranchRequest(branchJson);
-            if (payload is not null)
-            {
-                // Varsayılan şube işareti tüm şubelerde doğru güncellensin diye kapsam filtresi dışı yüklenir.
-                var tenant = await _db.Tenants.IgnoreQueryFilters()
-                    .Include(t => t.Branches.Where(b => !b.IsDeleted))
-                    .FirstAsync(t => t.Id == invoice.TenantId, ct);
-                opened = tenant.AddBranch(payload.Name, payload.City, payload.IsDefault);
-                // Gezinme koleksiyonuna eklenen yeni nesneyi EF "var olan" sanıp UPDATE üretmesin (bkz. BranchService).
-                _db.Branches.Add(opened);
-            }
-        }
+        // Ödenen faturanın "ödenince açılacak" şubesi (Maydanoz ödemesiyle aynı kod: InvoiceBranches).
+        var opened = await InvoiceBranches.OpenPendingAsync(_db, invoice, ct);
 
         await _db.SaveChangesAsync(ct);
         if (tx is not null) await tx.CommitAsync(ct);
@@ -265,16 +252,6 @@ public sealed class PlatformOpsService : IPlatformOpsService
                 new { invoice.Number, branchId = opened.Id }, ct);
         }
         return Result<TenantInvoiceDto>.Success(ToDto(invoice));
-    }
-
-    private sealed record BranchRequest(string Name, string City, bool IsDefault);
-
-    private static readonly System.Text.Json.JsonSerializerOptions BranchJson = new(System.Text.Json.JsonSerializerDefaults.Web);
-
-    private static BranchRequest? ReadBranchRequest(string json)
-    {
-        try { return System.Text.Json.JsonSerializer.Deserialize<BranchRequest>(json, BranchJson); }
-        catch (System.Text.Json.JsonException) { return null; }
     }
 
     public async Task<Result> DeleteInvoiceAsync(Guid invoiceId, CancellationToken ct = default)
@@ -305,7 +282,7 @@ public sealed class PlatformOpsService : IPlatformOpsService
         string.IsNullOrWhiteSpace(i.PaymentReference) ? "Manual" : "Card",
         i.ConsentTierAbove,
         i.CustomerTierAbove,
-        i.PendingBranchJson is { } pending ? ReadBranchRequest(pending)?.Name : null);
+        i.PendingBranchJson is { } pending ? InvoiceBranches.PendingName(pending) : null);
 
     /// <summary>MySQL'den okunan DateTime Kind=Unspecified döner; 'Z'siz JSON istemcide 3 saat kayardı.</summary>
     private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);

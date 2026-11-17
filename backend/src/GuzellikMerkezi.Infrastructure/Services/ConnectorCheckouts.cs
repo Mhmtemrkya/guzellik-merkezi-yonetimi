@@ -15,6 +15,7 @@ public sealed partial class ConnectorCheckouts(
     GuzellikDbContext db,
     IBillingService billing,
     IWhatsAppBillingService credits,
+    IInvoicePaymentService invoices,
     IAuditLogger audit) : IConnectorCheckouts
 {
     [GeneratedRegex("^[0-9a-f]{32}$", RegexOptions.CultureInvariant, 100)]
@@ -30,9 +31,20 @@ public sealed partial class ConnectorCheckouts(
         var status = checkout.Status == ExternalCheckout.StatusPaid ? "paid"
             : checkout.IsExpired(DateTime.UtcNow) ? "expired"
             : "pending";
+
+        // FATURA ÖDEMESİ BEKLERKEN FATURA DEĞİŞTİYSE sayfa kapanır: platform faturayı elle kapattıysa,
+        // iptal ettiyse ya da tutarı değiştiyse bu ödeme alınmaz (çift tahsilat / eski tutar olmasın).
+        // Kurum ödemeyi panelden yeniden başlatır.
+        if (status == "pending" && checkout.InvoiceId is { } invoiceId)
+        {
+            var invoice = await db.TenantInvoices.AsNoTracking().Where(i => i.Id == invoiceId)
+                .Select(i => new { i.Status, i.AmountTRY }).FirstOrDefaultAsync(ct);
+            if (invoice is null || invoice.Status is "Paid" or "Cancelled" || invoice.AmountTRY != checkout.AmountTRY)
+                status = "expired";
+        }
         var separator = checkout.CallbackUrl.Contains('?') ? '&' : '?';
         return new ConnectorCheckoutDto(
-            checkout.PublicRef, status, checkout.Kind == ExternalCheckout.KindCredit ? "credit" : "subscription",
+            checkout.PublicRef, status, checkout.Kind switch { ExternalCheckout.KindCredit => "credit", ExternalCheckout.KindInvoice => "invoice", _ => "subscription" },
             (long)decimal.Round(checkout.AmountTRY * 100m, 0), "TRY", checkout.Description, tenantName, checkout.TenantId,
             $"{checkout.CallbackUrl}{separator}token={checkout.PublicRef}", checkout.ExpiresAtUtc);
     }
@@ -72,6 +84,14 @@ public sealed partial class ConnectorCheckouts(
 
         // Karar her zamanki yoldan: sonuç sağlayıcıdan (bu kayıttan) okunur, tutar/para birimi/sahiplik
         // değişmezleri orada uygulanır. Tekrar çağrı idempotenttir ("zaten alınmıştı").
+        if (checkout.Kind == ExternalCheckout.KindInvoice)
+        {
+            var settled = await invoices.SettleAsync(checkout, ct);
+            return settled.IsFailure
+                ? Result<ConnectorCheckoutPaidDto>.Failure(settled.Error)
+                : Result<ConnectorCheckoutPaidDto>.Success(new ConnectorCheckoutPaidDto(checkout.PublicRef, "settled", settled.Value!.Message));
+        }
+
         if (checkout.Kind == ExternalCheckout.KindCredit)
         {
             var credit = await credits.CompleteCreditCheckoutAsync(checkout.PublicRef, ct);

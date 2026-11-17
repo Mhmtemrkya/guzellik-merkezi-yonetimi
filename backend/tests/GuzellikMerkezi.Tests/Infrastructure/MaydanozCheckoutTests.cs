@@ -69,7 +69,9 @@ public sealed class MaydanozCheckoutTests
     private static WhatsAppBillingService Credits(GuzellikDbContext db) =>
         new(db, NullLogger<WhatsAppBillingService>.Instance, Resolver(db), new NoopAuditLogger(), new TestCurrentUser(UserRole.InstitutionOwner));
 
-    private static ConnectorCheckouts Connector(GuzellikDbContext db) => new(db, Billing(db), Credits(db), new NoopAuditLogger());
+    private static InvoicePaymentService Invoices(GuzellikDbContext db) => new(db, Resolver(db), new NoopAuditLogger());
+
+    private static ConnectorCheckouts Connector(GuzellikDbContext db) => new(db, Billing(db), Credits(db), Invoices(db), new NoopAuditLogger());
 
     private static async Task<(Guid TenantId, Guid PlanId)> SeedAsync(DbContextOptions<GuzellikDbContext> options)
     {
@@ -316,4 +318,205 @@ public sealed class MaydanozCheckoutTests
         Assert.Equal("https://api.beautyasist.com/api/payments/callback",
             PaymentCallbacks.PaymentCallbackUrl(Http(" https://api.beautyasist.com/ "), "/api/payments/callback"));
     }
+
+    /// <summary>
+    /// AYNI PAKETİ DÖNEM BİTMEDEN ÖDEYEN KURUM GÜN KAYBETMEZ: tek paket olduğundan yenileme ödeme
+    /// sayfasından gelir; yeni dönem mevcut bitişten devam eder.
+    /// </summary>
+    [Fact]
+    public async Task EarlyRenewal_ThroughMaydanoz_ContinuesFromCurrentEnd()
+    {
+        var options = NewOptions();
+        var (tenantId, planId) = await SeedAsync(options);
+        DateTime currentEnd;
+        await using (var db = NewDb(options))
+        {
+            var tenant = await db.Tenants.SingleAsync(t => t.Id == tenantId);
+            var plan = await db.SubscriptionPlans.SingleAsync(p => p.Id == planId);
+            tenant.StartSubscription(plan, BillingPeriod.Monthly, DateTime.UtcNow.AddDays(-20));
+            await db.SaveChangesAsync();
+            currentEnd = tenant.SubscriptionEndsAtUtc!.Value;
+        }
+
+        var (reference, amount) = await StartSubscriptionAsync(options, tenantId, planId);
+        await using (var db = NewDb(options))
+        {
+            Assert.Equal("settled", (await Connector(db).RecordPaidAsync(reference, new ConnectorCheckoutPaidRequest("chk_r", (long)(amount * 100), "TRY"))).Value!.Status);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var tenant = await check.Tenants.SingleAsync(t => t.Id == tenantId);
+            Assert.Equal(currentEnd.AddMonths(1), tenant.SubscriptionEndsAtUtc);
+            var invoice = await check.TenantInvoices.SingleAsync(i => i.Status == "Paid");
+            Assert.Equal(currentEnd, invoice.PeriodStartUtc);
+        }
+    }
+
+    private static async Task<Guid> SeedOpenInvoiceAsync(DbContextOptions<GuzellikDbContext> options, Guid tenantId, decimal amount = 600m, bool withBranch = true)
+    {
+        await using var db = NewDb(options);
+        var now = DateTime.UtcNow;
+        var invoice = new TenantInvoice(tenantId, $"INV-TEST-{Guid.NewGuid():N}"[..20], now, now.AddMonths(1), amount, "BeautyAsist · Ek şube · Karşıyaka (ödenince açılacak)");
+        invoice.ChangeStatus("Sent");
+        if (withBranch) invoice.AwaitBranch("{\"name\":\"Karşıyaka\",\"city\":\"İzmir\",\"isDefault\":false}");
+        db.TenantInvoices.Add(invoice);
+        await db.SaveChangesAsync();
+        return invoice.Id;
+    }
+
+    /// <summary>Açık fatura Maydanoz'da ödenir: bildirimle fatura kapanır, bekleyen şube bir kez açılır.</summary>
+    [Fact]
+    public async Task OpenInvoice_IsPaidOnMaydanoz_ClosesOnceAndOpensTheBranch()
+    {
+        var options = NewOptions();
+        var (tenantId, _) = await SeedAsync(options);
+        var invoiceId = await SeedOpenInvoiceAsync(options, tenantId);
+        const string InvoiceCallback = "https://api.beautyasist.test/api/payments/invoice-callback";
+
+        string reference;
+        await using (var db = NewDb(options))
+        {
+            var started = await Invoices(db).StartAsync(tenantId, invoiceId, InvoiceCallback);
+            Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Message : null);
+            reference = started.Value!.CheckoutToken;
+            Assert.Equal($"{Site}/odeme/asist/beauty/{reference}", started.Value.RedirectUrl);
+            // İkinci tıklama aynı ödeme sayfasını döner (iki ayrı ödeme açılmaz).
+            Assert.Equal(reference, (await Invoices(db).StartAsync(tenantId, invoiceId, InvoiceCallback)).Value!.CheckoutToken);
+            var view = await Connector(db).GetAsync(reference);
+            Assert.Equal(("invoice", 60000L), (view!.Kind, view.AmountKurus));
+            Assert.Contains("Karşıyaka", view.Description);
+            Assert.False((await Invoices(db).OutcomeAsync(reference)).Paid);
+        }
+
+        await using (var db = NewDb(options))
+        {
+            var paid = await Connector(db).RecordPaidAsync(reference, new ConnectorCheckoutPaidRequest("chk_inv", 60000, "TRY"));
+            Assert.True(paid.IsSuccess, paid.IsFailure ? paid.Error.Message : null);
+            Assert.Equal("settled", paid.Value!.Status);
+            // Tekrar bildirim işlem yapmaz.
+            Assert.Equal("settled", (await Connector(db).RecordPaidAsync(reference, new ConnectorCheckoutPaidRequest("chk_inv", 60000, "TRY"))).Value!.Status);
+        }
+
+        await using (var check = NewDb(options))
+        {
+            var invoice = await check.TenantInvoices.SingleAsync(i => i.Id == invoiceId);
+            Assert.Equal(("Paid", "chk_inv", (string?)null), (invoice.Status, invoice.PaymentReference, invoice.PendingBranchJson));
+            Assert.Equal(["Karşıyaka", "Merkez"], (await check.Branches.IgnoreQueryFilters().Where(b => b.TenantId == tenantId).Select(b => b.Name).ToListAsync()).Order());
+            Assert.True((await Invoices(check).OutcomeAsync(reference)).Paid);
+            Assert.False((await Invoices(check).OutcomeAsync("yok")).Paid);
+        }
+    }
+
+    [Fact]
+    public async Task InvoicePayment_RefusesWrongAmountCancelledOrForeignClosure()
+    {
+        var options = NewOptions();
+        var (tenantId, _) = await SeedAsync(options);
+
+        async Task<(string Ref, Guid InvoiceId)> StartAsync()
+        {
+            var invoiceId = await SeedOpenInvoiceAsync(options, tenantId, withBranch: false);
+            await using var db = NewDb(options);
+            return ((await Invoices(db).StartAsync(tenantId, invoiceId, "https://api.beautyasist.test/cb")).Value!.CheckoutToken, invoiceId);
+        }
+
+        // Tutar uymuyor: fatura kapanmaz.
+        var (wrong, wrongInvoice) = await StartAsync();
+        await using (var db = NewDb(options))
+        {
+            var result = await Connector(db).RecordPaidAsync(wrong, new ConnectorCheckoutPaidRequest("chk_w", 100, "TRY"));
+            Assert.Equal("Conflict", result.Error.Code);
+            Assert.Equal("Sent", (await db.TenantInvoices.SingleAsync(i => i.Id == wrongInvoice)).Status);
+        }
+
+        // Ödeme beklerken fatura iptal edildi: ödeme işlenmez (iade edilmeli).
+        var (cancelled, cancelledInvoice) = await StartAsync();
+        await using (var db = NewDb(options))
+        {
+            (await db.TenantInvoices.SingleAsync(i => i.Id == cancelledInvoice)).ChangeStatus("Cancelled");
+            await db.SaveChangesAsync();
+            Assert.Equal("expired", (await Connector(db).GetAsync(cancelled))!.Status);
+            Assert.Equal("Conflict", (await Connector(db).RecordPaidAsync(cancelled, new ConnectorCheckoutPaidRequest("chk_c", 60000, "TRY"))).Error.Code);
+        }
+
+        // Platform faturayı başka bir ödemeyle kapattı: ödeme sayfası kapanır, gelen ödeme işlenmez.
+        var (foreign, foreignInvoice) = await StartAsync();
+        await using (var db = NewDb(options))
+        {
+            Assert.Equal("pending", (await Connector(db).GetAsync(foreign))!.Status);
+            (await db.TenantInvoices.SingleAsync(i => i.Id == foreignInvoice)).MarkPaid(DateTime.UtcNow, "elle-1");
+            await db.SaveChangesAsync();
+            Assert.Equal("expired", (await Connector(db).GetAsync(foreign))!.Status);
+            Assert.Equal("Conflict", (await Connector(db).RecordPaidAsync(foreign, new ConnectorCheckoutPaidRequest("chk_f", 60000, "TRY"))).Error.Code);
+            Assert.Equal("elle-1", (await db.TenantInvoices.SingleAsync(i => i.Id == foreignInvoice)).PaymentReference);
+        }
+
+        // Tutarı sonradan değişen fatura: eski tutarla ödeme sayfası kapanır.
+        var (changed, changedInvoice) = await StartAsync();
+        await using (var db = NewDb(options))
+        {
+            var invoice = await db.TenantInvoices.SingleAsync(i => i.Id == changedInvoice);
+            invoice.UpdateDetails(700m, invoice.DueDateUtc, invoice.Notes);
+            await db.SaveChangesAsync();
+            Assert.Equal("expired", (await Connector(db).GetAsync(changed))!.Status);
+        }
+
+        // Para birimi TRY değil.
+        var (currency, _) = await StartAsync();
+        await using (var db = NewDb(options))
+        {
+            Assert.Equal("Conflict", (await Connector(db).RecordPaidAsync(currency, new ConnectorCheckoutPaidRequest("chk_u", 60000, "USD"))).Error.Code);
+        }
+
+        // Ödenmemiş ya da fatura olmayan kayıt fatura yolundan kapatılamaz.
+        await using (var db = NewDb(options))
+        {
+            var subscription = new ExternalCheckout(MaydanozPaymentGateway.NewRef(), "c-x", ExternalCheckout.KindSubscription, tenantId, 1m, "x", Callback, DateTime.UtcNow);
+            Assert.Equal("Validation", (await Invoices(db).SettleAsync(subscription)).Error.Code);
+            var orphan = new ExternalCheckout(MaydanozPaymentGateway.NewRef(), "c-y", ExternalCheckout.KindInvoice, tenantId, 1m, "x", Callback, DateTime.UtcNow, Guid.NewGuid());
+            orphan.RecordPaid("p", 1m, "TRY", DateTime.UtcNow);
+            Assert.Equal("NotFound", (await Invoices(db).SettleAsync(orphan)).Error.Code);
+        }
+    }
+
+    [Fact]
+    public async Task InvoicePayment_StartsOnlyForAnOpenInvoiceOfTheTenantThroughMaydanoz()
+    {
+        var options = NewOptions();
+        var (tenantId, _) = await SeedAsync(options);
+        var invoiceId = await SeedOpenInvoiceAsync(options, tenantId);
+        await using var db = NewDb(options);
+
+        Assert.Equal("NotFound", (await Invoices(db).StartAsync(Guid.NewGuid(), invoiceId, Callback)).Error.Code);
+        Assert.Equal("NotFound", (await Invoices(db).StartAsync(tenantId, Guid.NewGuid(), Callback)).Error.Code);
+
+        var invoice = await db.TenantInvoices.SingleAsync(i => i.Id == invoiceId);
+        invoice.ChangeStatus("Draft");
+        await db.SaveChangesAsync();
+        Assert.Equal("Conflict", (await Invoices(db).StartAsync(tenantId, invoiceId, Callback)).Error.Code);
+        invoice.ChangeStatus("Overdue");
+        invoice.UpdateDetails(0m, invoice.DueDateUtc, invoice.Notes);
+        await db.SaveChangesAsync();
+        Assert.Equal("Conflict", (await Invoices(db).StartAsync(tenantId, invoiceId, Callback)).Error.Code);
+
+        // Sağlayıcı Maydanoz değilse fatura ödemesi açılmaz; ödeme kapalıysa çözücünün hatası döner.
+        var settings = await db.PlatformIntegrationSettings.SingleAsync();
+        settings.UpdatePayments(true, "Simulation", null, null, null, "https://beautyasist.test/panel/paket");
+        await db.SaveChangesAsync();
+        var simulation = new InvoicePaymentService(db, new PaymentTestDoubles.SimulationResolver(), new NoopAuditLogger());
+        Assert.Equal("Conflict", (await simulation.StartAsync(tenantId, invoiceId, Callback)).Error.Code);
+        var disabled = new InvoicePaymentService(db, new PaymentTestDoubles.DisabledResolver(), new NoopAuditLogger());
+        Assert.True((await disabled.StartAsync(tenantId, invoiceId, Callback)).IsFailure);
+    }
+
+    [Fact]
+    public void ExternalCheckout_InvoiceKindNeedsAnInvoice()
+    {
+        var now = DateTime.UtcNow;
+        Assert.Throws<DomainException>(() => new ExternalCheckout(MaydanozPaymentGateway.NewRef(), "c", ExternalCheckout.KindInvoice, Guid.NewGuid(), 1m, "x", Callback, now));
+        Assert.Throws<DomainException>(() => new ExternalCheckout(MaydanozPaymentGateway.NewRef(), "c", ExternalCheckout.KindSubscription, Guid.NewGuid(), 1m, "x", Callback, now, Guid.NewGuid()));
+        Assert.NotNull(new ExternalCheckout(MaydanozPaymentGateway.NewRef(), "c", ExternalCheckout.KindInvoice, Guid.NewGuid(), 1m, "x", Callback, now, Guid.NewGuid()).InvoiceId);
+    }
 }
+
