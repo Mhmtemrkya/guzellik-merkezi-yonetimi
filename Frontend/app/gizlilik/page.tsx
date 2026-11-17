@@ -13,6 +13,8 @@ export default function GizlilikPage() {
     <LegalPage
       eyebrow="Yasal"
       title="Gizlilik Politikası"
+      // Google Play veri güvenliği beyanıyla eşleşen metin; 14 Ekim 2026 sürümü canlıdaydı, depoya sonradan alındı.
+      updatedAt="14 Ekim 2026"
       intro={
         <>
           Bu politika, <strong>{company.brand}</strong> mobil, masaüstü ve web uygulamasının
@@ -37,6 +39,8 @@ export default function GizlilikPage() {
           items={[
             <><strong>Kullanıcı (çalışan) hesap bilgileri:</strong> ad-soyad, e-posta, telefon, rol ve şifre (şifreler geri döndürülemez şekilde hash’lenerek saklanır).</>,
             <><strong>Müşteri bilgileri:</strong> ad-soyad, telefon numarası, T.C. kimlik numarası (girildiyse), e-posta, adres ve müşteriye ait notlar.</>,
+            <><strong>Danışma ve onay kayıtları:</strong> işletmenin işlem öncesi danışma formuna kaydettiği, müşterinin beyan ettiği alerjiler, kullanılan ilaçlar, kronik rahatsızlıklar, cilt geçmişi ve işlemle ilgili diğer sağlık bilgileri. Bu bilgiler giriş veya hesap oluşturma için zorunlu değildir; ilgili işletmenin yetkili çalışanları tarafından kozmetik hizmetin danışma ve onay sürecinde kullanılır.</>,
+            <><strong>Fotoğraflar ve kullanıcı içeriği:</strong> kullanıcı tarafından yüklenen profil veya işlem günlüğü fotoğrafları, danışma notları, onay kayıtları ve uygulama içi mesajlar. Kamera veya fotoğraf seçimi yalnız kullanıcı ilgili özelliği kullandığında yapılır.</>,
             <><strong>Operasyonel veriler:</strong> randevular, seanslar, paket ve hizmet satışları, stok, ödeme/kasa kayıtları ve finansal işlemler.</>,
             <><strong>Abonelik ve fatura verileri:</strong> abonelik paketi, dönem, fatura kayıtları ve ödeme sonuçları.</>,
             <><strong>Cihaz ve bildirim verileri:</strong> anlık bildirim (push) gönderebilmek için cihazın bildirim token’ı ve temel cihaz/platform bilgisi.</>,
@@ -50,6 +54,7 @@ export default function GizlilikPage() {
           items={[
             'Randevu, müşteri, paket, stok ve finans yönetimi hizmetini sunmak,',
             'Randevu hatırlatmaları ve işlemlerle ilgili anlık bildirimler göndermek,',
+            'İşlem öncesi danışma ve onay sürecini, hizmet geçmişini ve kullanıcı tarafından eklenen işlem fotoğraflarını kayıt altında tutmak,',
             'Abonelik bedelini tahsil etmek ve fatura düzenlemek,',
             'Hesap güvenliğini sağlamak, yetkisiz erişimi tespit etmek ve önlemek,',
             'Yasal yükümlülükleri yerine getirmek ve hizmeti iyileştirmek.',

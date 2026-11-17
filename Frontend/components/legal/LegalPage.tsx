@@ -83,12 +83,15 @@ export default function LegalPage({
   intro,
   children,
   showUpdatedAt = true,
+  updatedAt = LEGAL_LAST_UPDATED,
 }: {
   eyebrow: string
   title: string
   intro?: ReactNode
   children: ReactNode
   showUpdatedAt?: boolean
+  /** Sayfaya özel güncelleme tarihi (ör. yalnız gizlilik politikası değiştiyse). */
+  updatedAt?: string
 }) {
   return (
     <div className="min-h-screen bg-[#FFF7FA] text-[#352432]">
@@ -118,7 +121,7 @@ export default function LegalPage({
           {title}
         </h1>
         {showUpdatedAt && (
-          <p className="mt-2.5 text-[13px] text-[#705A66]">Son güncelleme: {LEGAL_LAST_UPDATED}</p>
+          <p className="mt-2.5 text-[13px] text-[#705A66]">Son güncelleme: {updatedAt}</p>
         )}
         {intro && (
           <div className="mt-5 rounded-[18px] border border-[#EEC9D7] bg-white/80 p-5 text-[14.5px] leading-[1.75] text-[#4A3A44]">
