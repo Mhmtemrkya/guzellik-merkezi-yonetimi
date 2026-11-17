@@ -35,7 +35,7 @@ namespace GuzellikMerkezi.Infrastructure.Services;
 /// düşerse taslak bulunamaz.
 /// </para>
 /// </summary>
-public sealed class TenantSignupService : ITenantSignupService
+public sealed partial class TenantSignupService : ITenantSignupService
 {
     private static readonly TimeSpan DraftLifetime = TimeSpan.FromMinutes(30);
     private const int MaxAttempts = 5;

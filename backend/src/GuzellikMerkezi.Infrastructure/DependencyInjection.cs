@@ -139,7 +139,10 @@ public static class DependencyInjection
         services.AddScoped<GuzellikMerkezi.Application.Features.Billing.IInvoicePaymentService, InvoicePaymentService>();
         // Self-servis kurum kaydı (14 gün deneme). Taslakları IMemoryCache'te tutar — tek örnek
         // kurulum varsayımı CustomerOtpService ile aynı (bkz. servisin sınıf notu).
-        services.AddScoped<Application.Features.TenantSignup.ITenantSignupService, TenantSignupService>();
+        services.AddScoped<TenantSignupService>();
+        services.AddScoped<Application.Features.TenantSignup.ITenantSignupService>(sp => sp.GetRequiredService<TenantSignupService>());
+        // Maydanoz'da satın alma (imzalı bağlayıcı): aynı servis, aynı mükerrer/kod/rezervasyon kuralları.
+        services.AddScoped<GuzellikMerkezi.Application.Features.Connector.IConnectorSignups>(sp => sp.GetRequiredService<TenantSignupService>());
         // "Hesabımı sil" — kurum (bekleme süreli) ve müşteri (anında anonimleştirme).
         services.AddScoped<Application.Features.AccountDeletion.IAccountDeletionService, AccountDeletionService>();
         // Destek talepleri — tanıtım sayfası formu + panel + platform kuyruğu.

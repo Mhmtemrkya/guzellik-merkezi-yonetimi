@@ -56,6 +56,15 @@ public static class ConnectorEndpoints
             (await checkouts.RecordPaidAsync(reference, request, ct)).ToHttpResult(http))
             .Scope("checkouts.write");
 
+        // MAYDANOZ'DA SATIN ALMA: ödemeden önce tutar + uygunluk (kişi bilgisi gövdede), ödeme alınınca hesap.
+        g.MapPost("/signups/quote", async (ConnectorSignupQuoteRequest request, IConnectorSignups signups, HttpContext http, CancellationToken ct) =>
+            (await signups.QuoteAsync(request, ct)).ToHttpResult(http))
+            .Scope("checkouts.read");
+
+        g.MapPost("/signups", async (ConnectorSignupRequest request, IConnectorSignups signups, HttpContext http, CancellationToken ct) =>
+            (await signups.CreatePaidAsync(request, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
+
         return app;
     }
 }
