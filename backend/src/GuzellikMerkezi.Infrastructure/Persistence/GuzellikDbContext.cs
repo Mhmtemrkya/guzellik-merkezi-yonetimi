@@ -101,6 +101,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<BackgroundJob> BackgroundJobs => Set<BackgroundJob>();
     public DbSet<ProcessedClientRequest> ProcessedClientRequests => Set<ProcessedClientRequest>();
     public DbSet<ConnectorNonce> ConnectorNonces => Set<ConnectorNonce>();
+    public DbSet<ExternalCheckout> ExternalCheckouts => Set<ExternalCheckout>();
     public DbSet<Adisyon> Adisyonlar => Set<Adisyon>();
     public DbSet<AdisyonItem> AdisyonItems => Set<AdisyonItem>();
     public DbSet<StaffCommission> StaffCommissions => Set<StaffCommission>();
@@ -1117,6 +1118,25 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         cn.Property(x => x.Nonce).HasMaxLength(64).IsRequired();
         cn.HasIndex(x => new { x.KeyId, x.Nonce }).IsUnique();
         cn.HasIndex(x => x.ExpiresAtUtc);
+
+        // Maydanoz'da alınacak ödeme: adresteki anahtar ve işlem anahtarı benzersiz.
+        var xc = modelBuilder.Entity<ExternalCheckout>();
+        xc.ToTable("external_checkouts");
+        xc.HasKey(x => x.Id);
+        xc.Property(x => x.PublicRef).HasMaxLength(32).IsRequired();
+        xc.Property(x => x.ConversationId).HasMaxLength(128).IsRequired();
+        xc.Property(x => x.Kind).HasMaxLength(16).IsRequired();
+        xc.Property(x => x.AmountTRY).HasPrecision(18, 2);
+        xc.Property(x => x.Description).HasMaxLength(200).IsRequired();
+        xc.Property(x => x.CallbackUrl).HasMaxLength(500).IsRequired();
+        // Durum eşzamanlılık belirteci: iki "ödendi" bildirimi aynı anda yazılamaz (ikincisi yeniden okur).
+        xc.Property(x => x.Status).HasMaxLength(16).IsRequired().IsConcurrencyToken();
+        xc.Property(x => x.ProviderPaymentId).HasMaxLength(128);
+        xc.Property(x => x.PaidAmountTRY).HasPrecision(18, 2);
+        xc.Property(x => x.PaidCurrency).HasMaxLength(8);
+        xc.HasIndex(x => x.PublicRef).IsUnique();
+        xc.HasIndex(x => x.ConversationId).IsUnique();
+        xc.HasIndex(x => x.TenantId);
     }
 
     private void ConfigureWhatsApp(ModelBuilder modelBuilder)

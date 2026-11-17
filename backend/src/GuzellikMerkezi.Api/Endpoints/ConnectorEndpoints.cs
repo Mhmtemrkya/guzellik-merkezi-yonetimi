@@ -45,6 +45,17 @@ public static class ConnectorEndpoints
                 : Results.NotFound(new { success = false, error = new { code = "tenant.not-found", message = "Kurum bulunamadı." } }))
             .Scope("tenants.read");
 
+        // ÖDEME MAYDANOZ'DA: ödeme sayfası tutarı ve dönüş adresini buradan okur; sonucu buraya bildirir.
+        g.MapGet("/checkouts/{reference}", async (string reference, IConnectorCheckouts checkouts, CancellationToken ct) =>
+            await checkouts.GetAsync(reference, ct) is { } checkout
+                ? Results.Ok(new { success = true, data = checkout })
+                : Results.NotFound(new { success = false, error = new { code = "checkout.not-found", message = "Ödeme kaydı bulunamadı." } }))
+            .Scope("checkouts.read");
+
+        g.MapPost("/checkouts/{reference}/paid", async (string reference, ConnectorCheckoutPaidRequest request, IConnectorCheckouts checkouts, HttpContext http, CancellationToken ct) =>
+            (await checkouts.RecordPaidAsync(reference, request, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
+
         return app;
     }
 }

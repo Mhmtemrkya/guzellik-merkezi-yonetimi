@@ -135,6 +135,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ITenantService, TenantService>();
         services.AddScoped<GuzellikMerkezi.Application.Features.Connector.IConnectorQueries, ConnectorQueries>();
+        services.AddScoped<GuzellikMerkezi.Application.Features.Connector.IConnectorCheckouts, ConnectorCheckouts>();
         // Self-servis kurum kaydı (14 gün deneme). Taslakları IMemoryCache'te tutar — tek örnek
         // kurulum varsayımı CustomerOtpService ile aynı (bkz. servisin sınıf notu).
         services.AddScoped<Application.Features.TenantSignup.ITenantSignupService, TenantSignupService>();

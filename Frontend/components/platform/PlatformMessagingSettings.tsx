@@ -284,6 +284,7 @@ export default function PlatformMessagingSettings() {
                 <label className={labelCls}>Sağlayıcı</label>
                 <select value={payments.provider} onChange={(e) => setPayments((p) => ({ ...p, provider: e.target.value }))} className={inputCls}>
                   <option value="Simulation">Simülasyon (gerçek çekim yok)</option>
+                  <option value="Maydanoz">Maydanoz (ödeme maydanozasist.com'da alınır)</option>
                   <option value="Iyzico">iyzico</option>
                 </select>
               </div>

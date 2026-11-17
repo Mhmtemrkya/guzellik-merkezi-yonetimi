@@ -88,7 +88,7 @@ public static class WhatsAppEndpoints
         {
             var tid = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             if (tid == Guid.Empty) return EndpointHelpers.MissingTenant(http);
-            var callbackUrl = $"{http.Request.Scheme}://{http.Request.Host}/api/payments/credit-callback";
+            var callbackUrl = PaymentCallbacks.PaymentCallbackUrl(http, "/api/payments/credit-callback");
             return (await billing.StartCreditCheckoutAsync(tid, request, callbackUrl, currentUser.UserId, ct)).ToHttpResult(http);
         });
 

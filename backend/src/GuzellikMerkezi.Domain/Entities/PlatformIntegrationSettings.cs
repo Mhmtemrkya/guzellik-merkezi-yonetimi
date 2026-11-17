@@ -66,6 +66,8 @@ public sealed class PlatformIntegrationSettings : Entity
     /// <summary>Gerçek çekim yapılabilir mi? Simülasyon sağlayıcısında anahtar aranmaz.</summary>
     public bool PaymentsConfigured =>
         string.Equals(PaymentProvider, "Simulation", StringComparison.OrdinalIgnoreCase)
+        // Maydanoz: iyzico anahtarı Maydanoz'dadır; buradaki adres/sır yapılandırmadan gelir (çözücü denetler).
+        || string.Equals(PaymentProvider, "Maydanoz", StringComparison.OrdinalIgnoreCase)
         || (!string.IsNullOrWhiteSpace(IyzicoApiKeyEncrypted) && !string.IsNullOrWhiteSpace(IyzicoSecretKeyEncrypted));
     public bool EmailConfigured => !string.IsNullOrWhiteSpace(SmtpHost) && !string.IsNullOrWhiteSpace(EmailFromAddress);
     /// <summary>Platform sistem token'ı tanımlı mı? Kurumların numaralarına gönderim bunu kullanır.</summary>
@@ -115,7 +117,7 @@ public sealed class PlatformIntegrationSettings : Entity
     /// <param name="apiKeyEnc">null = mevcut korunur (form boş bırakıldıysa).</param>
     /// <param name="secretKeyEnc">null = mevcut korunur.</param>
     /// <summary>Tanınan ödeme sağlayıcıları. Yeni sağlayıcı eklenirken buraya AÇIKÇA yazılır.</summary>
-    public static readonly IReadOnlyList<string> KnownPaymentProviders = ["Simulation", "Iyzico"];
+    public static readonly IReadOnlyList<string> KnownPaymentProviders = ["Simulation", "Iyzico", "Maydanoz"];
 
     public void UpdatePayments(bool enabled, string? provider, string? apiKeyEnc, string? secretKeyEnc, string? baseUrl, string? returnUrl)
     {

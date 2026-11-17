@@ -29,6 +29,12 @@ public sealed class PaymentGatewayResolver : IPaymentGatewayResolver
     /// <summary>Simülasyonun AÇIKÇA seçilmesi gereken adı.</summary>
     private const string SimulationProvider = "Simulation";
     private const string IyzicoProvider = "Iyzico";
+    private const string MaydanozProvider = MaydanozPaymentGateway.ProviderName;
+
+    /// <summary>Maydanoz sitesinin kökü (ödeme sayfası orada): <c>Payments:Maydanoz:SiteUrl</c>.</summary>
+    public const string MaydanozSiteUrlKey = "Payments:Maydanoz:SiteUrl";
+
+    private readonly string? _maydanozSiteUrl;
 
     /// <summary>Eski kaçış kapısının anahtarı — üretimde AÇIKSA başlangıçta hata verilir.</summary>
     public const string LegacySimulationOverrideKey = "Payments:AllowSimulationInProduction";
@@ -48,6 +54,7 @@ public sealed class PaymentGatewayResolver : IPaymentGatewayResolver
         _logger = logger;
         // İmza sırrı: ayrı bir anahtar verilmediyse JWT imza anahtarına düşülür — ikisi de
         // sunucuya özel sırlardır ve konfigürasyon zaten güçlü anahtar zorunluluğu uygular.
+        _maydanozSiteUrl = configuration[MaydanozSiteUrlKey];
         _simulationSigningSecret = configuration["Payments:SimulationSigningKey"]
                                    ?? configuration["Jwt:SigningKey"]
                                    ?? string.Empty;
@@ -83,6 +90,17 @@ public sealed class PaymentGatewayResolver : IPaymentGatewayResolver
         }
     }
 
+    /// <summary>Maydanoz site kökü: mutlak, kök yolu; üretimde https ve yerel olmayan bir alan adı.</summary>
+    public static string? MaydanozSiteProblem(string? url, bool production)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "tanımlı değil";
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http"))
+            return "mutlak http(s) adresi değil";
+        if (uri.AbsolutePath != "/" || !string.IsNullOrEmpty(uri.Query)) return "yalnız kök adres olmalı";
+        if (production && (uri.Scheme != "https" || uri.IsLoopback)) return "üretimde https ve gerçek alan adı gerekli";
+        return null;
+    }
+
     public async Task<Result<PaymentGatewayContext>> ResolveAsync(CancellationToken ct = default)
     {
         var settings = await _db.PlatformIntegrationSettings.AsNoTracking().FirstOrDefaultAsync(ct);
@@ -116,11 +134,26 @@ public sealed class PaymentGatewayResolver : IPaymentGatewayResolver
                 new PaymentGatewayContext(new SimulationPaymentGateway(_simulationSigningSecret), settings.PaymentsReturnUrl));
         }
 
+        if (string.Equals(provider, MaydanozProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            // ÖDEME MAYDANOZ'DA (kullanıcı kararı 17 Kas 2026). Adres yoksa ya da üretimde https
+            // değilse akış durur: kurum yanlış bir adrese yönlenip ödemesi kaybolmasın.
+            if (MaydanozSiteProblem(_maydanozSiteUrl, _isProduction) is { } problem)
+            {
+                _logger.LogError("Maydanoz ödeme adresi geçersiz: {Problem}", problem);
+                return Result<PaymentGatewayContext>.Failure(Error.Conflict(
+                    "Maydanoz ödeme sayfası adresi tanımlı değil. Platform yöneticisi ödeme ayarlarını tamamlamalı."));
+            }
+
+            return Result<PaymentGatewayContext>.Success(
+                new PaymentGatewayContext(new MaydanozPaymentGateway(_db, _maydanozSiteUrl!), settings.PaymentsReturnUrl));
+        }
+
         if (!string.Equals(provider, IyzicoProvider, StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogError("Tanınmayan ödeme sağlayıcısı: {Provider}. Ödeme akışı durduruldu.", provider);
             return Result<PaymentGatewayContext>.Failure(Error.Conflict(
-                $"Tanınmayan ödeme sağlayıcısı: '{provider}'. Geçerli değerler: {IyzicoProvider}, {SimulationProvider}."));
+                $"Tanınmayan ödeme sağlayıcısı: '{provider}'. Geçerli değerler: {IyzicoProvider}, {MaydanozProvider}, {SimulationProvider}."));
         }
 
         var apiKey = _encryption.Decrypt(settings.IyzicoApiKeyEncrypted);

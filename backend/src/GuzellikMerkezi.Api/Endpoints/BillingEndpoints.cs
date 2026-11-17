@@ -40,7 +40,7 @@ public static class BillingEndpoints
             if (t == Guid.Empty) return EndpointHelpers.MissingTenant(http);
             // Dönüş adresi İSTEKTEN kurulur: ters proxy başlıkları uygulandığı için şema/host
             // burada doğrudur (ForwardedHeaders yapılandırılmış durumda).
-            var callbackUrl = $"{http.Request.Scheme}://{http.Request.Host}/api/payments/callback";
+            var callbackUrl = PaymentCallbacks.PaymentCallbackUrl(http, "/api/payments/callback");
             return (await svc.StartCheckoutAsync(t, payload.SubscriptionPlanId, ParsePeriod(payload.BillingPeriod), callbackUrl, ct)).ToHttpResult(http);
         });
 
