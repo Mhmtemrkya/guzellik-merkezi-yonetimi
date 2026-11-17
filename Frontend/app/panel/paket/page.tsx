@@ -118,6 +118,8 @@ interface BillingSummary {
   recentInvoices: BillingInvoice[]
   /** Bir sonraki yenilemede GÜNCEL sayaçlarla (şube, müşteri, onam) çekilecek tutar — sunucu hesabı. */
   nextRenewalQuote?: SubscriptionQuote | null
+  /** Ödemeyi alan sağlayıcı; "Maydanoz" ise ödeme maydanozasist.com'da alınır, kart saklanmaz. */
+  paymentProvider?: string | null
 }
 
 interface CheckoutStarted { checkoutToken: string; formContent?: string | null; redirectUrl?: string | null; amountTRY: number }
@@ -485,10 +487,13 @@ export default function PaketPage() {
                   </>
                 ) : (
                   <>
-                    <div className="font-display text-[15px] tracking-tight text-[#2A2027]">Kayıtlı kart yok</div>
+                    <div className="font-display text-[15px] tracking-tight text-[#2A2027]">
+                      {billing.paymentProvider === 'Maydanoz' ? 'Ödeme maydanozasist.com’da' : 'Kayıtlı kart yok'}
+                    </div>
                     <div className="mt-1 text-[11.5px] leading-relaxed text-[#74616A]">
-                      Aşağıdan bir paket seçtiğinizde güvenli ödeme sayfasına yönlendirilirsiniz. Kartınızı
-                      kaydederseniz abonelik dönem sonunda otomatik yenilenir. Kart bilgileri bizde saklanmaz.
+                      {billing.paymentProvider === 'Maydanoz'
+                        ? 'Aşağıdan bir paket seçtiğinizde Maydanoz Yazılım’ın güvenli ödeme sayfasına (iyzico) yönlendirilirsiniz; ödeme tamamlanınca buraya dönersiniz. Kart bilgileri bizde saklanmaz. Dönem sonunda yenilemek için bu sayfadan yeniden ödeme yaparsınız.'
+                        : 'Aşağıdan bir paket seçtiğinizde güvenli ödeme sayfasına yönlendirilirsiniz. Kartınızı kaydederseniz abonelik dönem sonunda otomatik yenilenir. Kart bilgileri bizde saklanmaz.'}
                     </div>
                   </>
                 )}

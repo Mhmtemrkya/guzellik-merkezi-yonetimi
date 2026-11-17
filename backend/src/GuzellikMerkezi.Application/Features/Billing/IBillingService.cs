@@ -171,7 +171,12 @@ public sealed record BillingSummaryDto(
     StoredCardDto? Card,
     IReadOnlyList<BillingInvoiceDto> RecentInvoices,
     /// <summary>Bir sonraki yenilemede GÜNCEL sayaçlarla ne çekileceği (ücretli abonelik yoksa null).</summary>
-    Domain.Billing.SubscriptionQuote? NextRenewalQuote = null);
+    Domain.Billing.SubscriptionQuote? NextRenewalQuote = null,
+    /// <summary>
+    /// Ödemeyi alan sağlayıcı (ödeme açıkken; ör. "Maydanoz"). Maydanoz'da ödeme maydanozasist.com'da
+    /// alınır ve kart saklanmaz: panel "kartını kaydedersen otomatik yenilenir" demez.
+    /// </summary>
+    string? PaymentProvider = null);
 
 /// <summary>Kartın yalnızca gösterilebilir bilgileri — token/cüzdan anahtarı ASLA dönmez.</summary>
 public sealed record StoredCardDto(

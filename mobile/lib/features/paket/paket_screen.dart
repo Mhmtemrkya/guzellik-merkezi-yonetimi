@@ -847,11 +847,17 @@ class _PaketScreenState extends State<PaketScreen> {
               ),
             ],
           ] else
-            const Text(
-              'Kayıtlı kart yok. Ücretli bir paket seçtiğinde güvenli ödeme sayfasına '
-              'yönlendirilirsin; kartını kaydedersen abonelik otomatik yenilenir. '
-              'Kart bilgilerin bizde saklanmaz.',
-              style: TextStyle(
+            Text(
+              // Maydanoz: ödeme maydanozasist.com'da alınır, kart saklanmaz (web ile aynı metin).
+              billing['paymentProvider'] == 'Maydanoz'
+                  ? "Ödeme maydanozasist.com'da. Ücretli bir paket seçtiğinde Maydanoz "
+                      "Yazılım'ın güvenli ödeme sayfasına (iyzico) yönlendirilirsin; ödeme "
+                      'tamamlanınca uygulamaya dönebilirsin. Kart bilgilerin bizde saklanmaz. '
+                      'Dönem sonunda yenilemek için buradan yeniden ödeme yaparsın.'
+                  : 'Kayıtlı kart yok. Ücretli bir paket seçtiğinde güvenli ödeme sayfasına '
+                      'yönlendirilirsin; kartını kaydedersen abonelik otomatik yenilenir. '
+                      'Kart bilgilerin bizde saklanmaz.',
+              style: const TextStyle(
                   fontSize: 12, height: 1.45, color: Color(0xFF74616A)),
             ),
           if (invoices.isNotEmpty) ...[

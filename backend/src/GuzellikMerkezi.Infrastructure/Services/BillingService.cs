@@ -91,7 +91,8 @@ public sealed partial class BillingService : IBillingService
             card is not null && tenant.SubscriptionPeriod.HasValue,
             card is null ? null : ToCardDto(card),
             invoices.Select(ToInvoiceDto).ToList(),
-            next));
+            next,
+            settings is { PaymentsEnabled: true } ? settings.PaymentProvider : null));
     }
 
     public async Task<Result<SubscriptionQuote>> GetQuoteAsync(Guid tenantId, Guid subscriptionPlanId, BillingPeriod period, CancellationToken ct = default)

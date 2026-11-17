@@ -137,6 +137,8 @@ public sealed class MaydanozCheckoutTests
         {
             var tenant = await db.Tenants.SingleAsync(t => t.Id == tenantId);
             Assert.Equal(TenantStatus.Active, tenant.Status);
+            // Panel ödemenin Maydanoz'da alındığını bilir ("kartını kaydet" metni gösterilmez).
+            Assert.Equal("Maydanoz", (await Billing(db).GetSummaryAsync(tenantId)).Value!.PaymentProvider);
             Assert.NotNull(tenant.SubscriptionEndsAtUtc);
             var payment = await db.SubscriptionPayments.SingleAsync();
             Assert.Equal((SubscriptionPayment.Succeeded, "Maydanoz", "chk_1"), (payment.Status, payment.Provider, payment.ProviderPaymentId));
