@@ -100,6 +100,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<SubscriptionPayment> SubscriptionPayments => Set<SubscriptionPayment>();
     public DbSet<BackgroundJob> BackgroundJobs => Set<BackgroundJob>();
     public DbSet<ProcessedClientRequest> ProcessedClientRequests => Set<ProcessedClientRequest>();
+    public DbSet<ConnectorNonce> ConnectorNonces => Set<ConnectorNonce>();
     public DbSet<Adisyon> Adisyonlar => Set<Adisyon>();
     public DbSet<AdisyonItem> AdisyonItems => Set<AdisyonItem>();
     public DbSet<StaffCommission> StaffCommissions => Set<StaffCommission>();
@@ -1107,6 +1108,15 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         // Aynı kullanıcı + anahtar bir kez işlenir; yarış durumunda ikinci insert unique'e takılır.
         pcr.HasIndex(x => new { x.TenantId, x.UserId, x.IdempotencyKey }).IsUnique();
         pcr.HasQueryFilter(x => !x.IsDeleted);
+
+        // Maydanoz bağlayıcısı: imzalı isteğin tekrarını (replay) benzersiz indeks durdurur.
+        var cn = modelBuilder.Entity<ConnectorNonce>();
+        cn.ToTable("connector_nonces");
+        cn.HasKey(x => x.Id);
+        cn.Property(x => x.KeyId).HasMaxLength(64).IsRequired();
+        cn.Property(x => x.Nonce).HasMaxLength(64).IsRequired();
+        cn.HasIndex(x => new { x.KeyId, x.Nonce }).IsUnique();
+        cn.HasIndex(x => x.ExpiresAtUtc);
     }
 
     private void ConfigureWhatsApp(ModelBuilder modelBuilder)

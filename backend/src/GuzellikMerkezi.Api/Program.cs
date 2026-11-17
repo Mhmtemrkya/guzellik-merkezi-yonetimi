@@ -414,6 +414,9 @@ app.UseCors(ApiServiceCollectionExtensions.FrontendCorsPolicyName);
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<TenantResolutionMiddleware>();
+// Maydanoz bağlayıcısı: /api/connector altında YALNIZ imzalı istek geçer (anahtar yoksa 404).
+app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments(ConnectorAuthMiddleware.PathPrefix),
+    branch => branch.UseMiddleware<ConnectorAuthMiddleware>());
 // Müşteri rolünü /api/customer (+/api/auth) ile sınırla; diğer rolleri portaldan uzak tut.
 app.UseMiddleware<CustomerScopeMiddleware>();
 app.UseMiddleware<TrialAccessMiddleware>();
@@ -452,6 +455,7 @@ app.MapHub<GuzellikMerkezi.Api.Realtime.RealtimeHub>(GuzellikMerkezi.Api.Realtim
    .RequireCors(ApiServiceCollectionExtensions.FrontendCorsPolicyName);
 
 app.MapHealthEndpoints();
+app.MapConnectorEndpoints();
 app.MapAuthEndpoints();
 app.MapTenantEndpoints();
 app.MapBranchEndpoints();

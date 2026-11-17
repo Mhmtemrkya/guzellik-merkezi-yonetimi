@@ -1174,6 +1174,35 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.ToTable("cash_register_closings", (string)null);
                 });
 
+            modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.ConnectorNonce", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("KeyId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("Nonce")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("KeyId", "Nonce")
+                        .IsUnique();
+
+                    b.ToTable("connector_nonces", (string)null);
+                });
+
             modelBuilder.Entity("GuzellikMerkezi.Domain.Entities.ConsentFormTemplate", b =>
                 {
                     b.Property<Guid>("Id")
