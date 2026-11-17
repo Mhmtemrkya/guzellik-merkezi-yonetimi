@@ -1,8 +1,8 @@
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Api.Middleware;
 using GuzellikMerkezi.Application.Common;
+using GuzellikMerkezi.Application.Features.Connector;
 using GuzellikMerkezi.Application.Features.SubscriptionPlans;
-using GuzellikMerkezi.Application.Features.Tenants;
 
 namespace GuzellikMerkezi.Api.Endpoints;
 
@@ -34,12 +34,16 @@ public static class ConnectorEndpoints
         g.MapGet("/plans", async (ISubscriptionPlanService plans, HttpContext http, CancellationToken ct) =>
             (await plans.ListAsync(ct)).ToHttpResult(http)).Scope("plans.read");
 
-        g.MapGet("/tenants", async (int? page, int? pageSize, string? search, ITenantService tenants, HttpContext http, CancellationToken ct) =>
-            (await tenants.ListAsync(new PageRequest(page ?? 1, Math.Clamp(pageSize ?? 100, 1, 200), search), ct)).ToHttpResult(http))
+        // Kurumlar sözleşmeye özel, kişisel veri taşımayan görünümle gelir (bkz. ConnectorTenantDto).
+        g.MapGet("/tenants", async (int? page, int? pageSize, IConnectorQueries queries, HttpContext http, CancellationToken ct) =>
+            Result<PagedResult<ConnectorTenantDto>>.Success(await queries.ListTenantsAsync(page ?? 1, pageSize ?? 100, ct)).ToHttpResult(http))
             .Scope("tenants.read");
 
-        g.MapGet("/tenants/{id:guid}", async (Guid id, ITenantService tenants, HttpContext http, CancellationToken ct) =>
-            (await tenants.GetAsync(id, ct)).ToHttpResult(http)).Scope("tenants.read");
+        g.MapGet("/tenants/{id:guid}", async (Guid id, IConnectorQueries queries, CancellationToken ct) =>
+            await queries.GetTenantAsync(id, ct) is { } tenant
+                ? Results.Ok(new { success = true, data = tenant })
+                : Results.NotFound(new { success = false, error = new { code = "tenant.not-found", message = "Kurum bulunamadı." } }))
+            .Scope("tenants.read");
 
         return app;
     }
