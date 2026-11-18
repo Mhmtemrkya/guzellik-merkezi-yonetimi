@@ -8,3 +8,26 @@ public sealed record BranchDto(Guid Id, Guid TenantId, string Name, string City,
 /// Güncellemede (PUT) yok sayılır.
 /// </param>
 public sealed record UpsertBranchRequest(string Name, string City, bool IsDefault, decimal? ConfirmedChargeTRY = null);
+
+/// <summary>
+/// Şube silinmeden önce (18 Kas 2026): şubenin kayıtları (silinmez, seçilen şubeye aktarılır) ve paket tutarına etkisi.
+/// <paramref name="Blocker"/> doluysa silinemez (varsayılan ya da tek şube).
+/// </summary>
+public sealed record BranchDeletePreviewDto(
+    Guid Id,
+    string Name,
+    bool CanDelete,
+    string? Blocker,
+    int Customers,
+    int Staff,
+    int Users,
+    int Appointments,
+    int UpcomingAppointments,
+    int Sales,
+    GuzellikMerkezi.Application.Features.Billing.BranchImpactDto? Impact);
+
+/// <summary>Şube silme: kayıtların aktarılacağı şube (aynı kurumun silinmeyen başka bir şubesi).</summary>
+public sealed record DeleteBranchRequest(Guid TargetBranchId);
+
+/// <summary>Silinen şube, kayıtların aktarıldığı şube ve aktarılan satır sayısı.</summary>
+public sealed record BranchDeleteResultDto(Guid DeletedBranchId, Guid TargetBranchId, int MovedRecords);

@@ -3,6 +3,7 @@ using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Billing;
 using GuzellikMerkezi.Application.Features.Branches;
 using GuzellikMerkezi.Application.Features.Usage;
+using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,13 +15,15 @@ public sealed class BranchService : IBranchService
     private readonly IUsageService _usage;
     private readonly IBillingService _billing;
     private readonly ICurrentUser _currentUser;
+    private readonly IAuditLogger _audit;
 
-    public BranchService(GuzellikDbContext db, IUsageService usage, IBillingService billing, ICurrentUser currentUser)
+    public BranchService(GuzellikDbContext db, IUsageService usage, IBillingService billing, ICurrentUser currentUser, IAuditLogger audit)
     {
         _db = db;
         _usage = usage;
         _billing = billing;
         _currentUser = currentUser;
+        _audit = audit;
     }
 
     public async Task<Result<IReadOnlyCollection<BranchDto>>> ListAsync(Guid tenantId, CancellationToken cancellationToken = default)
@@ -105,6 +108,58 @@ public sealed class BranchService : IBranchService
         await _db.SaveChangesAsync(cancellationToken);
         return Result<BranchDto>.Success(branch.ToDto(staffCount: 0));
     }
+
+    public async Task<Result<BranchDeletePreviewDto>> DeletePreviewAsync(Guid tenantId, Guid id, CancellationToken cancellationToken = default)
+    {
+        var branches = await _db.Branches.AsNoTracking().Where(x => x.TenantId == tenantId).ToListAsync(cancellationToken);
+        if (branches.FirstOrDefault(x => x.Id == id) is not { } branch) return Result<BranchDeletePreviewDto>.Failure(Error.NotFound("Şube bulunamadı."));
+
+        // Sayımlar şube süzgeci atlanarak yapılır (seçili şube dışındaki şubenin satırları süzgeçte görünmez).
+        var now = DateTime.UtcNow;
+        var customers = await _db.Customers.IgnoreQueryFilters().CountAsync(x => x.BranchId == id && !x.IsDeleted, cancellationToken);
+        var staff = await _db.StaffMembers.IgnoreQueryFilters().CountAsync(x => x.BranchId == id && !x.IsDeleted && x.IsActive, cancellationToken);
+        var users = await _db.TenantUsers.IgnoreQueryFilters().CountAsync(x => x.BranchId == id && !x.IsDeleted, cancellationToken);
+        var appointments = await _db.Appointments.IgnoreQueryFilters().CountAsync(x => x.BranchId == id && !x.IsDeleted, cancellationToken);
+        var upcoming = await _db.Appointments.IgnoreQueryFilters().CountAsync(
+            x => x.BranchId == id && !x.IsDeleted && x.StartUtc >= now && x.Status != AppointmentStatus.Cancelled && x.Status != AppointmentStatus.NoShow, cancellationToken);
+        var sales = await _db.Adisyonlar.IgnoreQueryFilters().CountAsync(x => x.BranchId == id && !x.IsDeleted, cancellationToken);
+        var blocker = DeleteBlocker(branch.IsDefault, branches.Count);
+        return Result<BranchDeletePreviewDto>.Success(new BranchDeletePreviewDto(
+            branch.Id, branch.Name, blocker is null, blocker, customers, staff, users, appointments, upcoming, sales,
+            await _billing.GetBranchRemovalImpactAsync(tenantId, cancellationToken)));
+    }
+
+    /// <summary>
+    /// ŞUBE SİLME (18 Kas 2026). Kayıtlar SİLİNMEZ: bütün tablolarda seçilen şubeye aktarılır (<see cref="BranchMerge"/>),
+    /// şube ardından yumuşak silinir. Paket tutarı silinmemiş şubeleri saydığından sonraki ödemeden itibaren düşer;
+    /// ödenmiş dönem iade edilmez. Aktarım ve silme TEK transaction'dadır.
+    /// </summary>
+    public async Task<Result<BranchDeleteResultDto>> DeleteAsync(Guid tenantId, Guid id, DeleteBranchRequest request, CancellationToken cancellationToken = default)
+    {
+        var branches = await _db.Branches.Where(x => x.TenantId == tenantId).ToListAsync(cancellationToken);
+        if (branches.FirstOrDefault(x => x.Id == id) is not { } branch) return Result<BranchDeleteResultDto>.Failure(Error.NotFound("Şube bulunamadı."));
+        if (DeleteBlocker(branch.IsDefault, branches.Count) is { } blocker) return Result<BranchDeleteResultDto>.Failure(Error.Conflict(blocker));
+        if (branches.FirstOrDefault(x => x.Id == request.TargetBranchId && x.Id != id) is not { } target)
+        {
+            return Result<BranchDeleteResultDto>.Failure(Error.Validation("Kayıtların aktarılacağı şubeyi seçin: kurumunuzun silinmeyecek başka bir şubesi."));
+        }
+
+        await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync(cancellationToken) : null;
+        var moved = await BranchMerge.MoveAsync(_db, id, target.Id, cancellationToken);
+        branch.SoftDelete(DateTime.UtcNow, _currentUser.UserId);
+        await _db.SaveChangesAsync(cancellationToken);
+        if (tx is not null) await tx.CommitAsync(cancellationToken);
+
+        await _audit.LogAsync(tenantId, null, "BranchDeleted", "Branch", id,
+            $"Şube silindi: {branch.Name}. {moved} kayıt {target.Name} şubesine aktarıldı.", new { target = target.Id, moved }, cancellationToken);
+        return Result<BranchDeleteResultDto>.Success(new BranchDeleteResultDto(id, target.Id, moved));
+    }
+
+    /// <summary>Silmeyi engelleyen durum: varsayılan şube ya da kurumun tek şubesi.</summary>
+    private static string? DeleteBlocker(bool isDefault, int branchCount) =>
+        branchCount <= 1 ? "Kurumun tek şubesi silinemez."
+        : isDefault ? "Varsayılan şube silinemez. Önce başka bir şubeyi varsayılan yapın."
+        : null;
 
     public async Task<Result<BranchDto>> UpdateAsync(Guid tenantId, Guid id, UpsertBranchRequest request, CancellationToken cancellationToken = default)
     {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/platform/store_policy.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/json_helpers.dart';
 import '../appointments/calendar_theme.dart';
@@ -481,6 +482,203 @@ class _SheetFrame extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Şube silinince paket tutarı (web `lib/branchRemoval.ts` paritesi). Tutarlar sunucunun teklifinden: `current`
+/// bugünkü şube sayısıyla, `next` bir eksikle. Yıllık pakette (sunucu bugünkü yıllığı da verdiyse) yıllık, öteki
+/// durumlarda aylık. Şube başına olmayan pakette etki yok (null).
+class BranchRemovalView {
+  const BranchRemovalView({required this.headline, required this.current, required this.next, required this.branchesAfter, required this.note});
+
+  final String headline;
+  final double current;
+  final double next;
+  final int branchesAfter;
+  final String note;
+
+  static BranchRemovalView? from(Map<String, dynamic>? impact) {
+    if (impact == null) return null;
+    double total(dynamic quote) => quote is Map ? numberOf(quote.cast<String, dynamic>(), const ['total']).toDouble() : 0;
+    final trial = impact['trial'] == true;
+    final branches = numberOf(impact, const ['branches']).toInt();
+    final yearly = impact['period'] == 'yearly' && impact['currentYearly'] is Map;
+    return BranchRemovalView(
+      headline: trial
+          ? 'Deneme süresince ücret alınmaz. Paket satın aldığınızda aylık ücretiniz'
+          : yearly
+              ? 'Sonraki ödemenizden itibaren yıllık ücretiniz'
+              : 'Sonraki ödemenizden itibaren aylık ücretiniz',
+      current: total(yearly ? impact['currentYearly'] : impact['currentMonthly']),
+      next: total(yearly ? impact['nextYearly'] : impact['nextMonthly']),
+      branchesAfter: branches > 1 ? branches - 1 : 1,
+      note: trial ? 'Silinen şube ilk ödemenizde hesaba katılmaz.' : 'Ödenmiş dönem için iade yapılmaz; yeni tutar bir sonraki ödemenizde geçerli olur.',
+    );
+  }
+}
+
+/// ŞUBE SİLME (web `BranchDeleteModal` paritesi, 18 Kas 2026). Kayıtlar SİLİNMEZ: şubenin müşteri, personel,
+/// kullanıcı, randevu, satış ve diğer kayıtları seçilen şubeye aktarılır; şube ardından kaldırılır. Paket tutarı
+/// sonraki ödemeden itibaren bir şube eksik hesaplanır. iOS (App Store 3.1.1): fiyat gösterilmez. Silindiyse true.
+Future<bool> showBranchDeleteSheet(BuildContext context, ApiClient api, Map<String, dynamic> branch, List<Map<String, dynamic>> branches) async {
+  final result = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _BranchDeleteSheet(api: api, branch: branch, branches: branches),
+  );
+  return result == true;
+}
+
+class _BranchDeleteSheet extends StatefulWidget {
+  const _BranchDeleteSheet({required this.api, required this.branch, required this.branches});
+  final ApiClient api;
+  final Map<String, dynamic> branch;
+  final List<Map<String, dynamic>> branches;
+
+  @override
+  State<_BranchDeleteSheet> createState() => _BranchDeleteSheetState();
+}
+
+class _BranchDeleteSheetState extends State<_BranchDeleteSheet> {
+  Map<String, dynamic>? _preview;
+  bool _loading = true;
+  bool _busy = false;
+  bool _ack = false;
+  String? _target;
+  String? _error;
+
+  String get _id => '${widget.branch['id']}';
+
+  List<Map<String, dynamic>> get _targets => widget.branches.where((b) => '${b['id']}' != _id).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    final targets = _targets;
+    final preferred = targets.where((b) => b['isDefault'] == true).toList();
+    final fallback = preferred.isNotEmpty ? preferred.first : (targets.isNotEmpty ? targets.first : null);
+    _target = fallback == null ? null : '${fallback['id']}';
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await widget.api.get('/api/admin/branches/$_id/delete-preview');
+      if (!mounted) return;
+      setState(() {
+        _preview = data is Map ? data.cast<String, dynamic>() : null;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e is ApiException ? e.message : 'Şube bilgisi alınamadı.';
+      });
+    }
+  }
+
+  Future<void> _delete() async {
+    final target = _target;
+    if (_busy || target == null || !_ack) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.api.delete('/api/admin/branches/$_id?targetBranchId=${Uri.encodeQueryComponent(target)}');
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e is ApiException ? e.message : 'Şube silinemedi.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = '${widget.branch['name'] ?? 'Şube'}';
+    final preview = _preview;
+    final blocker = preview == null ? null : preview['blocker'] as String?;
+    final impact = preview?['impact'];
+    final removal = BranchRemovalView.from(impact is Map ? impact.cast<String, dynamic>() : null);
+    final chosen = _targets.where((b) => '${b['id']}' == _target).toList();
+    final targetName = chosen.isEmpty ? '' : '${chosen.first['name']}';
+    int count(String key) => preview == null ? 0 : numberOf(preview, [key]).toInt();
+
+    return _SheetFrame(
+      title: '$name şubesini sil',
+      subtitle: 'Kayıtlar silinmez; seçtiğiniz şubeye aktarılır.',
+      icon: Icons.delete_outline_rounded,
+      actions: [
+        TextButton(onPressed: _busy ? null : () => Navigator.of(context).pop(false), child: const Text('Vazgeç')),
+        if (preview != null && blocker == null)
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: _busy || !_ack || _target == null ? null : _delete,
+            icon: _busy
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.delete_outline_rounded),
+            label: const Text('Şubeyi sil'),
+          ),
+      ],
+      children: [
+        if (_loading)
+          const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: CircularProgressIndicator()))
+        else if (preview == null)
+          Text(_error ?? 'Şube bilgisi alınamadı.', style: const TextStyle(color: AppColors.muted))
+        else if (blocker != null)
+          _Well(children: [Text(blocker, style: const TextStyle(fontWeight: FontWeight.w600))])
+        else ...[
+          const Text('Aktarılacak kayıtlar', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          _Well(children: [
+            Text('Müşteri: ${count('customers')} · Aktif personel: ${count('staff')} · Kullanıcı: ${count('users')}'),
+            const SizedBox(height: 4),
+            Text('Randevu: ${count('appointments')} (${count('upcomingAppointments')} yaklaşan) · Adisyon: ${count('sales')}'),
+            const SizedBox(height: 6),
+            const Text('Kasa, cari, ürün ve geçmiş kayıtlar dahil hiçbir kayıt silinmez.', style: TextStyle(color: AppColors.muted, fontSize: 12)),
+          ]),
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            initialValue: _target,
+            decoration: const InputDecoration(labelText: 'Kayıtların aktarılacağı şube'),
+            items: [
+              for (final b in _targets)
+                DropdownMenuItem(value: '${b['id']}', child: Text('${b['name']}${b['isDefault'] == true ? ' (varsayılan)' : ''}')),
+            ],
+            onChanged: _busy ? null : (value) => setState(() => _target = value),
+          ),
+          if (!StorePolicy.hidesPurchaseFlows) ...[
+            const SizedBox(height: 14),
+            _Well(children: [
+              const Text('Ücretinize etkisi', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.success)),
+              const SizedBox(height: 6),
+              if (removal == null)
+                const Text('Paketiniz şube başına ücretlendirilmiyor; şube silmek ücretinizi değiştirmez.')
+              else ...[
+                Text('${removal.headline} ${CalendarText.tl(removal.current)} → ${CalendarText.tl(removal.next)} (KDV dahil, ${removal.branchesAfter} şube)'),
+                const SizedBox(height: 4),
+                Text(removal.note, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+              ],
+            ]),
+          ],
+          const SizedBox(height: 10),
+          CheckboxListTile(
+            value: _ack,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            onChanged: _busy ? null : (value) => setState(() => _ack = value == true),
+            title: Text('$name şubesinin silineceğini ve bütün kayıtlarının $targetName şubesine aktarılacağını anladım.', style: const TextStyle(fontSize: 13)),
+          ),
+          if (_error != null) Text(_error!, style: const TextStyle(color: AppColors.danger)),
+        ],
+      ],
     );
   }
 }

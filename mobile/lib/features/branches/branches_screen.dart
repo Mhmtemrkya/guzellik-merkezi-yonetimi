@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/idempotency.dart';
 import '../../core/platform/store_policy.dart';
+import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
 import 'branch_fee.dart';
@@ -129,8 +130,21 @@ class BranchesScreen extends StatelessWidget {
       onCreate: (body) => createBranchWithCharge(context, api, body),
       onUpdate: (item, body) =>
           api.put('/api/admin/branches/${item['id']}', body),
-      // Şube silme ucu backend'de yok (randevu/personel/cari şubeye bağlı) — buton gösterilmiyor.
+      // ŞUBE SİLME (18 Kas 2026): genel "sil" yerine önizlemeli pencere — kayıtlar seçilen şubeye aktarılır,
+      // ücret etkisi gösterilir (iOS'ta fiyat yok). Toplu silme kapalı.
       canDelete: false,
+      rowActions: [
+        CrudRowAction(
+          label: 'Şubeyi sil',
+          icon: Icons.delete_outline_rounded,
+          color: AppColors.danger,
+          run: (context, item) async {
+            final branches = apiItems(await api.get('/api/admin/branches/'));
+            if (!context.mounted) return false;
+            return showBranchDeleteSheet(context, api, item, branches);
+          },
+        ),
+      ],
     );
   }
 }

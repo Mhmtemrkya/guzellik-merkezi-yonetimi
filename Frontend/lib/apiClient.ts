@@ -980,6 +980,12 @@ export const adminApi = {
     }),
   updateBranch: <T = unknown>(id: string, body: AdminPayload, tenantId?: string): Promise<T> =>
     apiRequest<T>(`/api/admin/branches/${id}`, { method: 'PUT', query: { tenantId }, body }),
+  /** Şube silme önizlemesi: aktarılacak kayıtlar + yeni paket tutarı (18 Kas 2026). */
+  branchDeletePreview: <T = unknown>(id: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/branches/${id}/delete-preview`, { query: { tenantId } }),
+  /** Şubeyi siler; kayıtları silinmez, hedef şubeye aktarılır. */
+  deleteBranch: <T = unknown>(id: string, targetBranchId: string, tenantId?: string): Promise<T> =>
+    apiRequest<T>(`/api/admin/branches/${id}`, { method: 'DELETE', query: { tenantId, targetBranchId } }),
 
   /** Kullanım kılavuzu sıfırlama zamanı — PageGuide yerel "görüldü" kayıtlarıyla karşılaştırır. */
   tenantGuideReset: <T = unknown>(tenantId?: string): Promise<T> =>

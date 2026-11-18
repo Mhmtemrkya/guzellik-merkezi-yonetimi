@@ -46,7 +46,7 @@ public sealed class PerBranchBillingMySqlTests
             new TestCurrentUser(UserRole.InstitutionOwner), NullLogger<BillingService>.Instance);
 
     private static BranchService NewBranches(GuzellikDbContext db, IPaymentGateway gateway) =>
-        new(db, new AlwaysAllowUsageService(), NewBilling(db, gateway), new TestCurrentUser(UserRole.InstitutionOwner));
+        new(db, new AlwaysAllowUsageService(), NewBilling(db, gateway), new TestCurrentUser(UserRole.InstitutionOwner), new NoopAuditLogger());
 
     /// <summary>
     /// ASIL İDDİA: aynı anda gelen iki onaylı şube isteği (iki sekme / çift tık) kartı YALNIZ BİR KEZ

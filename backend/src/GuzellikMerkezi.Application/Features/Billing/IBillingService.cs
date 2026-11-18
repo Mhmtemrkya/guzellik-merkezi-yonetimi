@@ -50,6 +50,9 @@ public interface IBillingService
     /// <summary>Yeni şube açılırsa bugün ne çekilir? Ücretsizse (deneme / şube başı olmayan paket) <c>ChargeRequired=false</c>.</summary>
     Task<Result<BranchChargeQuoteDto>> GetBranchChargeQuoteAsync(Guid tenantId, CancellationToken ct = default);
 
+    /// <summary>Bir şube silinince paket tutarı (şube başına olmayan pakette boş). Ödenmiş dönem iade edilmez; yeni tutar sonraki ödemede.</summary>
+    Task<BranchImpactDto?> GetBranchRemovalImpactAsync(Guid tenantId, CancellationToken ct = default);
+
     /// <summary>
     /// ÜCRETLİ ŞUBE AÇMA — orantılı ücret iki yoldan biriyle HEMEN işlenir:
     /// <list type="bullet">
@@ -167,7 +170,8 @@ public sealed record BranchImpactDto(
     Domain.Billing.SubscriptionQuote CurrentMonthly,
     Domain.Billing.SubscriptionQuote NextMonthly,
     Domain.Billing.SubscriptionQuote NextYearly,
-    string? Period);
+    string? Period,
+    Domain.Billing.SubscriptionQuote? CurrentYearly = null);
 
 /// <summary>Dönem ortası şube ücretinin işlenme yolu (<see cref="BranchChargeQuoteDto.ChargeMethod"/>).</summary>
 public static class BranchChargeMethods

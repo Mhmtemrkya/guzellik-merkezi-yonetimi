@@ -42,6 +42,22 @@ public static class BranchEndpoints
             return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.UpdateAsync(resolvedTenantId, id, request, ct)).ToHttpResult(http);
         }).ValidatesRequest<UpsertBranchRequest>().RequireRolePermission(Permission.BranchWrite);
 
+        // ŞUBE SİLME (18 Kas 2026): önce önizleme (aktarılacak kayıtlar + yeni paket tutarı), sonra silme.
+        // Kayıtlar silinmez, seçilen şubeye aktarılır; yetki şube açmakla aynı (BranchWrite).
+        group.MapGet("/{id:guid}/delete-preview", async (Guid id, Guid? tenantId, ICurrentUser currentUser, IBranchService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await service.DeletePreviewAsync(resolvedTenantId, id, ct)).ToHttpResult(http);
+        }).RequireRolePermission(Permission.BranchWrite);
+
+        group.MapDelete("/{id:guid}", async (Guid id, Guid targetBranchId, Guid? tenantId, ICurrentUser currentUser, IBranchService service, HttpContext http, CancellationToken ct) =>
+        {
+            var resolvedTenantId = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
+            return resolvedTenantId == Guid.Empty
+                ? EndpointHelpers.MissingTenant(http)
+                : (await service.DeleteAsync(resolvedTenantId, id, new DeleteBranchRequest(targetBranchId), ct)).ToHttpResult(http);
+        }).RequireRolePermission(Permission.BranchWrite);
+
         return app;
     }
 }

@@ -710,7 +710,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
     {
         var resolved = await ResolveTopUpAsync(request, ct);
         if (resolved.IsFailure) return Result<CreditPurchaseDto>.Failure(resolved.Error);
-        var (price, grants, name, packageId, channel) = resolved.Value;
+        var (price, grants, name, packageId, channel) = resolved.Value!;
 
         var purchase = new WhatsAppCreditPurchase(tenantId, packageId, name, price, grants, requestedByUserId, channel);
         _db.WhatsAppCreditPurchases.Add(purchase);
@@ -762,7 +762,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
 
         var resolved = await ResolveTopUpAsync(request, ct);
         if (resolved.IsFailure) return Result<CheckoutStartedDto>.Failure(resolved.Error);
-        var (price, grants, name, packageId, channel) = resolved.Value;
+        var (price, grants, name, packageId, channel) = resolved.Value!;
 
         if (price <= 0)
         {

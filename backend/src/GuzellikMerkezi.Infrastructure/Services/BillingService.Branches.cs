@@ -60,13 +60,23 @@ public sealed partial class BillingService
             InvoicePayOnline: gateway.IsSuccess && gateway.Value!.Gateway is Payments.MaydanozPaymentGateway));
     }
 
-    /// <summary>Bir şube daha eklenince paket tutarı (deneme dahil). Şube başına olmayan pakette null.</summary>
-    private async Task<BranchImpactDto?> BranchImpactAsync(Tenant tenant, CancellationToken ct)
+    public async Task<BranchImpactDto?> GetBranchRemovalImpactAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var tenant = await _db.Tenants.IgnoreQueryFilters().AsNoTracking().Include(t => t.SubscriptionPlan)
+            .FirstOrDefaultAsync(t => t.Id == tenantId && !t.IsDeleted, ct);
+        return tenant is null ? null : await BranchImpactAsync(tenant, ct, delta: -1);
+    }
+
+    /// <summary>
+    /// Şube sayısı <paramref name="delta"/> kadar değişince paket tutarı (deneme dahil): +1 şube ekleme, −1 silme.
+    /// Şube başına olmayan pakette null.
+    /// </summary>
+    private async Task<BranchImpactDto?> BranchImpactAsync(Tenant tenant, CancellationToken ct, int delta = 1)
     {
         var plan = tenant.SubscriptionPlan;
         if (plan is null || !plan.ChargePerBranch) return null;
         var counts = await BillingCountsQuery.CountAsync(_db, tenant.Id, ct);
-        var next = counts with { Branches = counts.Branches + 1 };
+        var next = counts with { Branches = Math.Max(1, counts.Branches + delta) };
         var current = SubscriptionPricing.Quote(plan, BillingPeriod.Monthly, counts);
         return new BranchImpactDto(
             plan.Name,
@@ -78,7 +88,8 @@ public sealed partial class BillingService
             current,
             SubscriptionPricing.Quote(plan, BillingPeriod.Monthly, next),
             SubscriptionPricing.Quote(plan, BillingPeriod.Yearly, next),
-            tenant.SubscriptionPeriod switch { BillingPeriod.Yearly => "yearly", BillingPeriod.Monthly => "monthly", _ => null });
+            tenant.SubscriptionPeriod switch { BillingPeriod.Yearly => "yearly", BillingPeriod.Monthly => "monthly", _ => null },
+            SubscriptionPricing.Quote(plan, BillingPeriod.Yearly, counts));
     }
 
     /// <summary>

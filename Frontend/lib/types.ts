@@ -514,6 +514,23 @@ export interface BranchImpact {
   nextMonthly: SubscriptionQuote
   nextYearly: SubscriptionQuote
   period?: 'monthly' | 'yearly' | null
+  /** Bugünkü şube sayısıyla yıllık teklif (şube silme penceresi; eski sunucuda yok). */
+  currentYearly?: SubscriptionQuote | null
+}
+
+/** Şube silme önizlemesi: aktarılacak kayıtlar (silinmez) ve paket tutarına etkisi; blocker doluysa silinemez. */
+export interface BranchDeletePreview {
+  id: string
+  name: string
+  canDelete: boolean
+  blocker?: string | null
+  customers: number
+  staff: number
+  users: number
+  appointments: number
+  upcomingAppointments: number
+  sales: number
+  impact?: BranchImpact | null
 }
 
 /**

@@ -45,7 +45,7 @@ public sealed class PerBranchBillingTests
 
     private static BranchService NewBranches(GuzellikDbContext db, ScriptedGateway gateway, UserRole role = UserRole.InstitutionOwner,
         bool paymentsOn = true) =>
-        new(db, new AlwaysAllowUsageService(), NewBilling(db, gateway, role, paymentsOn), new TestCurrentUser(role));
+        new(db, new AlwaysAllowUsageService(), NewBilling(db, gateway, role, paymentsOn), new TestCurrentUser(role), new NoopAuditLogger());
 
     private sealed record Seed(Guid TenantId, Guid PlanId);
 

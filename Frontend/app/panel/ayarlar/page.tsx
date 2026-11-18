@@ -6,6 +6,7 @@ import { useAuth } from '@/components/dashboard/AuthContext'
 import Topbar from '@/components/dashboard/Topbar'
 import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
 import BranchCreateModal from '@/components/dashboard/BranchCreateModal'
+import BranchDeleteModal from '@/components/dashboard/BranchDeleteModal'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import WhatsAppSettingsCard from '@/components/dashboard/WhatsAppSettingsCard'
 import WhatsAppWalletCard from '@/components/dashboard/WhatsAppWalletCard'
@@ -27,7 +28,7 @@ import { motion } from 'framer-motion'
 import {
   AlertTriangle, ArrowRight, ArrowUpRight, Banknote, Building2, Calendar, CalendarClock, ClipboardList,
   CreditCard, FileText, Landmark, Layers3, Mail, MapPin, MessageSquare, Package, PenLine,
-  Percent, Phone as PhoneIcon, Plus, Receipt, ShoppingBag, Sparkles, Star, Tag, TrendingUp, Users, UsersRound, Wallet, Zap,
+  Percent, Phone as PhoneIcon, Plus, Receipt, ShoppingBag, Sparkles, Star, Tag, Trash2, TrendingUp, Users, UsersRound, Wallet, Zap,
 } from 'lucide-react'
 import type {
   ApiAdisyon, ApiAuditLog, ApiBranch, ApiCustomerAccount, ApiAppointment, ApiService, ApiServicePackage,
@@ -68,7 +69,7 @@ interface AyarlarData {
 }
 
 export default function AyarlarPage() {
-  const { selectedInstitutionId, selectedInstitution, refreshBranches } = useBranch()
+  const { selectedInstitutionId, selectedInstitution, refreshBranches, selectedBranchId, setBranch } = useBranch()
   const canMultiBranch = useFeature('multiBranch')
   const tenantId = guidOrUndefined(selectedInstitutionId)
 
@@ -531,7 +532,26 @@ export default function AyarlarPage() {
                   <div className="mt-1 text-[10px] font-mono uppercase tracking-widest text-[#74616A]"><MapPin className="mr-1 inline h-3 w-3" />{b.city}</div>
                 </div>
                 <div className="md:col-span-4 text-[11px] font-mono text-[#5A4B53]"><UsersRound className="mr-1 inline h-3 w-3" /> {b.staffCount} personel</div>
-                <div className="md:col-span-3 flex justify-end">
+                <div className="md:col-span-3 flex items-center justify-end gap-1">
+                  {branches.length > 1 && (
+                    <BranchDeleteModal
+                      branch={b}
+                      branches={branches}
+                      tenantId={tenantId}
+                      onDeleted={async (targetId) => {
+                        // Seçili şube silindiyse kayıtların aktarıldığı şubeye geçilir.
+                        if (selectedBranchId === b.id) setBranch(targetId)
+                        await reload()
+                        refreshBranches()
+                      }}
+                      trigger={(open) => (
+                        <button type="button" onClick={open} title="Şubeyi sil"
+                          className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] font-semibold text-rose-600 transition hover:bg-rose-50">
+                          <Trash2 className="h-3.5 w-3.5" /> Sil
+                        </button>
+                      )}
+                    />
+                  )}
                   <AdminEditDialog
                     triggerVariant="ghost" triggerLabel="Düzenle" titleIcon={PenLine} title={`${b.name} · şube ayarı`}
                     description="Şubenin adı, lokasyonu ve varsayılan şube durumu. Personel sayısı şubeye kayıtlı personelden otomatik hesaplanır." submitLabel="Şubeyi güncelle"
