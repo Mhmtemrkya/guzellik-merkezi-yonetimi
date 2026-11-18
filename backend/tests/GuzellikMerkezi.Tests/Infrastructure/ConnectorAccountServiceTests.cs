@@ -2,6 +2,7 @@ using GuzellikMerkezi.Api.Services;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Billing;
 using GuzellikMerkezi.Application.Features.PlatformMessaging;
+using GuzellikMerkezi.Application.Features.WhatsApp;
 using GuzellikMerkezi.Domain.Billing;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
@@ -32,6 +33,8 @@ public sealed class ConnectorAccountServiceTests
 
     private readonly IBillingService _billing = Substitute.For<IBillingService>();
 
+    private readonly IWhatsAppBillingService _credits = Substitute.For<IWhatsAppBillingService>();
+
     private readonly GuzellikMerkezi.Infrastructure.Services.MemoryOtpStateStore _store = new(new MemoryCache(new MemoryCacheOptions()));
 
     public ConnectorAccountServiceTests()
@@ -54,7 +57,7 @@ public sealed class ConnectorAccountServiceTests
         var env = Substitute.For<IHostEnvironment>();
         env.EnvironmentName.Returns("Production");
         return new ConnectorAccountService(db, new PlainPasswordHasher(), _store, _messaging, _billing, new FixedClock(Now), env,
-            NullLogger<ConnectorAccountService>.Instance);
+            NullLogger<ConnectorAccountService>.Instance, _credits);
     }
 
     private async Task<Tenant> SeedAsync(string name, string email = "sahip@ornek.com", string password = "Parola123!", Action<Tenant>? shape = null)
@@ -177,6 +180,62 @@ public sealed class ConnectorAccountServiceTests
         Assert.Equal(new ConnectorPriceDto(100000, 20000, 120000, 2), account.Monthly);
         Assert.Null(account.Yearly);
         Assert.Equal("NotFound", (await NewService(db).AccountAsync(Guid.NewGuid(), default)).Error.Code);
+    }
+
+    [Fact]
+    public async Task Credits_ShowEachChannelsBalancePriceAndPackages()
+    {
+        var tenant = await SeedAsync("Güzel Salon");
+        await using var db = NewDb();
+        var service = NewService(db);
+        CreditPackageDto Package(string name, CreditChannel channel, bool active = true) =>
+            new(Guid.NewGuid(), name, null, 300m, 1000m, 1, active, 1000, channel);
+        var wallet = new MessagingWalletDto(
+            tenant.Id, 30m, 0m, 30m, 30m, 0m, 50m, false, 0, 500, 0, 0, 0, 0, 0m, null, false, false, 1m, 6m, 1m, 30, 1000,
+            0.15m, true, [Package("WA 500", CreditChannel.WhatsApp), Package("SMS 1000", CreditChannel.Sms), Package("Eski SMS", CreditChannel.Sms, active: false)],
+            PayOnMaydanoz: true, SmsBalanceCredits: 1000m, SmsAvailableCredits: 1000m, SmsCreditUnitPriceTry: 0.40m);
+        _credits.GetWalletAsync(tenant.Id, Arg.Any<CancellationToken>()).Returns(Result<MessagingWalletDto>.Success(wallet));
+
+        var credits = (await service.CreditsAsync(tenant.Id, default)).Value!;
+        Assert.Equal((30m, 15L, "WA 500"), (credits.WhatsApp.Available, credits.WhatsApp.UnitPriceKurus, Assert.Single(credits.WhatsApp.Packages).Name));
+        Assert.Equal((1000m, 40L, "SMS 1000", 30000L), (credits.Sms.Available, credits.Sms.UnitPriceKurus, Assert.Single(credits.Sms.Packages).Name, credits.Sms.Packages[0].PriceKurus));
+        Assert.Equal("NotFound", (await service.CreditsAsync(Guid.NewGuid(), default)).Error.Code);
+        _credits.GetWalletAsync(tenant.Id, Arg.Any<CancellationToken>()).Returns(Result<MessagingWalletDto>.Failure(Error.Conflict("olmaz")));
+        Assert.Equal("Conflict", (await service.CreditsAsync(tenant.Id, default)).Error.Code);
+    }
+
+    [Fact]
+    public async Task CreditCheckout_StartsTheMaydanozPayment_OnTheChosenChannel()
+    {
+        var tenant = await SeedAsync("Güzel Salon");
+        var suspended = await SeedAsync("Kapalı Salon", email: "k@ornek.com", shape: t => t.Suspend());
+        await using var db = NewDb();
+        var service = NewService(db);
+        const string back = "https://maydanozasist.com/hesabim?odeme=kredi";
+        _credits.StartCreditCheckoutAsync(tenant.Id, Arg.Is<TopUpRequest>(r => r.Channel == CreditChannel.Sms && r.Credits == 500), back, null, Arg.Any<CancellationToken>())
+            .Returns(Result<CheckoutStartedDto>.Success(new CheckoutStartedDto(new string('c', 32), null, "https://maydanozasist.com/odeme/asist/beauty/" + new string('c', 32), 200m)));
+
+        var started = await service.CreditCheckoutAsync(tenant.Id, new ConnectorAccountCreditCheckoutRequest("Sms", null, 500, back), default);
+        Assert.Equal((new string('c', 32), 20000L), (started.Value!.Reference, started.Value.AmountKurus));
+
+        foreach (var bad in new ConnectorAccountCreditCheckoutRequest[]
+                 {
+                     new("fax", null, 500, back), new(null, null, 500, back), new("sms", null, null, back), new("sms", null, 0, back),
+                     new("sms", null, 5, "http://maydanozasist.com"), new("sms", null, 5, "kötü"), new("sms", null, 5, "https://u:p@maydanozasist.com"),
+                 })
+        {
+            Assert.Equal("Validation", (await service.CreditCheckoutAsync(tenant.Id, bad, default)).Error.Code);
+        }
+        Assert.Equal("NotFound", (await service.CreditCheckoutAsync(suspended.Id, new("whatsapp", Guid.NewGuid(), null, back), default)).Error.Code);
+        Assert.Equal("NotFound", (await service.CreditCheckoutAsync(Guid.NewGuid(), new("whatsapp", Guid.NewGuid(), null, back), default)).Error.Code);
+
+        var package = Guid.NewGuid();
+        _credits.StartCreditCheckoutAsync(tenant.Id, Arg.Is<TopUpRequest>(r => r.CreditPackageId == package && r.Channel == CreditChannel.WhatsApp), back, null, Arg.Any<CancellationToken>())
+            .Returns(Result<CheckoutStartedDto>.Success(new CheckoutStartedDto("tok", "<form/>", null, 75m)));
+        Assert.Equal("Conflict", (await service.CreditCheckoutAsync(tenant.Id, new("WhatsApp", package, null, back), default)).Error.Code);
+        _credits.StartCreditCheckoutAsync(tenant.Id, Arg.Is<TopUpRequest>(r => r.CreditPackageId == package), back, null, Arg.Any<CancellationToken>())
+            .Returns(Result<CheckoutStartedDto>.Failure(Error.Validation("Bu paket SMS kredisi paketi.")));
+        Assert.Equal("Validation", (await service.CreditCheckoutAsync(tenant.Id, new("WhatsApp", package, null, back), default)).Error.Code);
     }
 
     [Fact]

@@ -108,6 +108,13 @@ public static class ConnectorEndpoints
         accounts.MapPost("/{tenantId:guid}/checkout", async (Guid tenantId, ConnectorAccountCheckoutRequest request, ConnectorAccountService service, HttpContext http, CancellationToken ct) =>
             (await service.CheckoutAsync(tenantId, request, ct)).ToHttpResult(http))
             .Scope("checkouts.write");
+        // MESAJ KREDİSİ (18 Kas 2026): SMS ve WhatsApp kredisi ayrı; Hesabım'da bakiye + paketler, satın alma Maydanoz'da.
+        accounts.MapGet("/{tenantId:guid}/credits", async (Guid tenantId, ConnectorAccountService service, HttpContext http, CancellationToken ct) =>
+            (await service.CreditsAsync(tenantId, ct)).ToHttpResult(http))
+            .Scope("tenants.read");
+        accounts.MapPost("/{tenantId:guid}/credit-checkout", async (Guid tenantId, ConnectorAccountCreditCheckoutRequest request, ConnectorAccountService service, HttpContext http, CancellationToken ct) =>
+            (await service.CreditCheckoutAsync(tenantId, request, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
 
         return app;
     }

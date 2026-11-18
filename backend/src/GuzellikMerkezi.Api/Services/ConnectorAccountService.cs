@@ -3,6 +3,7 @@ using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Billing;
 using GuzellikMerkezi.Application.Features.PlatformMessaging;
+using GuzellikMerkezi.Application.Features.WhatsApp;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
@@ -39,6 +40,18 @@ public sealed record ConnectorAccountDto(
 
 public sealed record ConnectorAccountCheckoutRequest(string? Period, string? ReturnUrl);
 
+/// <summary>Satışta olan kredi paketi (tutar kuruş, KDV dahil).</summary>
+public sealed record ConnectorCreditPackageDto(Guid Id, string Name, string? Description, long PriceKurus, decimal Credits, int EstimatedMessages);
+
+/// <summary>Bir kredi kanalının bakiyesi, paket dışı birim fiyatı (kuruş) ve paketleri.</summary>
+public sealed record ConnectorCreditChannelDto(decimal Available, long UnitPriceKurus, IReadOnlyList<ConnectorCreditPackageDto> Packages);
+
+/// <summary>Hesabım'daki mesaj kredisi: WhatsApp ve SMS kredisi AYRI (18 Kas 2026).</summary>
+public sealed record ConnectorAccountCreditsDto(ConnectorCreditChannelDto WhatsApp, ConnectorCreditChannelDto Sms);
+
+/// <summary>Kredi satın alma: kanal + (paket ya da özel miktar) + Maydanoz'a dönüş adresi.</summary>
+public sealed record ConnectorAccountCreditCheckoutRequest(string? Channel, Guid? PackageId, int? Credits, string? ReturnUrl);
+
 public sealed record ConnectorAccountCheckoutDto(string Reference, string Url, long AmountKurus);
 
 /// <summary>
@@ -58,7 +71,8 @@ public sealed class ConnectorAccountService(
     IBillingService billing,
     IDateTimeProvider clock,
     IHostEnvironment env,
-    ILogger<ConnectorAccountService> logger)
+    ILogger<ConnectorAccountService> logger,
+    IWhatsAppBillingService credits)
 {
     private static readonly TimeSpan ChallengeLifetime = TimeSpan.FromMinutes(10);
     private const int MaxAttempts = 5;
@@ -224,6 +238,59 @@ public sealed class ConnectorAccountService(
 
         return Result<ConnectorAccountCheckoutDto>.Success(new ConnectorAccountCheckoutDto(
             started.Value.CheckoutToken, started.Value.RedirectUrl, (long)decimal.Round(started.Value.AmountTRY * 100m, 0, MidpointRounding.AwayFromZero)));
+    }
+
+    /// <summary>
+    /// HESABIM'DA MESAJ KREDİSİ (kullanıcı kararı 18 Kas 2026: "SMS ayrı, WhatsApp ayrı kredi al kısmı Maydanoz'da da
+    /// olsun"). Bakiye, birim fiyat ve paketler kanal başına; tutarları BeautyAsist hesaplar.
+    /// </summary>
+    public async Task<Result<ConnectorAccountCreditsDto>> CreditsAsync(Guid tenantId, CancellationToken ct)
+    {
+        if (!await db.Tenants.IgnoreQueryFilters().AsNoTracking().AnyAsync(t => t.Id == tenantId, ct))
+            return Result<ConnectorAccountCreditsDto>.Failure(Error.NotFound("Kurum bulunamadı."));
+        var wallet = await credits.GetWalletAsync(tenantId, ct);
+        if (wallet.IsFailure) return Result<ConnectorAccountCreditsDto>.Failure(wallet.Error);
+        var w = wallet.Value!;
+        ConnectorCreditChannelDto Channel(CreditChannel channel, decimal available, decimal unitPrice) => new(
+            available, Kurus(unitPrice),
+            w.CreditPackages.Where(p => p.IsActive && p.Channel == channel)
+                .Select(p => new ConnectorCreditPackageDto(p.Id, p.Name, p.Description, Kurus(p.PriceTry), p.GrantsCredits, p.EstimatedUtilityMessages))
+                .ToList());
+        return Result<ConnectorAccountCreditsDto>.Success(new ConnectorAccountCreditsDto(
+            Channel(CreditChannel.WhatsApp, w.AvailableCredits, w.CreditUnitPriceTry),
+            Channel(CreditChannel.Sms, w.SmsAvailableCredits, w.SmsCreditUnitPriceTry)));
+    }
+
+    /// <summary>Kredi satın alma Maydanoz'da: kayıt BeautyAsist'te açılır, tarayıcı Maydanoz ödeme sayfasına gider.</summary>
+    public async Task<Result<ConnectorAccountCheckoutDto>> CreditCheckoutAsync(Guid tenantId, ConnectorAccountCreditCheckoutRequest request, CancellationToken ct)
+    {
+        var channel = (request.Channel ?? string.Empty).Trim().ToLowerInvariant() switch
+        {
+            "whatsapp" => (CreditChannel?)CreditChannel.WhatsApp,
+            "sms" => CreditChannel.Sms,
+            _ => null,
+        };
+        if (channel is null || (request.PackageId is null && request.Credits is not > 0)
+            || !Uri.TryCreate(request.ReturnUrl?.Trim(), UriKind.Absolute, out var returnUrl)
+            || returnUrl.Scheme != Uri.UriSchemeHttps || request.ReturnUrl!.Trim().Length > 300 || !string.IsNullOrEmpty(returnUrl.UserInfo))
+        {
+            return Result<ConnectorAccountCheckoutDto>.Failure(Error.Validation("Kredi türü, paket / miktar ya da dönüş adresi geçersiz."));
+        }
+
+        var tenant = await db.Tenants.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(t => t.Id == tenantId, ct);
+        if (tenant is null || StatusOf(tenant, clock.UtcNow) is "cancelled" or "suspended")
+            return Result<ConnectorAccountCheckoutDto>.Failure(Error.NotFound("Kurum satın almaya açık değil."));
+
+        var started = await credits.StartCreditCheckoutAsync(tenantId, new TopUpRequest(request.PackageId, request.Credits, channel), returnUrl.AbsoluteUri, null, ct);
+        if (started.IsFailure) return Result<ConnectorAccountCheckoutDto>.Failure(started.Error);
+        if (string.IsNullOrWhiteSpace(started.Value!.RedirectUrl))
+        {
+            logger.LogError("Maydanoz kredi satın alması başlatılamadı: ödeme sağlayıcısı Maydanoz değil.");
+            return Result<ConnectorAccountCheckoutDto>.Failure(Error.Conflict("Ödeme şu an başlatılamıyor. Lütfen daha sonra tekrar deneyin."));
+        }
+
+        return Result<ConnectorAccountCheckoutDto>.Success(new ConnectorAccountCheckoutDto(
+            started.Value.CheckoutToken, started.Value.RedirectUrl, Kurus(started.Value.AmountTRY)));
     }
 
     private async Task<ConnectorPriceDto?> PriceAsync(Guid tenantId, Guid planId, BillingPeriod period, CancellationToken ct)
