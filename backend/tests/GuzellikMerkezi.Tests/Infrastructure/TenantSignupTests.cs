@@ -88,6 +88,7 @@ public sealed class TenantSignupTests
             {
                 ["TenantSignup:TrialPlanKey"] = trialPlanKey,
                 ["TenantSignup:RequirePhoneVerification"] = requirePhoneVerification ? "true" : "false",
+                ["App:PublicBaseUrl"] = "https://beautyasist.example",
             }).Build(),
             NullLogger<TenantSignupService>.Instance);
 
@@ -983,6 +984,8 @@ public sealed class TenantSignupTests
         Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Message : null);
         var id = started.Value!.VerificationId;
         var emailCode = CodeFromEmail(messaging);
+        // Başvuru kodunun e-postasında kayıt bağlantısı yok (yeni sekmede boş form açardı); herkese açık kayıtta var.
+        Assert.DoesNotContain("beautyasist.example/kayit", (string)messaging.ReceivedCalls().Last(c => c.GetMethodInfo().Name == "SendEmailAsync").GetArguments()[2]!);
 
         // Herkese açık uç başvuru taslağını tanımaz.
         Assert.Equal("Unauthorized", (await service.VerifyEmailAsync(new TenantSignupVerifyEmailRequest(id, emailCode))).Error.Code);
@@ -997,6 +1000,7 @@ public sealed class TenantSignupTests
 
         // Bağlayıcı da kayıt taslağını tanımaz; yeniden gönderme başvuru taslağında freni uygular.
         var signup = await service.StartAsync(Form(email: "baska@ornek.com", phone: "0555 444 55 66"));
+        Assert.Contains("beautyasist.example/kayit", (string)messaging.ReceivedCalls().Last(c => c.GetMethodInfo().Name == "SendEmailAsync").GetArguments()[2]!);
         Assert.Equal("Unauthorized", (await service.VerifyApplicationEmailAsync(new ConnectorApplicationCodeRequest(signup.Value!.SignupId, CodeFromEmail(messaging)))).Error.Code);
         var other = await service.StartVerificationAsync(ApplicationForm(email: "ucuncu@ornek.com", phone: "0555 777 88 99"));
         Assert.Contains("saniye", (await service.ResendApplicationCodeAsync(new ConnectorApplicationResendRequest(other.Value!.VerificationId))).Error.Message);
@@ -1062,7 +1066,7 @@ public sealed class TenantSignupTests
 
             var again = await NewService(db, messaging).ApproveAsync(Approve() with { LoginUrl = "http://kotu.example" });
             Assert.Equal((false, created.Value.TenantId, created.Value.Code), (again.Value!.Created, again.Value.TenantId, again.Value.Code));
-            Assert.EndsWith("beautyasist.com/login", again.Value.LoginUrl);
+            Assert.Equal("https://beautyasist.example/login", again.Value.LoginUrl);
         }
 
         await using (var check = NewDb(options))

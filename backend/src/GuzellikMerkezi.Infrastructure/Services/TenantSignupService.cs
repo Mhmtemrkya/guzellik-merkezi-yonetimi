@@ -330,7 +330,7 @@ public sealed partial class TenantSignupService : ITenantSignupService
         draft.LastSentAtUtc = _clock.UtcNow; // ilk gönderim de cooldown saatini başlatır
         await _store.SetAsync(DraftKey(signupId), draft, DraftLifetime, ct);
 
-        var sent = await SendEmailCodeAsync(form, code, ct);
+        var sent = await SendEmailCodeAsync(form, code, applicationOnly, ct);
         if (!sent)
         {
             // Gönderilemediyse taslağı bırakmanın anlamı yok: kullanıcı asla kod alamayacak.
@@ -809,7 +809,7 @@ public sealed partial class TenantSignupService : ITenantSignupService
         bool sent;
         if (draft.Stage == SignupStage.AwaitingEmail)
         {
-            sent = await SendEmailCodeAsync(draft.Form, code, ct);
+            sent = await SendEmailCodeAsync(draft.Form, code, draft.ApplicationOnly, ct);
         }
         else
         {
@@ -897,15 +897,17 @@ public sealed partial class TenantSignupService : ITenantSignupService
     /// Geçerlilik metni ELLE YAZILMAZ: <see cref="DraftLifetime"/> geçirilir — sabit değiştiğinde
     /// e-posta kendiliğinden doğru kalır.
     /// </remarks>
-    private async Task<bool> SendEmailCodeAsync(TenantSignupStartRequest form, string code, CancellationToken ct)
+    private async Task<bool> SendEmailCodeAsync(TenantSignupStartRequest form, string code, bool applicationOnly, CancellationToken ct)
     {
+        // Maydanoz başvurusunda bağlantı YOK: kod, başvurunun açık olduğu sekmede girilir; bağlantı yeni sekmede boş
+        // bir başvuru formu açardı (taslak o sekmede değildir).
         var body = VerificationEmailTemplate.Build(new VerificationEmailContent(
             Code: code,
             Email: form.Email,
             Validity: DraftLifetime,
-            OperationType: "Kurum Kaydı",
+            OperationType: applicationOnly ? "Kurum Kayıt Başvurusu" : "Kurum Kaydı",
             TenantName: form.TenantName,
-            VerificationLink: VerificationEmailTemplate.BuildLink("/kayit",
+            VerificationLink: applicationOnly ? null : VerificationEmailTemplate.BuildLink("/kayit",
                 _config["App:PublicBaseUrl"], _config["Frontend:PublicBaseUrl"], _config["WhatsApp:PublicBaseUrl"]),
             SecurityNote: "Bu işlemi siz başlatmadıysanız bu e-postayı yok sayabilirsiniz."));
 
