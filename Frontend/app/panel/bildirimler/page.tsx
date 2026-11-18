@@ -244,7 +244,10 @@ function BildirimlerPageInner() {
             <Link href="/panel/ayarlar"
               className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-[12px] border border-[#EAD8DF] bg-white px-3 py-1.5 text-[11.5px] text-[#5A4B53] transition-colors hover:border-[#BE7690]">
               <Coins className="h-3.5 w-3.5 text-[#A5556E]" />
-              <span>Mesaj kredisi <b className="text-[#8e3f5b]">{formatCredits(wallet.availableCredits)}</b></span>
+              {/* SMS ve WhatsApp kredisi ayrı bakiyeler (18 Kas 2026). */}
+              <span>WhatsApp kredisi <b className="text-[#8e3f5b]">{formatCredits(wallet.availableCredits)}</b></span>
+              <span className="text-[#9d7386]">·</span>
+              <span>SMS kredisi <b className="text-[#8e3f5b]">{formatCredits(wallet.smsAvailableCredits ?? 0)}</b></span>
               <span className="text-[#9d7386]">·</span>
               <span>SMS kotası {wallet.smsUsed.toLocaleString('tr-TR')}{wallet.smsLimit < 0 ? ' (sınırsız)' : ` / ${wallet.smsLimit.toLocaleString('tr-TR')}`}</span>
               <span className="text-[#9d7386]">·</span>

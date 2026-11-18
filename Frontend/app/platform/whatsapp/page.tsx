@@ -391,6 +391,8 @@ function PurchasesTab() {
         <div className="rounded-[12px] border border-[#ecd9e1] bg-white px-4 py-2.5 text-[11.5px] text-[#3f2d36]">{actionMsg}</div>
       )}
 
+      <WalletAdjustCard />
+
       {/* KARTLA ÖDEME BEKLEYENLER — elle onay YOK, yalnız sağlayıcıya sorma. */}
       {cardPending.length > 0 && (
         <div>
@@ -403,7 +405,7 @@ function PurchasesTab() {
               <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-sky-200 bg-sky-50/50 px-4 py-3">
                 <div>
                   <div className="text-[12.5px] font-semibold text-[#3f2d36]">{p.tenantName ?? 'Kurum'}</div>
-                  <div className="text-[11px] text-[#6c5661]">{p.packageName} · {credits(p.grantsCredits)} kredi · {money(p.priceTry)} · {p.provider}</div>
+                  <div className="text-[11px] text-[#6c5661]">{p.packageName} · {credits(p.grantsCredits)} {channelLabel(p.channel)} · {money(p.priceTry)} · {p.provider}</div>
                   <div className="text-[10px] text-[#9a7d88]">
                     {new Date(p.createdAtUtc).toLocaleString('tr-TR')}
                     {p.note && <> · {p.note}</>}
@@ -432,7 +434,7 @@ function PurchasesTab() {
               <div key={p.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-amber-200 bg-amber-50/50 px-4 py-3">
                 <div>
                   <div className="text-[12.5px] font-semibold text-[#3f2d36]">{p.tenantName ?? 'Kurum'}</div>
-                  <div className="text-[11px] text-[#6c5661]">{p.packageName} · ödenecek {money(p.priceTry)} · yüklenecek <b>{credits(p.grantsCredits)} kredi</b></div>
+                  <div className="text-[11px] text-[#6c5661]">{p.packageName} · ödenecek {money(p.priceTry)} · yüklenecek <b>{credits(p.grantsCredits)} {channelLabel(p.channel)}</b></div>
                   <div className="text-[10px] text-[#9a7d88]">{new Date(p.createdAtUtc).toLocaleString('tr-TR')}</div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -460,7 +462,7 @@ function PurchasesTab() {
                 {others.map((p) => (
                   <tr key={p.id} className="border-t border-[#f3e6ec] first:border-t-0">
                     <td className="px-4 py-2.5">{p.tenantName ?? 'Kurum'}</td>
-                    <td className="px-4 py-2.5 text-[#6c5661]">{p.packageName} · {credits(p.grantsCredits)} kredi · {money(p.priceTry)}</td>
+                    <td className="px-4 py-2.5 text-[#6c5661]">{p.packageName} · {credits(p.grantsCredits)} {channelLabel(p.channel)} · {money(p.priceTry)}</td>
                     <td className="px-4 py-2.5"><PurchaseBadge status={p.status} /></td>
                     <td className="px-4 py-2.5 text-right text-[10.5px] text-[#9a7d88]">{new Date(p.createdAtUtc).toLocaleDateString('tr-TR')}</td>
                   </tr>
@@ -475,6 +477,68 @@ function PurchasesTab() {
 }
 
 /* ===================== FİYAT & AYAR ===================== */
+/** "SMS kredisi" / "WhatsApp kredisi" — eski talepler (kanalsız) WhatsApp. */
+function channelLabel(channel?: string | null) {
+  return channel === 'Sms' ? 'SMS kredisi' : 'WhatsApp kredisi'
+}
+
+/**
+ * KANAL BAŞINA BAKİYE DÜZELTMESİ (18 Kas 2026: SMS ve WhatsApp kredisi ayrı; ayrımda SMS bakiyesi sıfırdan başladı).
+ * Eksi değer düşürür (bakiye eksiye inmez); her düzeltme deftere kanalıyla yazılır.
+ */
+function WalletAdjustCard() {
+  const { data: tenants } = useApiQuery<{ items: { id: string; name: string }[] }>(
+    () => platformApi.tenants<{ id: string; name: string }>({ pageSize: 200 }) as Promise<{ items: { id: string; name: string }[] }>, [],
+    { initialData: { items: [] } })
+  const [tenantId, setTenantId] = useState('')
+  const [channel, setChannel] = useState<'WhatsApp' | 'Sms'>('Sms')
+  const [delta, setDelta] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const save = async () => {
+    const amount = Number(delta.replace(',', '.'))
+    if (!tenantId || !Number.isFinite(amount) || amount === 0) { setMsg({ ok: false, text: 'Kurumu ve sıfırdan farklı bir miktarı girin.' }); return }
+    setBusy(true); setMsg(null)
+    try {
+      await platformApi.adjustWaWallet(tenantId, { deltaCredits: amount, description: note.trim() || null, channel })
+      setMsg({ ok: true, text: `${channelLabel(channel)} düzeltildi (${amount > 0 ? '+' : ''}${credits(amount)}).` })
+      setDelta(''); setNote('')
+    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Düzeltilemedi.' }) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="rounded-[16px] border border-[#ecd9e1] bg-white p-4">
+      <div className="mb-3 flex items-center gap-2 text-[12px] font-semibold text-[#3f2d36]"><Wallet className="h-4 w-4 text-[#c2436a]" /> Bakiye düzeltme <span className="font-normal text-[#9a7d88]">· SMS ve WhatsApp kredisi ayrı bakiyeler</span></div>
+      <div className="grid gap-3 sm:grid-cols-4">
+        <div className="sm:col-span-2">
+          <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#9a7d88]">Kurum</label>
+          <select value={tenantId} onChange={(e) => setTenantId(e.target.value)} className="w-full rounded-lg border border-[#ecd9e1] bg-white px-2.5 py-1.5 text-[12px] text-[#3f2d36] outline-none focus:border-[#ef6088]">
+            <option value="">Kurum seçin…</option>
+            {(tenants?.items ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#9a7d88]">Kredi türü</label>
+          <select value={channel} onChange={(e) => setChannel(e.target.value === 'WhatsApp' ? 'WhatsApp' : 'Sms')} className="w-full rounded-lg border border-[#ecd9e1] bg-white px-2.5 py-1.5 text-[12px] text-[#3f2d36] outline-none focus:border-[#ef6088]">
+            <option value="Sms">SMS kredisi</option>
+            <option value="WhatsApp">WhatsApp kredisi</option>
+          </select>
+        </div>
+        <NumField label="Miktar (+ / −)" value={delta} onChange={setDelta} placeholder="örn. 500 ya da -50" />
+        <div className="sm:col-span-4"><Field label="Açıklama (deftere yazılır)" value={note} onChange={setNote} placeholder="örn. Ayrım sonrası SMS bakiyesi aktarımı" /></div>
+      </div>
+      {msg && <div className={`mt-2 rounded-lg border px-3 py-2 text-[11px] ${msg.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>{msg.text}</div>}
+      <div className="mt-3 flex justify-end">
+        <button type="button" disabled={busy} onClick={save} className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#f47699] to-[#ef6088] px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50">
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Düzelt
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function PricingTab() {
   const [refreshKey, setRefreshKey] = useState(0)
   const { data: settings } = useApiQuery<ApiWhatsAppBillingSettings | null>(
