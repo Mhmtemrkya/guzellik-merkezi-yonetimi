@@ -28,8 +28,6 @@ public sealed class ExternalCheckout : Entity
     /// <summary>Platformun kestiği açık fatura (ek şube, müşteri/onam kademesi, dönem faturası).</summary>
     public const string KindInvoice = "Invoice";
 
-    /// <summary>Maydanoz'da satın alınıp açılan yeni kurum (tekrar koruması: Maydanoz sipariş kimliği).</summary>
-    public const string KindSignup = "Signup";
 
     /// <summary>Ödeme sayfası bu süreden sonra açılmaz (yeni ödeme panelden başlatılır).</summary>
     public static readonly TimeSpan Lifetime = TimeSpan.FromHours(24);
@@ -41,7 +39,7 @@ public sealed class ExternalCheckout : Entity
     {
         if (string.IsNullOrWhiteSpace(publicRef) || publicRef.Length != 32) throw new DomainException("Ödeme anahtarı geçersiz.");
         if (string.IsNullOrWhiteSpace(conversationId)) throw new DomainException("İşlem anahtarı zorunlu.");
-        if (kind is not (KindSubscription or KindCredit or KindInvoice or KindSignup)) throw new DomainException("Ödeme türü geçersiz.");
+        if (kind is not (KindSubscription or KindCredit or KindInvoice)) throw new DomainException("Ödeme türü geçersiz.");
         if ((kind == KindInvoice) != invoiceId.HasValue) throw new DomainException("Fatura ödemesi faturaya bağlı olmalı.");
         if (amountTry <= 0) throw new DomainException("Ödeme tutarı sıfırdan büyük olmalı.");
         if (string.IsNullOrWhiteSpace(callbackUrl)) throw new DomainException("Dönüş adresi zorunlu.");

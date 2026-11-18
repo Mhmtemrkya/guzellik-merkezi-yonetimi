@@ -10,6 +10,17 @@ public sealed class Tenant : Entity
     /// <summary>Yeni tenant'lar için varsayılan deneme süresi.</summary>
     public const int DefaultTrialDays = 14;
 
+    /// <summary>
+    /// Dış bir kayıttan TÜRETİLEN sabit kimlik (Maydanoz başvurusu): aynı başvuru ikinci kurum açamaz.
+    /// Yalnız kurum kaydedilmeden ve şube/kullanıcı eklenmeden önce çağrılır.
+    /// </summary>
+    public void UseIdentity(Guid id)
+    {
+        if (id == Guid.Empty) throw new DomainException("Kurum kimliği boş olamaz.");
+        if (Branches.Count > 0 || Users.Count > 0) throw new DomainException("Kurum kimliği şube ve kullanıcılardan önce verilir.");
+        Id = id;
+    }
+
     public Tenant(string name, string slug, string plan, TenantStatus status = TenantStatus.Trial)
     {
         Rename(name);

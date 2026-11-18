@@ -1,5 +1,6 @@
 using GuzellikMerkezi.Api.Extensions;
 using GuzellikMerkezi.Api.Middleware;
+using GuzellikMerkezi.Api.Services;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Connector;
 using GuzellikMerkezi.Application.Features.SubscriptionPlans;
@@ -56,13 +57,51 @@ public static class ConnectorEndpoints
             (await checkouts.RecordPaidAsync(reference, request, ct)).ToHttpResult(http))
             .Scope("checkouts.write");
 
-        // MAYDANOZ'DA SATIN ALMA: ödemeden önce tutar + uygunluk (kişi bilgisi gövdede), ödeme alınınca hesap.
-        g.MapPost("/signups/quote", async (ConnectorSignupQuoteRequest request, IConnectorSignups signups, HttpContext http, CancellationToken ct) =>
-            (await signups.QuoteAsync(request, ct)).ToHttpResult(http))
-            .Scope("checkouts.read");
+        // KAYIT MAYDANOZ'DA (18 Kas 2026): başvurunun e-posta/telefon doğrulaması, onayla hesap açma ve
+        // başvuru e-postaları. Kapsamlar canlıdaki dört kapsamla sınırlı (ortam dosyası değişmeden).
+        var applications = g.MapGroup("/applications");
+        applications.MapGet("/readiness", async (IConnectorApplications service, HttpContext http, CancellationToken ct) =>
+            (await service.ReadinessAsync(ct)).ToHttpResult(http))
+            .Scope("tenants.read");
+        applications.MapPost("/verify/start", async (ConnectorApplicationStartRequest request, IConnectorApplications service, HttpContext http, CancellationToken ct) =>
+            (await service.StartVerificationAsync(request, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
+        applications.MapPost("/verify/email", async (ConnectorApplicationCodeRequest request, IConnectorApplications service, HttpContext http, CancellationToken ct) =>
+            (await service.VerifyApplicationEmailAsync(request, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
+        applications.MapPost("/verify/phone", async (ConnectorApplicationCodeRequest request, IConnectorApplications service, HttpContext http, CancellationToken ct) =>
+            (await service.VerifyApplicationPhoneAsync(request, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
+        applications.MapPost("/verify/resend", async (ConnectorApplicationResendRequest request, IConnectorApplications service, HttpContext http, CancellationToken ct) =>
+            (await service.ResendApplicationCodeAsync(request, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
+        applications.MapPost("/approve", async (ConnectorApplicationApproveRequest request, IConnectorApplications service, HttpContext http, CancellationToken ct) =>
+            (await service.ApproveAsync(request, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
+        applications.MapPost("/notify", async (ConnectorApplicationNotifyRequest request, IConnectorApplications service, HttpContext http, CancellationToken ct) =>
+            (await service.NotifyAsync(request, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
 
-        g.MapPost("/signups", async (ConnectorSignupRequest request, IConnectorSignups signups, HttpContext http, CancellationToken ct) =>
-            (await signups.CreatePaidAsync(request, ct)).ToHttpResult(http))
+        // MAYDANOZ'DA GİRİŞ VE SATIN ALMA (18 Kas 2026): kurum sahibi maydanozasist.com'da girer, hesabını görür,
+        // aylık/yıllık paketi Maydanoz'un ödeme sayfasından alır. Kurum kimliği Maydanoz'un SUNUCU oturumundan gelir.
+        var accounts = g.MapGroup("/accounts");
+        accounts.MapPost("/login", async (ConnectorAccountLoginRequest request, ConnectorAccountService service, HttpContext http, CancellationToken ct) =>
+            (await service.LoginAsync(request, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
+        accounts.MapPost("/login/verify", async (ConnectorAccountVerifyRequest request, ConnectorAccountService service, HttpContext http, CancellationToken ct) =>
+            (await service.VerifyAsync(request, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
+        accounts.MapPost("/password-reset/request", async (PasswordResetRequestBody request, PasswordResetService reset, HttpContext http, CancellationToken ct) =>
+            (await reset.RequestAsync(request.Email, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
+        accounts.MapPost("/password-reset/complete", async (PasswordResetCompleteBody request, PasswordResetService reset, HttpContext http, CancellationToken ct) =>
+            (await reset.CompleteAsync(request.ChallengeId, request.Code, request.NewPassword, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
+        accounts.MapGet("/{tenantId:guid}", async (Guid tenantId, ConnectorAccountService service, HttpContext http, CancellationToken ct) =>
+            (await service.AccountAsync(tenantId, ct)).ToHttpResult(http))
+            .Scope("tenants.read");
+        accounts.MapPost("/{tenantId:guid}/checkout", async (Guid tenantId, ConnectorAccountCheckoutRequest request, ConnectorAccountService service, HttpContext http, CancellationToken ct) =>
+            (await service.CheckoutAsync(tenantId, request, ct)).ToHttpResult(http))
             .Scope("checkouts.write");
 
         return app;

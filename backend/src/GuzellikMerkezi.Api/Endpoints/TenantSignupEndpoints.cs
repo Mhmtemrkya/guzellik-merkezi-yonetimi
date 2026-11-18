@@ -19,11 +19,28 @@ namespace GuzellikMerkezi.Api.Endpoints;
 /// </summary>
 public static class TenantSignupEndpoints
 {
+    /// <summary>Kurum kaydının yeni adresi (Maydanoz'daki BeautyAsist başvurusu).</summary>
+    public const string PublicSignupMovedTo = "https://maydanozasist.com/kayit/beauty";
+
     public static IEndpointRouteBuilder MapTenantSignupEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/public/signup")
             .WithTags("TenantSignup")
-            .RequireRateLimiting("tenant-signup");
+            .RequireRateLimiting("tenant-signup")
+            .AddEndpointFilter(async (context, next) =>
+            {
+                // KAYIT MAYDANOZ'A TAŞINDI (18 Kas 2026): kurum maydanozasist.com/kayit/beauty'de belgeleriyle
+                // başvurur, hesap Maydanoz onayıyla açılır. Onaysız kurum açan bu yol varsayılan olarak KAPALI.
+                var config = context.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+                return config.GetValue("TenantSignup:PublicEnabled", false)
+                    ? await next(context)
+                    : Results.Json(new
+                    {
+                        success = false,
+                        error = new { code = "signup.moved", message = "Kayıt maydanozasist.com üzerinden yapılıyor." },
+                        movedTo = PublicSignupMovedTo,
+                    }, statusCode: StatusCodes.Status410Gone);
+            });
 
         // Kayıt alınabilir mi? (E-posta + telefon kanalı kurulu mu?) Dönen bilgi platform
         // yapılandırmasıdır; kimlikle ilgisi yoktur. Form gösterilmeden önce sorulur ki kullanıcı

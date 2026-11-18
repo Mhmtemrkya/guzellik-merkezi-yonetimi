@@ -72,6 +72,8 @@ builder.Services.AddScoped<GuzellikMerkezi.Api.Services.CustomerOtpService>();
 builder.Services.AddScoped<GuzellikMerkezi.Api.Services.PanelLoginOtpService>();
 // "Şifremi unuttum" — e-posta kodu ile parola sıfırlama (bkz. PasswordResetService).
 builder.Services.AddScoped<GuzellikMerkezi.Api.Services.PasswordResetService>();
+// Maydanoz'da giriş/hesap/satın alma (imzalı bağlayıcı).
+builder.Services.AddScoped<GuzellikMerkezi.Api.Services.ConnectorAccountService>();
 builder.Services.AddHostedService<TrialExpirationBackgroundService>();
 // Bekleme süresi dolan kurum silme taleplerini GERÇEKTEN uygular (bkz. TenantDeletionBackgroundService).
 builder.Services.AddHostedService<TenantDeletionBackgroundService>();

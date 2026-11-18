@@ -5,6 +5,7 @@ using GuzellikMerkezi.Application.Features.PlatformMessaging;
 using GuzellikMerkezi.Application.Features.TenantSignup;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
+using GuzellikMerkezi.Domain.Exceptions;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using GuzellikMerkezi.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -943,9 +944,9 @@ public sealed class TenantSignupTests
         return done.Value!.TenantCode;
     }
 
-    // ----------------------------------------------------------------- Maydanoz'da satın alma
+    // ----------------------------------------------------------------- Maydanoz'daki kayıt başvurusu
 
-    private const string OrderId = "chk_01m7mvaaaaaaaaaaaaaaaaaaaa";
+    private const string ApplicationId = "app_01m7mvaaaaaaaaaaaaaaaaaaaa";
 
     /// <summary>Tek paket: şube başı 1000 + KDV (yıllık 10000).</summary>
     private static async Task SeedSinglePlanAsync(DbContextOptions<GuzellikDbContext> options)
@@ -957,16 +958,97 @@ public sealed class TenantSignupTests
         await db.SaveChangesAsync();
     }
 
-    private static ConnectorSignupRequest Paid(long amountKurus = 120000, string orderId = OrderId, string email = "yeni@ornek.com",
-        string phone = "0555 999 88 77", string tenantName = "Işıl Güzellik", string period = "monthly") =>
-        new(orderId, amountKurus, "TRY", period, tenantName, "Işıl Kaya", email, phone, "İzmir");
+    private static ConnectorApplicationStartRequest ApplicationForm(string email = "sahip@ornek.com", string phone = "0555 111 22 33") =>
+        new("Güzel Salon", "Ayşe Yılmaz", email, phone, null, "İstanbul");
+
+    private static ConnectorApplicationApproveRequest Approve(string applicationId = ApplicationId, string email = "yeni@ornek.com",
+        string phone = "0555 999 88 77", string tenantName = "Işıl Güzellik") =>
+        new(applicationId, tenantName, "Işıl Kaya", email, phone, "Alsancak", "İzmir", "Işıl Güzellik Ltd. Şti.", "Konak", "1234567890",
+            "https://maydanozasist.com/giris/beauty");
 
     /// <summary>
-    /// Maydanoz'da ödeme alınınca hesap açılır: aktif abonelik, ödenmiş fatura, hoş geldin e-postası
-    /// (şifresiz). Aynı sipariş ikinci kez gelirse yeni kurum açılmaz.
+    /// Başvuru doğrulaması mevcut kayıt akışının kodlarıyla yapılır ama sonunda KURUM AÇILMAZ; başvuru taslağı
+    /// herkese açık uçlarla ilerletilemez (onaysız kurum açılamaz), kayıt taslağı da bağlayıcıyla.
     /// </summary>
     [Fact]
-    public async Task PaidSignup_OpensAnActiveTenantWithAPaidInvoice_Once()
+    public async Task Application_VerifiesEmailAndPhone_WithoutOpeningATenant()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        var messaging = NewMessaging();
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging);
+
+        var started = await service.StartVerificationAsync(ApplicationForm());
+        Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Message : null);
+        var id = started.Value!.VerificationId;
+        var emailCode = CodeFromEmail(messaging);
+
+        // Herkese açık uç başvuru taslağını tanımaz.
+        Assert.Equal("Unauthorized", (await service.VerifyEmailAsync(new TenantSignupVerifyEmailRequest(id, emailCode))).Error.Code);
+        Assert.Equal("Unauthorized", (await service.ResendAsync(id)).Error.Code);
+
+        var email = await service.VerifyApplicationEmailAsync(new ConnectorApplicationCodeRequest(id, emailCode));
+        Assert.Equal((ConnectorApplicationStepDto.StepPhone, "whatsapp"), (email.Value!.NextStep, email.Value.Channel));
+        var phone = await service.VerifyApplicationPhoneAsync(new ConnectorApplicationCodeRequest(id, CodeFromPhone(messaging, nameof(IPlatformMessagingService.SendWhatsAppAsync))));
+        Assert.Equal(ConnectorApplicationStepDto.StepDone, phone.Value!.NextStep);
+        Assert.Empty(await db.Tenants.IgnoreQueryFilters().ToListAsync());
+        Assert.Equal("Unauthorized", (await service.VerifyApplicationPhoneAsync(new ConnectorApplicationCodeRequest(id, "123456"))).Error.Code);
+
+        // Bağlayıcı da kayıt taslağını tanımaz; yeniden gönderme başvuru taslağında freni uygular.
+        var signup = await service.StartAsync(Form(email: "baska@ornek.com", phone: "0555 444 55 66"));
+        Assert.Equal("Unauthorized", (await service.VerifyApplicationEmailAsync(new ConnectorApplicationCodeRequest(signup.Value!.SignupId, CodeFromEmail(messaging)))).Error.Code);
+        var other = await service.StartVerificationAsync(ApplicationForm(email: "ucuncu@ornek.com", phone: "0555 777 88 99"));
+        Assert.Contains("saniye", (await service.ResendApplicationCodeAsync(new ConnectorApplicationResendRequest(other.Value!.VerificationId))).Error.Message);
+        Assert.Equal("Unauthorized", (await service.ResendApplicationCodeAsync(new ConnectorApplicationResendRequest(signup.Value.SignupId))).Error.Code);
+        Assert.Equal("Unauthorized", (await service.VerifyApplicationEmailAsync(new ConnectorApplicationCodeRequest(other.Value.VerificationId, "000000"))).Error.Code);
+        Assert.True((await service.ReadinessAsync()).Value!.CanSignup);
+    }
+
+    [Fact]
+    public async Task Application_EmailOnly_AndARegisteredEmailIsToldOnlyAfterTheCode()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        var messaging = NewMessaging();
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging, requirePhoneVerification: false);
+
+        var started = await service.StartVerificationAsync(ApplicationForm());
+        var done = await service.VerifyApplicationEmailAsync(new ConnectorApplicationCodeRequest(started.Value!.VerificationId, CodeFromEmail(messaging)));
+        Assert.Equal(ConnectorApplicationStepDto.StepDone, done.Value!.NextStep);
+
+        // Kayıtlı e-posta: 1. adım aynen geçer (enumerasyon freni), kod doğrulanınca söylenir.
+        await SeedSinglePlanAsync(options);
+        Assert.True((await service.ApproveAsync(Approve(email: "sahip@ornek.com"))).IsSuccess);
+        var again = await service.StartVerificationAsync(ApplicationForm(phone: "0555 222 33 44"));
+        Assert.True(again.IsSuccess);
+        var taken = await service.VerifyApplicationEmailAsync(new ConnectorApplicationCodeRequest(again.Value!.VerificationId, CodeFromEmail(messaging)));
+        Assert.Contains("zaten bir BeautyAsist hesabınız var", taken.Error.Message);
+        Assert.Equal("Validation", (await service.StartVerificationAsync(ApplicationForm(email: "eposta"))).Error.Code);
+    }
+
+    [Fact]
+    public async Task Application_PhoneCodeFailure_KeepsTheEmailStep()
+    {
+        var options = NewOptions();
+        await SeedPlanAsync(options);
+        var messaging = NewMessaging(whatsApp: false, sms: true);
+        messaging.SendSmsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new MessagingTestResult(false, false, null, "kapalı"));
+        await using var db = NewDb(options);
+        var service = NewService(db, messaging);
+        var started = await service.StartVerificationAsync(ApplicationForm());
+        var failed = await service.VerifyApplicationEmailAsync(new ConnectorApplicationCodeRequest(started.Value!.VerificationId, CodeFromEmail(messaging)));
+        Assert.Contains("gönderilemedi", failed.Error.Message);
+    }
+
+    /// <summary>
+    /// Maydanoz onayı kurumu açar: deneme (sayaç ilk girişte), vergi bilgileri, parolasız e-posta. Aynı başvuru
+    /// ikinci kez onaylanırsa aynı kurum döner.
+    /// </summary>
+    [Fact]
+    public async Task Approve_OpensATrialTenantOnce_WithoutAPassword()
     {
         var options = NewOptions();
         await SeedSinglePlanAsync(options);
@@ -974,79 +1056,84 @@ public sealed class TenantSignupTests
 
         await using (var db = NewDb(options))
         {
-            var quote = await NewService(db, messaging).QuoteAsync(new ConnectorSignupQuoteRequest("monthly", null, null, null));
-            Assert.Equal((true, 1, 100000L, 20000L, 120000L, "monthly"), (quote.Value!.Available, quote.Value.Branches, quote.Value.NetKurus, quote.Value.VatKurus, quote.Value.TotalKurus, quote.Value.Period));
-            Assert.Equal(1200000L, (await NewService(db, messaging).QuoteAsync(new ConnectorSignupQuoteRequest("yearly", null, null, null))).Value!.TotalKurus);
-
-            var created = await NewService(db, messaging).CreatePaidAsync(Paid());
+            var created = await NewService(db, messaging).ApproveAsync(Approve());
             Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Message : null);
-            Assert.True(created.Value!.Created);
-            Assert.True(created.Value.EmailSent);
-            Assert.EndsWith("/login", created.Value.LoginUrl);
+            Assert.Equal((true, true, "https://maydanozasist.com/giris/beauty"), (created.Value!.Created, created.Value.EmailSent, created.Value.LoginUrl));
+
+            var again = await NewService(db, messaging).ApproveAsync(Approve() with { LoginUrl = "http://kotu.example" });
+            Assert.Equal((false, created.Value.TenantId, created.Value.Code), (again.Value!.Created, again.Value.TenantId, again.Value.Code));
+            Assert.EndsWith("beautyasist.com/login", again.Value.LoginUrl);
         }
 
         await using (var check = NewDb(options))
         {
             var tenant = await check.Tenants.IgnoreQueryFilters().Include(t => t.Branches).SingleAsync();
-            Assert.Equal((TenantStatus.Active, BillingPeriod.Monthly, (DateTime?)null), (tenant.Status, tenant.SubscriptionPeriod, tenant.TrialEndsAtUtc));
-            Assert.NotNull(tenant.SubscriptionEndsAtUtc);
-            Assert.Equal("Merkez", Assert.Single(tenant.Branches).Name);
-            var invoice = await check.TenantInvoices.IgnoreQueryFilters().SingleAsync();
-            Assert.Equal(("Paid", OrderId, 1200m, 1000m), (invoice.Status, invoice.PaymentReference, invoice.AmountTRY, invoice.NetAmountTRY));
+            Assert.Equal((TenantStatus.Trial, (DateTime?)null, "1234567890", "Konak", "Işıl Güzellik Ltd. Şti."),
+                (tenant.Status, tenant.TrialEndsAtUtc, tenant.TaxNumber, tenant.TaxOffice, tenant.LegalName));
+            Assert.Equal(("Alsancak", "İzmir"), (Assert.Single(tenant.Branches).Name, tenant.Branches.Single().City));
             var owner = await check.TenantUsers.IgnoreQueryFilters().SingleAsync();
             Assert.Equal(("yeni@ornek.com", UserRole.InstitutionOwner, true), (owner.Email, owner.Role, owner.MustChangePassword));
         }
 
-        // Hoş geldin e-postası parolasız: girişi "Şifremi unuttum" ile.
         var body = (string)messaging.ReceivedCalls().Single(c => c.GetMethodInfo().Name == "SendEmailAsync").GetArguments()[2]!;
         Assert.Contains("Şifremi unuttum", body);
-        Assert.Contains("Ödemeniz alındı", body);
-
-        await using (var db = NewDb(options))
-        {
-            var again = await NewService(db, messaging).CreatePaidAsync(Paid());
-            Assert.False(again.Value!.Created);
-            Assert.Single(await db.Tenants.IgnoreQueryFilters().ToListAsync());
-        }
+        Assert.Contains("14 günlük ücretsiz deneme", body);
+        Assert.Contains("https://maydanozasist.com/giris/beauty", body);
     }
 
-    /// <summary>Kayıtlı e-posta/telefon/ad ödemeden ÖNCE söylenir; tutar tutmazsa hesap açılmaz.</summary>
     [Fact]
-    public async Task PaidSignup_RefusesDuplicatesWrongAmountsAndBadInput()
+    public async Task Approve_RefusesDuplicatesBadInputAndMissingPlan()
     {
         var options = NewOptions();
-        await SeedSinglePlanAsync(options);
         var messaging = NewMessaging();
         await using (var db = NewDb(options))
         {
-            Assert.True((await NewService(db, messaging).CreatePaidAsync(Paid())).IsSuccess);
+            Assert.Equal("Conflict", (await NewService(db, messaging).ApproveAsync(Approve())).Error.Code);
         }
 
+        await SeedSinglePlanAsync(options);
         await using var check = NewDb(options);
         var service = NewService(check, messaging);
-        var taken = await service.QuoteAsync(new ConnectorSignupQuoteRequest("monthly", "Başka Salon", "yeni@ornek.com", "0555 000 11 22"));
-        Assert.False(taken.Value!.Available);
-        Assert.Contains("panelinizden", taken.Value.Reason);
-        Assert.False((await service.QuoteAsync(new ConnectorSignupQuoteRequest("monthly", "Başka Salon", "eposta", "0555 000 11 22"))).Value!.Available);
-        Assert.True((await service.QuoteAsync(new ConnectorSignupQuoteRequest("monthly", "Başka Salon", "baska@ornek.com", "0555 000 11 22"))).Value!.Available);
-        Assert.Equal("Validation", (await service.QuoteAsync(new ConnectorSignupQuoteRequest("weekly", null, null, null))).Error.Code);
-
-        Assert.Equal("Conflict", (await service.CreatePaidAsync(Paid(orderId: "chk_01m7mvbbbbbbbbbbbbbbbbbbbb", phone: "0555 000 11 22"))).Error.Code);
-        Assert.Equal("Conflict", (await service.CreatePaidAsync(Paid(amountKurus: 100, orderId: "chk_01m7mvcccccccccccccccccccc", email: "c@ornek.com", phone: "0555 000 33 44", tenantName: "Üçüncü Salon"))).Error.Code);
-        Assert.Equal("Validation", (await service.CreatePaidAsync(Paid(orderId: "sipariş"))).Error.Code);
-        Assert.Equal("Validation", (await service.CreatePaidAsync(Paid(orderId: "chk_01m7mvdddddddddddddddddddd", period: "weekly"))).Error.Code);
-        Assert.Equal("Validation", (await service.CreatePaidAsync(Paid(orderId: "chk_01m7mveeeeeeeeeeeeeeeeeeee", email: "eposta", phone: "0555 000 55 66", tenantName: "Beşinci"))).Error.Code);
-        Assert.Equal("Validation", (await service.CreatePaidAsync(Paid() with { OrderId = "chk_01m7mvffffffffffffffffffff", Currency = "USD" })).Error.Code);
+        Assert.True((await service.ApproveAsync(Approve())).IsSuccess);
+        Assert.Equal("Conflict", (await service.ApproveAsync(Approve(applicationId: "app_01m7mvbbbbbbbbbbbbbbbbbbbb", phone: "0555 000 11 22", tenantName: "Başka"))).Error.Code);
+        Assert.Equal("Conflict", (await service.ApproveAsync(Approve(applicationId: "app_01m7mvcccccccccccccccccccc", email: "c@ornek.com", tenantName: "Üçüncü"))).Error.Code);
+        Assert.Equal("Validation", (await service.ApproveAsync(Approve(applicationId: "basvuru"))).Error.Code);
+        Assert.Equal("Validation", (await service.ApproveAsync(Approve(applicationId: "app_01m7mvdddddddddddddddddddd", email: "eposta", phone: "0555 000 55 66", tenantName: "Beşinci"))).Error.Code);
         Assert.Single(await check.Tenants.IgnoreQueryFilters().ToListAsync());
     }
 
     [Fact]
-    public async Task PaidSignup_WithoutAPlan_IsRefused()
+    public async Task Notify_SendsTheReceivedAndRejectedEmails()
     {
         var options = NewOptions();
+        var messaging = NewMessaging();
         await using var db = NewDb(options);
-        var service = NewService(db, NewMessaging());
-        Assert.Equal("Conflict", (await service.QuoteAsync(new ConnectorSignupQuoteRequest("monthly", null, null, null))).Error.Code);
-        Assert.Equal("Conflict", (await service.CreatePaidAsync(Paid())).Error.Code);
+        var service = NewService(db, messaging);
+        ConnectorApplicationNotifyRequest Notice(string kind, string? reason = null, string? link = null) =>
+            new(kind, ApplicationId, "sahip@ornek.com", "Ayşe Yılmaz", "Güzel Salon", reason, link);
+
+        Assert.True((await service.NotifyAsync(Notice("received"))).Value!.Sent);
+        Assert.True((await service.NotifyAsync(Notice("rejected", "Vergi levhası okunmuyor.", "https://maydanozasist.com/kayit/beauty"))).Value!.Sent);
+        Assert.True((await service.NotifyAsync(Notice("rejected", "Kimlik eksik.", "javascript:alert(1)"))).Value!.Sent);
+        var bodies = messaging.ReceivedCalls().Where(c => c.GetMethodInfo().Name == "SendEmailAsync").Select(c => (string)c.GetArguments()[2]!).ToList();
+        Assert.Contains("14 gün ücretsiz", bodies[0]);
+        Assert.Contains("Vergi levhası okunmuyor.", bodies[1]);
+        Assert.Contains("https://maydanozasist.com/kayit/beauty", bodies[1]);
+        Assert.DoesNotContain("javascript", bodies[2]);
+
+        Assert.Equal("Validation", (await service.NotifyAsync(Notice("rejected"))).Error.Code);
+        Assert.Equal("Validation", (await service.NotifyAsync(Notice("approved"))).Error.Code);
+        Assert.Equal("Validation", (await service.NotifyAsync(Notice("received") with { Email = "eposta" })).Error.Code);
+        Assert.Equal("Validation", (await service.NotifyAsync(Notice("received") with { ApplicationId = "x" })).Error.Code);
+        Assert.Equal("Validation", (await service.NotifyAsync(Notice("received") with { OwnerName = " " })).Error.Code);
+    }
+
+    [Fact]
+    public void UseIdentity_IsOnlyForANewTenant()
+    {
+        var tenant = new Tenant("Salon", "salon", "BeautyAsist");
+        Assert.Throws<DomainException>(() => tenant.UseIdentity(Guid.Empty));
+        tenant.AddBranch("Merkez", "İzmir", isDefault: true);
+        Assert.Throws<DomainException>(() => tenant.UseIdentity(Guid.NewGuid()));
     }
 }

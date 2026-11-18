@@ -164,6 +164,12 @@ public sealed partial class TenantSignupService : ITenantSignupService
         public bool Completed { get; set; }
 
         /// <summary>
+        /// Maydanoz başvurusunun doğrulaması (bağlayıcıdan): doğrulama sonunda kurum AÇILMAZ, hesabı
+        /// Maydanoz onayı açar. Herkese açık uçlar bu taslağı tanımaz — onaysız kurum açılamaz.
+        /// </summary>
+        public bool ApplicationOnly { get; set; }
+
+        /// <summary>
         /// Yetkili e-postası BAŞKA bir hesapta kayıtlı mı? 1. adımda ölçülür ama SÖYLENMEZ.
         /// </summary>
         /// <remarks>
@@ -249,7 +255,10 @@ public sealed partial class TenantSignupService : ITenantSignupService
 
     // ----------------------------------------------------------------- adım 1
 
-    public async Task<Result<TenantSignupStartResponse>> StartAsync(TenantSignupStartRequest request, CancellationToken ct = default)
+    public Task<Result<TenantSignupStartResponse>> StartAsync(TenantSignupStartRequest request, CancellationToken ct = default) =>
+        StartCoreAsync(request, applicationOnly: false, ct);
+
+    private async Task<Result<TenantSignupStartResponse>> StartCoreAsync(TenantSignupStartRequest request, bool applicationOnly, CancellationToken ct)
     {
         var form = new TenantSignupStartRequest(
             TenantName: TenantTextHelper.NormalizeText(request.TenantName),
@@ -312,6 +321,7 @@ public sealed partial class TenantSignupService : ITenantSignupService
             Slug = slug,
             PreferredPhoneChannel = NormalizeChannel(form.PhoneChannel),
             EmailAlreadyRegistered = emailTaken,
+            ApplicationOnly = applicationOnly,
         };
         var code = NewCode();
         draft.Code = code;
@@ -752,7 +762,10 @@ public sealed partial class TenantSignupService : ITenantSignupService
 
     // ----------------------------------------------------------------- yeniden gönder
 
-    public async Task<Result<object>> ResendAsync(string signupId, CancellationToken ct = default)
+    public Task<Result<object>> ResendAsync(string signupId, CancellationToken ct = default) =>
+        ResendCoreAsync(signupId, applicationOnly: false, ct);
+
+    private async Task<Result<object>> ResendCoreAsync(string signupId, bool applicationOnly, CancellationToken ct)
     {
         // MALİYET FRENİ. Her gönderim e-posta/SMS, yani para. İki kapı birden:
         //   1) iki istek arasında en az ResendCooldown,
@@ -770,8 +783,8 @@ public sealed partial class TenantSignupService : ITenantSignupService
         var reservation = await _store.MutateAsync<SignupDraft, (SignupDraft? Draft, Error? Failure)>(
             DraftKey(signupId), DraftLifetime, draft =>
             {
-                if (draft is null)
-                    return (null, (null, Error.Unauthorized("Kayıt oturumunuz sona ermiş. Lütfen baştan başlayın.")));
+                if (draft is null || draft.ApplicationOnly != applicationOnly)
+                    return (draft, (null, Error.Unauthorized("Kayıt oturumunuz sona ermiş. Lütfen baştan başlayın.")));
                 if (draft.Completed)
                     return (draft, (null, Error.Conflict("Bu kayıt zaten tamamlandı.")));
                 if (draft.Resends >= MaxResendsPerDraft)
@@ -823,12 +836,13 @@ public sealed partial class TenantSignupService : ITenantSignupService
 
     private static string NewCode() => RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
 
-    private async Task<(SignupDraft? Draft, Error? Failure)> TakeDraftAsync(string signupId, SignupStage expected, CancellationToken ct)
+    private async Task<(SignupDraft? Draft, Error? Failure)> TakeDraftAsync(string signupId, SignupStage expected, CancellationToken ct, bool applicationOnly = false)
     {
         var draft = string.IsNullOrWhiteSpace(signupId)
             ? null
             : await _store.GetAsync<SignupDraft>(DraftKey(signupId), ct);
-        if (draft is null)
+        // Başvuru taslağı yalnız bağlayıcıdan, kayıt taslağı yalnız herkese açık uçtan ilerler.
+        if (draft is null || draft.ApplicationOnly != applicationOnly)
             return (null, Error.Unauthorized("Kayıt oturumunuz sona ermiş. Lütfen baştan başlayın."));
         // TAMAMLANMIŞ TASLAK BURADA ELENMEZ — idempotens kapısı CompleteSignupAsync'tedir.
         //

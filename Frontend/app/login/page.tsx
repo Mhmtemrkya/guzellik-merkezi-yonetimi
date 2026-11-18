@@ -48,6 +48,9 @@ interface RoleMeta {
   cardClass: string
 }
 
+/** Süresi dolan kurumun paketi satın aldığı yer: maydanozasist.com hesabım (BeautyAsist girişi). */
+const MAYDANOZ_ACCOUNT_URL = 'https://maydanozasist.com/giris/beauty'
+
 const roleMetas: RoleMeta[] = [
   {
     role: 'InstitutionOwner',
@@ -1145,6 +1148,15 @@ export default function LoginPage() {
                     className="overflow-hidden rounded-2xl border border-rose-300/50 bg-rose-50 px-4 py-3 text-[12px] leading-relaxed text-rose-700"
                   >
                     {error}
+                    {/* SÜRESİ DOLAN KURUM (18 Kas 2026): paket maydanozasist.com'dan satın alınır — oraya giriş. */}
+                    {/(Deneme süresi bitti|Abonelik süreniz doldu)/.test(error) && (
+                      <a
+                        href={MAYDANOZ_ACCOUNT_URL}
+                        className="mt-2 flex items-center justify-center rounded-xl bg-[#b75a7e] px-3 py-2 text-[12px] font-semibold text-white"
+                      >
+                        Paketi maydanozasist.com&apos;dan satın al
+                      </a>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
