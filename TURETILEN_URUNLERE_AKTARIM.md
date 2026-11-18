@@ -5,8 +5,9 @@
 > yapabilmek için tutulur. Yalnız ne değiştiğini değil, **neden** öyle yapıldığını ve hangi tuzaklara düşüldüğünü
 > de anlatır.
 >
-> **Bu sürümün kapsamı:** 12–14 Kasım 2026 işleri, yani son commit `690f5c9` sonrasındaki çalışma ağacı.
-> Altı iş paketi, altı migration.
+> **Bu sürümün kapsamı:** 12–14 Kasım 2026 işleri (paket 1–6, §4) ve **17–18 Kasım 2026 Maydanoz entegrasyonu**
+> (paket 7–17, §12). Yeni bir Asist'i Maydanoz'a bağlamanın üründen bağımsız reçetesi Maydanoz deposunda:
+> `C:\Users\KAYA\Desktop\Projelerim\Maydanozasist Web\ASIST_ENTEGRASYONU.md` §0.
 >
 > **Durum (14 Kas 2026):**
 > - BeautyAsist'te kod bitti ve doğrulandı: backend 885/885 test, web `tsc` + vitest 152/152, `flutter analyze` temiz,
@@ -27,6 +28,7 @@
 9. [Dosya envanteri](#9-dosya-envanteri)
 10. [Aktarım durumu ve belge günlüğü](#10-aktarım-durumu-ve-belge-günlüğü)
 11. [Bu rehberde ayrıntılanmamış önceki işler](#11-bu-rehberde-ayrıntılanmamış-önceki-işler)
+12. [Maydanoz entegrasyonu paketleri (17–18 Kas 2026)](#12-maydanoz-entegrasyonu-paketleri-1718-kas-2026)
 
 ---
 
@@ -788,12 +790,24 @@ deposuna göredir.
 | 4 — Tek paket | Aktarılmadı (paket adı ürün kararı) | — |
 | 5 — Onam kademe hakkı | Aktarılmadı | — |
 | 6 — Müşteri kademesi + ödenince şube | Aktarılmadı (portal kısmı yok) | — |
+| 7 — İmzalı bağlayıcı | Aktarılmadı | — |
+| 8 — Ödeme Maydanoz'da | Aktarılmadı | — |
+| 9 — Kayıt ve giriş Maydanoz'da | Aktarılmadı | — |
+| 10 — Platform köprüsü | Aktarılmadı | — |
+| 11 — Şube/kademe ücret uyarısı + şık e-postalar | Aktarılmadı | — |
+| 12 — Havale / EFT | Aktarılmadı | — |
+| 13 — SMS / WhatsApp kredisi ayrı | Aktarılmadı | — |
+| 14 — Hesap kredisi bağlayıcısı | Aktarılmadı | — |
+| 15 — Otomatik ödeme hazırlığı | Aktarılmadı | — |
+| 16 — Şube silme | Aktarılmadı | — |
+| 17 — Kalıcı kurum silme bağlayıcısı | Aktarılmadı | — |
 
 Bir paket aktarılınca bu tabloyu tarih ve commit ile güncelleyin.
 
 ### Belge günlüğü
 
 - **14 Kas 2026:** ilk sürüm; paket 1–6 (12–14 Kasım işleri).
+- **18 Kas 2026:** paket 7–17 (Maydanoz entegrasyonu, §12) eklendi; reçetenin Maydanoz tarafı `ASIST_ENTEGRASYONU.md` §0.
 - BeautyAsist'te yeni bir iş bitince buraya yeni bir paket olarak ekleyin. Her pakete kural, şema, dosyalar, testler,
   tuzaklar ve canlı notlarını yazın.
 
@@ -877,3 +891,197 @@ Ayrıntısı için `git show <commit>` kullanın.
 | `2c26b8c` | 2026-08-26 | Musteri girisinde e-posta kimlik dogrulayici oldu | Portal girişi |
 | `5bae556` | 2026-08-26 | Panel 2FA dogrulamasinda refresh token HttpOnly cereze tasinsin | |
 | `efa16ab` | 2026-08-26 | Verimor SMS saglayicisi (varsayilan) eklendi | Paket 1–2 için ön koşul olabilir |
+
+---
+
+## 12. Maydanoz entegrasyonu paketleri (17–18 Kas 2026)
+
+> **Bütün resim Maydanoz deposunda:** `C:\Users\KAYA\Desktop\Projelerim\Maydanozasist Web\ASIST_ENTEGRASYONU.md` §0
+> ("Yeni bir Asist bağlama reçetesi"). Maydanoz tarafı Asist'ten bağımsızdır: yeni Asist bağlayıcı sözleşmesini
+> uyguladığında ödeme sayfası, kayıt, giriş, Hesabım, kredi, havale, otomatik ödeme, kurum silme ve platform paneli
+> kod değişmeden çalışır. Bu bölüm yalnız **Asist (BeautyAsist) tarafını** paket paket anlatır; türetilen ürüne
+> (DentistAsist, DoctorAsist) aynen aktarılacak olan budur.
+>
+> Durum (18 Kas 2026): paket 7–17 BeautyAsist'te bitti ve test edildi; 7–10 canlıda, 11–17 bu belgeyle birlikte
+> yayına alınıyor. Hiçbiri türetilen ürüne aktarılmadı (§10).
+
+### Kullanıcının kararları (sözleriyle)
+
+- "Ödeme kısmı maydanozasistin web sitesinde olacak … platform@beautyasist hesabında olan her kısım maydanozasistin
+  panelinden de yönetilebilecek" (17 Kas). Gizli anahtarlar dahil; yazılır, geri okunmaz.
+- "Maydanozasistten ödemeler olacak, beautyasistte değil; maydanozasistte yönlendirme yapacaksın" (17 Kas).
+  → Asist ödeme ALMAZ. Tutarı Asist hesaplar (şube başı + kademeler + KDV), Maydanoz tahsil eder ve "ödendi" bildirir.
+- "Kayıt olma sayfasını Maydanoz'a taşıyalım … her asistin kayıt ol sayfası olacak, demo talep et deyince kayıt sayfasına
+  gidecek … vergi levhası, kimlik görseli, ticaret odası kaydı gibi belgeleri de yüklesin … admin panelinden onaylayınca
+  hesap oluşacak … satın alma sayfasına bilgileri direkt çekersin, giriş yap kısmı Maydanoz'da da olacak" (18 Kas).
+- "Mesaj kredisi kısmını Maydanoz ile satın almaya bağla; şube eklerken ve limitleri aşarken ücret mesajı çıksın
+  ('ücretinize bu kadar yansıyacak'); EFT/havale seçeneği; aylık satın almalarda otomatik ödeme; demo talep et'te yalnız
+  yayındaki Asist'ler; yeni e-postaları kod doğrulama mailindeki gibi şık yap" (18 Kas).
+- "SMS ayrı, WhatsApp ayrı kredi al kısmı olsun … fiyatları farklı olabilir, farklı kredi yiyebilirler" (18 Kas).
+- "Mobilde de web'e yönlendirebilirsin, webten alır" (18 Kas) — iOS mağaza kuralı (3.1.1) gereği iOS'ta fiyat yok.
+- "Şube silme kısmı yok, onu da ekle; silerse fiyat ona göre güncellenecek" (18 Kas).
+- "Platform kısmında hem Maydanoz'da hem BeautyAsist'te kalıcı kurum silme olsun ki DB şişmesin" (18 Kas).
+
+### Paketler bir bakışta
+
+| # | Paket | Commit | Migration | Ne değişti |
+|---|---|---|---|---|
+| 7 | İmzalı bağlayıcı | `24254f9`, `a051911` | `20261117080226_ConnectorNonces` | `/api/connector/v1` (HMAC, ±5 dk, tek kullanımlık nonce); kişisel verisiz kurum aynası |
+| 8 | Ödeme Maydanoz'da | `ff75158`, `8cb5299`, `8eb8d16` | `20261117120352_ExternalCheckouts`, `20261117134059_ExternalCheckoutInvoice` | Sağlayıcı "Maydanoz"; ödeme kaydı + yönlendirme; mevcut paketi / açık faturayı öde |
+| 9 | Kayıt ve giriş Maydanoz'da | `62c464a`, `bf71776`, `5725edf` | — | Public kayıt kapandı; başvuru doğrulama/onay, hesap girişi, Hesabım teklifi ve satın alma uçları |
+| 10 | Platform köprüsü | `4fb3a3e` | — | Platform ayarları Maydanoz panelinden (`platform.manage`, izin listeli) |
+| 11 | Şube/kademe ücret uyarısı + şık e-postalar | `42d7623` | — | Şube ekleme penceresi (ücret etkisi), müşteri/onam kademe uyarısı, `NoticeEmailTemplate` |
+| 12 | Havale / EFT | `7c04ebd` | — | Ödeme kaydı havale süresince 7 gün açık; mesaj kredisi Maydanoz'da ödenir |
+| 13 | SMS / WhatsApp kredisi ayrı | `f4f7b72`, `2c78f54` | `20261118171319_SplitSmsWhatsAppCredits` | Ayrı bakiye, paket kanalı, SMS birim fiyatı, kanal başına düzeltme |
+| 14 | Hesap kredisi bağlayıcısı | `f5b8320` | — | Maydanoz Hesabım için kredi bakiyesi + paketler + kredi ödemesi |
+| 15 | Otomatik ödeme hazırlığı | `7e1d1ac` | — | Ödeme kaydı dönemini söyler; Maydanoz'dayken kartlı yenileme hiçbir şey çekmez |
+| 16 | Şube silme | `1179279` | — | Kayıtlar seçilen şubeye aktarılır, şube kaldırılır; fiyat sonraki ödemede düşer |
+| 17 | Kalıcı kurum silme (bağlayıcı) | `dcae6a2` | — | `tenants.delete` + kurum adı aynen |
+
+**Bağımlılık:** 7 → 8 → (9, 12, 14, 15); 10 ve 17 yalnız 7'ye bağlı; 13 → 14; 11 ve 16 bağımsız (3'ün fiyat motorunu
+kullanır). Maydanoz tarafı Asist'ten SONRA yayına alınır (Maydanoz'un yeni kodu Asist'in yeni uçlarını çağırır).
+
+### Paket 7 — İmzalı bağlayıcı (17 Kas)
+
+- **Kural:** Maydanoz ile Asist yalnız imzalı bağlayıcıyla konuşur; Maydanoz'a PlatformAdmin oturumu verilmez.
+- **Sözleşme:** başlıklar `X-Asist-Key`, `X-Asist-Timestamp` (unix sn), `X-Asist-Nonce`, `X-Asist-Signature`; kanonik metin
+  `METHOD\npathAndQuery\ntimestamp\nnonce\nsha256hex(body)`, HMAC-SHA256 küçük harf hex; ±5 dk; nonce benzersiz
+  (KeyId, Nonce). Yanıt zarfı `{ success, data | error{code,message} }`. İki projede ortak test vektörü:
+  HMAC("k", …) = `ab074ae6…a6a9`.
+- **Ayar:** `Connector__Keys__<keyId>__Secret` (≥32) + `Connector__Keys__<keyId>__Scopes` (boşlukla ya da `*`). Anahtar yoksa
+  grup 404. Beauty'de keyId = `maydanoz`.
+- **Dosyalar:** `Application/Features/Connector/ConnectorSignature.cs`, `Api/Middleware/ConnectorAuthMiddleware.cs`,
+  `Api/Endpoints/ConnectorEndpoints.cs` (`.Scope("…")`), `Domain/Entities/ConnectorNonce.cs`,
+  `Infrastructure/Services/ConnectorQueries.cs` (`ConnectorTenantDto`: kişisel veri YOK).
+- **Testler:** `ConnectorAuthTests`, `ConnectorQueriesTests`.
+- **Tuzak:** nonce temizliği ham SQL + LIMIT (MariaDB `ExecuteDelete`'i reddeder).
+
+### Paket 8 — Ödeme Maydanoz'da (17 Kas)
+
+- **Kural:** "ödemeler Maydanoz'dan olacak". Çekme modeli: Asist ödeme kaydı açar, kurumu
+  `https://maydanozasist.com/odeme/asist/<asist>/<ref>` adresine yönlendirir; Maydanoz kaydı imzalı okur, tahsil eder,
+  `POST /checkouts/{ref}/paid` ile bildirir. Bildirim gelmeden "alındı" sayılmaz; tutar/kur tutmazsa red; tekrar idempotent.
+- **Şema:** `external_checkouts` (PublicRef 32 hex, ConversationId, Kind = Subscription | Credit | Invoice, TenantId,
+  AmountTRY, Description, CallbackUrl, Status, ExpiresAtUtc, InvoiceId, ProviderPaymentId, PaidAmountTRY…). Ömür 24 saat.
+- **Dosyalar:** `Infrastructure/Payments/MaydanozPaymentGateway.cs` (+ `PaymentGatewayResolver` izin listesi),
+  `Domain/Entities/ExternalCheckout.cs`, `Application/Features/Connector/ConnectorCheckouts.cs`,
+  `Infrastructure/Services/ConnectorCheckouts.cs`, `InvoicePaymentService.cs` + `InvoiceBranches.cs` (açık fatura öde →
+  bekleyen şubeyi açar), `BillingService.cs` (erken ödemede yeni dönem mevcut bitişten başlar), web `app/panel/paket`,
+  mobil `paket_screen.dart`.
+- **Ayar:** `Payments__Maydanoz__SiteUrl=https://maydanozasist.com`, `Payments__CallbackBaseUrl`; DB
+  `platform_integration_settings`: PaymentProvider=Maydanoz, PaymentsEnabled=1, PaymentsReturnUrl.
+- **Testler:** `MaydanozCheckoutTests`.
+- **Tuzaklar:** tek paket olduğundan "Mevcut paketiniz" ödeme başlatmıyordu → "Aboneliği başlat / Dönemi şimdi öde";
+  paket ekranında "kartını kaydet, otomatik yenilenir" metni Maydanoz'dayken gösterilmez.
+
+### Paket 9 — Kayıt ve giriş Maydanoz'da (18 Kas)
+
+- **Kural:** belgeli başvuru Maydanoz'da; Maydanoz yöneticisi onaylayınca Asist'te deneme kurumu açılır (14 gün, sayaç ilk
+  panel girişinde başlar); giriş ve satın alma Maydanoz'da; süresi dolmuş kurum da girebilir (satın almak için).
+- **Uçlar:** `applications/readiness` (tenants.read), `applications/verify/start|email|phone|resend`, `approve`, `notify`,
+  `accounts/login`, `login/verify`, `password-reset/request|complete`, `accounts/{tenantId}/checkout` (checkouts.write),
+  `accounts/{tenantId}` (tenants.read). Kod/alındı/onay e-postalarını Asist gönderir (Maydanoz'da SMTP yok).
+- **Dosyalar:** `Api/Services/ConnectorAccountService.cs`, `Application/Features/Connector/ConnectorApplications.cs`,
+  `Infrastructure/Services/TenantSignupService.Application.cs`, `Api/Endpoints/TenantSignupEndpoints.cs` (public kayıt
+  `TenantSignup:PublicEnabled` kapalı → 410), web `app/kayit` (→ maydanozasist.com/kayit/<asist>), `app/login`
+  ("Paketi maydanozasist.com'dan satın al"), mobil giriş metni.
+- **Testler:** `ConnectorAccountServiceTests`, `TenantSignupTests`.
+- **Tuzaklar:** kod e-postasında kayıt bağlantısı yok (yeni sekmede boş form açıyordu); onaylanmamış hesap açan anonim satın
+  alma (`/signups`) KALDIRILDI.
+
+### Paket 10 — Platform köprüsü (18 Kas)
+
+- **Kural:** platform panelinin her bölümü Maydanoz'dan; gizliler yazılır, okunmaz.
+- **Mimari:** `Api/Middleware/PlatformBridgeMiddleware.cs` YÖNLENDİRMEDEN ÖNCE çalışır: imzalı
+  `/api/connector/v1/platform/<yol>` → `/api/platform/<yol>`, etkin ilk PlatformAdmin kimliğiyle; `app.UseRouting()`
+  köprünün hemen ardından. Kapsam `platform.manage`. İzin listesi (yöntem + tam yol) HEM burada HEM Maydanoz
+  `AsistPlatformService.Allowed`'da — yeni uç ikisine de eklenir. Yazmalar gövdesiz denetim kaydına.
+- **Testler:** `PlatformBridgeTests` (izin listesi, kurum listesi/silme köprüde YOK).
+- **Tuzak:** `PUT /messaging/settings` TAM DEĞİŞTİRME (boş sağlayıcı Simulation'a döner) → Maydanoz gövdeyi okunan
+  değerlerin tamamından kurar. İlk canlı kayıt kullanıcıyla ve DB yedeğiyle.
+
+### Paket 11 — Şube/kademe ücret uyarısı + şık e-postalar (18 Kas)
+
+- **Kural:** "şube eklerken ve limitleri aşarken ücretinize bu kadar yansıyacak mesajı" — deneme dahil.
+- **Dosyalar:** `IBillingService` → `BranchImpactDto` (şube başı birim, bugünkü/sonraki aylık-yıllık teklif, dönem),
+  `TierAllowanceDto.Impact` (`TierImpactDto`), `BillingService.Branches.cs`, `BillingService.Consent.cs`; web
+  `BranchCreateModal.tsx`, `TierFeeNotice.tsx`, `lib/tierFee.ts`, `lib/branchInvoice.ts`, `CustomerFormDialog`,
+  `ConsentCenterModal`, `ImportDialog` (aktarımda `CustomersOverCapacity`); mobil `branch_fee.dart`, `shared/tier_fee.dart`.
+  E-posta: `Application/Common/NoticeEmailTemplate.cs` (doğrulama maili görünümü; görsel/SVG yok).
+- **Testler:** `PerBranchBillingTests`, `CustomerQuotaTests`, `NoticeEmailTemplateTests`, web `tierFee.test.ts`,
+  `branchInvoice.test.ts`, mobil `branch_fee_test.dart`, `tier_fee_test.dart`.
+- **Tuzak:** pencere açılırken "varsayılan şube" HER ZAMAN kapalı başlar (veri gelmeden yanlış varsayılan olmasın).
+
+### Paket 12 — Havale / EFT (18 Kas)
+
+- **Kural:** ödeme sayfasında kart ya da havale. Havale seçilince Asist kaydı 7 gün açık kalır; Maydanoz yöneticisi
+  "Havale geldi" deyince kayıt yeniden okunur ve kartla ödemedeki bildirim yolu işler.
+- **Dosyalar:** `ExternalCheckout.TransferLifetime` + `AwaitTransfer()` (uzatır, kısaltmaz), `ConnectorCheckouts.AwaitTransferAsync`
+  (yalnız "pending"), uç `POST /checkouts/{ref}/transfer` (checkouts.write); web kredi kartı `payOnMaydanoz`.
+- **Testler:** `MaydanozCheckoutTests` (havale açık tutar, geç bildirim yine işler, süresi geçmiş kayıt reddi).
+
+### Paket 13 — SMS / WhatsApp kredisi ayrı (18 Kas)
+
+- **Kural:** iki ayrı bakiye, ayrı paketler, ayrı birim fiyat; biri diğerinde harcanmaz. Mevcut bakiye WhatsApp'ta kalır,
+  SMS 0'dan başlar (canlıda 0 cüzdan vardı); platform kanal başına düzeltebilir.
+- **Şema:** `CreditChannel { WhatsApp = 0, Sms = 1 }` (DB'de metin, varsayılan WhatsApp); `tenant_messaging_wallets`
+  `Sms*` alanları; paket/satın alma `Channel`; `whatsapp_billing_settings.SmsCreditUnitPriceTry` (migration mevcut
+  `CreditUnitPriceTry` ile tohumlar). Cüzdan işlemleri (TopUp/TryReserve/Capture/Refund/Adjust) kanalı ZORUNLU alır.
+  Aylık harcama tavanı kanal başına.
+- **Geriye uyum:** kanalsız istek = WhatsApp; `SmsCreditUnitPriceTry` / paket `Channel` null = korunur.
+- **Dosyalar:** `Domain/Enums/CreditChannel.cs`, `TenantMessagingWallet.cs`, `WhatsAppCreditPackage.cs`,
+  `WhatsAppCreditPurchase.cs`, `WhatsAppBillingSettings.cs`, `WhatsAppBillingService.cs`, `WhatsAppBillingDtos.cs`; web
+  `WhatsAppWalletCard.tsx` (kanal sekmeleri), `app/platform/whatsapp` (SMS fiyatı, paket kanalı, bakiye düzeltme kartı),
+  `panel/bildirimler` (iki bakiye); mobil `whatsapp_screen.dart`.
+- **Testler:** `CreditChannelSplitTests`, `MessagingCreditSmsTests`, `BalanceRaceMySqlTests`, `NotificationEstimateTests`.
+
+### Paket 14 — Hesap kredisi bağlayıcısı (18 Kas)
+
+- **Uçlar:** `GET /accounts/{tenantId}/credits` (tenants.read) → `{ whatsApp, sms }` her biri `{ available, unitPriceKurus,
+  packages[] }`; `POST /accounts/{tenantId}/credit-checkout` (checkouts.write) `{ channel, packageId | credits, returnUrl }`
+  → ödeme kaydı. İptal/askıdaki kurum NotFound.
+- **Dosya:** `Api/Services/ConnectorAccountService.cs` (ctor'a `IWhatsAppBillingService`). **Test:** `ConnectorAccountServiceTests`.
+
+### Paket 15 — Otomatik ödeme hazırlığı (18 Kas)
+
+- **Kural:** otomatik ödeme Maydanoz'da kayıtlı kart talimatıyla yapılır; Asist hiçbir şey çekmez.
+- **Değişiklik:** `GET /checkouts/{ref}` yanıtına `period` (yalnız abonelik DÖNEMİ ödemesinde monthly | yearly; şube/kademe
+  farkı, kredi, fatura boş). `BillingService.ChargeRenewalAsync` sağlayıcı Maydanoz ise satır yazmadan döner.
+- **Test:** `MaydanozCheckoutTests` (dönem, eski kart satırıyla bile çekim yok).
+
+### Paket 16 — Şube silme (18 Kas)
+
+- **Kural:** kayıtlar SİLİNMEZ; seçilen şubeye aktarılır; şube yumuşak silinir; fiyat silinmemiş şubelerden hesaplandığı
+  için sonraki ödemede düşer (ödenmiş dönem iade edilmez). Varsayılan ve tek şube silinemez.
+- **Dosyalar:** `Infrastructure/Persistence/BranchMerge.cs` (BranchId kolonu olan HER tablo EF modelinden; yumuşak
+  silinmişler dahil; `audit_logs` hariç; MySQL'de ham SQL, InMemory'de izleyici), `BranchService.DeletePreviewAsync/
+  DeleteAsync`, `BillingService.GetBranchRemovalImpactAsync` (`BranchImpactDto.CurrentYearly`), uçlar
+  `GET /api/admin/branches/{id}/delete-preview`, `DELETE /api/admin/branches/{id}?targetBranchId=` (BranchWrite); web
+  `BranchDeleteModal.tsx`, `lib/branchRemoval.ts`; mobil `showBranchDeleteSheet` (iOS'ta fiyat yok).
+- **Testler:** `BranchDeleteTests` (+ gerçek MySQL `BranchDeleteMySqlTests`), web `branchRemoval.test.ts`, mobil
+  `branch_removal_test.dart`.
+- **Tuzak:** seçili şube silinirse istemci hedef şubeye geçer; oturum yenilenene kadar personel boş liste görebilir.
+
+### Paket 17 — Kalıcı kurum silme bağlayıcısı (18 Kas)
+
+- **Uç:** `POST /api/connector/v1/tenants/{id}/purge` (`tenants.delete`), gövde `{ confirmName }` = kurum adı AYNEN; silme
+  platform panelindeki "Kalıcı sil" ile aynı yoldan (`TenantService.DeleteAsync` → `TenantPurge`, tek transaction, model
+  türetimli tablo listesi, `audit_logs` korunur).
+- **Dosyalar:** `Api/Services/ConnectorTenantPurge.cs`, `TenantPurge.cs` (InMemory yolu sayım döner ve
+  `HardDeleteEnabled` ile gerçekten siler). **Test:** `ConnectorTenantPurgeTests`.
+- **Bilinçli karar:** ayar köprüsüne (`platform.manage`) kurum listesi/silme EKLENMEDİ; yıkıcı yetki ayrı kapsamla verilir.
+
+### Ürüne göre değişenler (aktarmadan önce)
+
+- Maydanoz'daki Asist kodu (`beauty` → ör. `doctor`, `dentist`): ödeme sayfası adresi (`MaydanozPaymentGateway.AsistCode`),
+  web `/kayit` yönlendirmesi, giriş sayfası metni.
+- Bağlayıcı anahtar kimliği ve kapsamları (env), `Payments__Maydanoz__SiteUrl`.
+- Fiyatlar, kademeler, kredi birim fiyatları (ürün sahibine teyit ettir).
+- E-posta ve arayüz metinlerinde "salon/müşteri" kelimeleri (ünlü uyumu; DentistAsist'te "klinik/hasta").
+
+### Canlıya çıkış (Asist tarafı)
+
+DB yedeği → (yedekten prova DB'de `--migrate-only`) → canlı `--migrate-only` → backend çevir + `/health/ready` (olmazsa
+geri) → web sunucuda derlenir, `.next/cache/fetch-cache` boşaltılır, çevrilir → env: `Connector__Keys__maydanoz__Scopes`
+gereken kapsamları içermeli (`plans.read tenants.read checkouts.read checkouts.write platform.manage tenants.delete`).
+Mobil (Android/iOS) mağaza yayını ayrıca kullanıcı tarafından yapılır.
