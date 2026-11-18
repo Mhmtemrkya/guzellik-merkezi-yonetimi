@@ -293,6 +293,15 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Süresi dolan kurumun paketi maydanozasist.com'dan satın alınır (kullanıcı kararı 18 Kas 2026).
+  Future<void> _openMaydanozAccount() async {
+    final uri = Uri.parse('https://maydanozasist.com/giris/beauty');
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      setState(() => error = 'Tarayıcı açılamadı. Satın almak için: ${uri.toString()}');
+    }
+  }
+
   /// OTP adım 1: kimlik geçerliyse seçilen kanaldan kodu iste, kod adımına geç.
   Future<void> _requestOtp() async {
     if (!formKey.currentState!.validate()) return;
@@ -616,6 +625,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
+                              // SÜRESİ DOLAN KURUM (18 Kas 2026): paket maydanozasist.com'dan satın alınır (web ile aynı).
+                              if (RegExp('Deneme süresi bitti|Abonelik süreniz doldu').hasMatch(error!)) ...[
+                                const SizedBox(height: 8),
+                                OutlinedButton.icon(
+                                  onPressed: _openMaydanozAccount,
+                                  icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+                                  label: const Text("Paketi maydanozasist.com'dan satın al"),
+                                ),
+                              ],
                             ],
                             const SizedBox(height: 20),
                             FilledButton.icon(
