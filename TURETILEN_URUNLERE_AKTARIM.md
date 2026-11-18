@@ -1093,7 +1093,9 @@ kullanır); 18 → 8 + 9 (ödeme yönlendirmesi ve Maydanoz Hesabım oturumu). M
     kurum, kurum iptal / askıda değil.
   - Maydanoz ödeme yolundayken mesaj kredisi alımı YALNIZ kurum yetkilisine (öteki rollere 403 "Mesaj kredisi kurum
     yetkilisinin hesabıyla maydanozasist.com'dan alınır…"; web ve mobilde satın alma yerine bu not). Diğer sağlayıcılarda
-    (iyzico doğrudan, simülasyon) eski davranış sürer.
+    (iyzico doğrudan, simülasyon) eski davranış sürer. Kural YALNIZ panelde oturum açmış kullanıcıya uygulanır
+    (`_currentUser.IsAuthenticated`): Maydanoz Hesabım'ın kredi alımı bağlayıcıdan (`accounts/{id}/credit-checkout`)
+    kullanıcısız gelir ve takılmamalı — kuralın ilk hâli (`777b04e`) bu yolu 403 ile kesiyordu.
 - **Şema:** `maydanoz_handoffs` (Id, TokenHash varchar(64) UNIQUE, TenantId, UserId, CheckoutRef varchar(32),
   CreatedAtUtc, ExpiresAtUtc INDEX, ConsumedAtUtc). Migration `20261118201808_MaydanozHandoffs`. Bir günden eski satırlar
   her yeni jetonda ham SQL `DELETE … LIMIT 200` ile silinir (kurum silmede de model türetimli listeyle gider).
@@ -1116,9 +1118,12 @@ kullanır); 18 → 8 + 9 (ödeme yönlendirmesi ve Maydanoz Hesabım oturumu). M
 - **Testler:** `MaydanozHandoffTests` (yetkiliye jeton + tek kullanım; öteki roller / siteler / kurumlar / başarısız
   sonuçta jeton yok + `ReferenceOf`; çoklu kurum yetkilisi; bozdurmada bozuk / bilinmeyen / süresi dolmuş / yetkili olmayan
   / askıdaki kurum reddi), `MaydanozHandoffMySqlTests` (gerçek MySQL: eşzamanlı tek kazanan, süresi geçmiş tüketilmez, eski
-  satır temizliği), `MaydanozCheckoutTests.CreditCheckout_OnMaydanoz_IsForTheInstitutionOwnerOnly`.
+  satır temizliği), `MaydanozCheckoutTests.CreditCheckout_OnMaydanoz_IsForTheInstitutionOwnerOnly` ve
+  `CreditCheckout_FromMaydanozAccountConnector_IsNotBlockedByThePanelOwnerRule` (GERÇEK kredi servisiyle bağlayıcı yolu).
 - **Tuzaklar:** jeton SORGU dizgisine konmaz; jeton yalnız kurum yetkilisine (Maydanoz Hesabım'ı yalnız yetkilinin
-  hesabıdır); yeni bir ödeme başlatan uç eklenirse o da `AttachAsync` ile sarılmalı (yoksa form yine boş gelir).
+  hesabıdır); yeni bir ödeme başlatan uç eklenirse o da `AttachAsync` ile sarılmalı (yoksa form yine boş gelir); servis
+  katmanına rol kuralı koyarken bağlayıcı yolunu unutma — bağlayıcı isteği kullanıcısızdır (rol boş) ve bağlayıcı testleri
+  servisleri taklit ettiği için böyle bir gerileme yalnız gerçek servisle yazılmış testte görünür.
 - **Canlı:** migration elle (`--migrate-only`); env değişikliği yok (`checkouts.write` zaten var). Önce Asist, sonra
   Maydanoz: eski Maydanoz `#giris` parçasını yok sayar; ters sırada yeni Maydanoz, panelden gelen kurumdan elle giriş ister.
 

@@ -754,9 +754,13 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         var context = await _gateways.ResolveAsync(ct);
         if (context.IsFailure) return Result<CheckoutStartedDto>.Failure(context.Error);
 
-        // ÖDEME MAYDANOZ'DAYSA YALNIZ KURUM YETKİLİSİ (18 Kas 2026): ödeme maydanozasist.com'da kurumun hesabıyla alınır ve
-        // o hesap kurum yetkilisinindir; başka rol için ödeme kaydı AÇILMAZ (sayfada girişe takılıp kalırdı).
-        if (context.Value!.Gateway is Payments.MaydanozPaymentGateway && !_currentUser.IsPlatformAdmin && _currentUser.Role != UserRole.InstitutionOwner)
+        // ÖDEME MAYDANOZ'DAYSA PANELDE YALNIZ KURUM YETKİLİSİ (18 Kas 2026): ödeme maydanozasist.com'da kurumun hesabıyla alınır
+        // ve o hesap kurum yetkilisinindir; panelde başka rol için ödeme kaydı AÇILMAZ (sayfada girişe takılıp kalırdı).
+        // Kural yalnız panelde OTURUM AÇMIŞ kullanıcıya uygulanır. Bağlayıcı çağrısı (Maydanoz Hesabım →
+        // accounts/{id}/credit-checkout) panel kullanıcısı taşımaz — Maydanoz onu kurum yetkilisinin Hesabım oturumuyla yapar —
+        // ve kurala TAKILMAZ (19 Kas 2026: kuralın ilk hâli Hesabım'dan kredi alımını 403 ile kesiyordu).
+        if (context.Value!.Gateway is Payments.MaydanozPaymentGateway
+            && _currentUser.IsAuthenticated && !_currentUser.IsPlatformAdmin && _currentUser.Role != UserRole.InstitutionOwner)
         {
             return Result<CheckoutStartedDto>.Failure(Error.Forbidden(
                 "Mesaj kredisi kurum yetkilisinin hesabıyla maydanozasist.com'dan alınır. Kurum yetkilisinden satın almasını isteyin."));

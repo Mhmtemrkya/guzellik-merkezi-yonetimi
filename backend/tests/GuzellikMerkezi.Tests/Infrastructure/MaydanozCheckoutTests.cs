@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace GuzellikMerkezi.Tests.Infrastructure;
 
@@ -496,6 +497,33 @@ public sealed class MaydanozCheckoutTests
         Assert.Empty(await db.ExternalCheckouts.ToListAsync());
         var admin = new WhatsAppBillingService(db, NullLogger<WhatsAppBillingService>.Instance, Resolver(db), new NoopAuditLogger(), new TestCurrentUser(UserRole.PlatformAdmin));
         Assert.True((await admin.StartCreditCheckoutAsync(tenantId, new TopUpRequest(null, 250m), CreditCallback, null)).IsSuccess);
+    }
+
+    /// <summary>
+    /// Maydanoz Hesabım'dan kredi alımı (bağlayıcı <c>accounts/{id}/credit-checkout</c>) panel kullanıcısı TAŞIMAZ; yetkili
+    /// kuralına takılmamalı (19 Kas 2026: kuralın ilk hâli bu yolu 403 ile kesiyordu, bağlayıcı testleri kredi servisini
+    /// taklit ettiği için görünmedi). Burada GERÇEK kredi servisiyle, bağlayıcı isteğindeki gibi kullanıcısız çağrılır.
+    /// </summary>
+    [Fact]
+    public async Task CreditCheckout_FromMaydanozAccountConnector_IsNotBlockedByThePanelOwnerRule()
+    {
+        var options = NewOptions();
+        var (tenantId, _) = await SeedAsync(options);
+        await using var db = NewDb(options);
+        var anonymous = new TestCurrentUser(role: null) { IsAuthenticated = false, UserId = null };
+        var credits = new WhatsAppBillingService(db, NullLogger<WhatsAppBillingService>.Instance, Resolver(db), new NoopAuditLogger(), anonymous);
+        var env = NSubstitute.Substitute.For<Microsoft.Extensions.Hosting.IHostEnvironment>();
+        env.EnvironmentName.Returns("Production");
+        var connector = new GuzellikMerkezi.Api.Services.ConnectorAccountService(db, new PlainPasswordHasher(),
+            new MemoryOtpStateStore(new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions())),
+            NSubstitute.Substitute.For<GuzellikMerkezi.Application.Features.PlatformMessaging.IPlatformMessagingService>(), Billing(db),
+            new FixedClock(DateTime.UtcNow), env, NullLogger<GuzellikMerkezi.Api.Services.ConnectorAccountService>.Instance, credits);
+
+        var started = await connector.CreditCheckoutAsync(tenantId,
+            new GuzellikMerkezi.Api.Services.ConnectorAccountCreditCheckoutRequest("whatsapp", null, 250, $"{Site}/hesabim"), default);
+        Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Message : null);
+        Assert.StartsWith($"{Site}/odeme/asist/beauty/", started.Value!.Url);
+        Assert.Single(await db.ExternalCheckouts.ToListAsync());
     }
 
     private static async Task<Guid> SeedOpenInvoiceAsync(DbContextOptions<GuzellikDbContext> options, Guid tenantId, decimal amount = 600m, bool withBranch = true)

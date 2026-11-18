@@ -95,7 +95,8 @@ internal sealed class TestCurrentUser : ICurrentUser
     public Guid? TenantId { get; }
     public Guid? BranchId { get; }
     public Guid? CustomerId => null;
-    public bool IsAuthenticated => true;
+    /// <summary>Panel kullanıcısı (JWT) varsayılır; bağlayıcı / zamanlayıcı gibi kullanıcısız çağrılar için <c>false</c>.</summary>
+    public bool IsAuthenticated { get; init; } = true;
     public bool IsPlatformAdmin => Role == UserRole.PlatformAdmin;
     public string? IpAddress => "127.0.0.1";
     public string? DeviceId => null;
