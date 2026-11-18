@@ -46,6 +46,12 @@ public static class ConnectorEndpoints
                 : Results.NotFound(new { success = false, error = new { code = "tenant.not-found", message = "Kurum bulunamadı." } }))
             .Scope("tenants.read");
 
+        // KALICI KURUM SİLME (18 Kas 2026, Maydanoz platform paneli): ayrı yetki (tenants.delete) + kurum adı aynen.
+        // Silme platform panelindeki "Kalıcı sil" ile aynı yoldan (TenantService.DeleteAsync) yapılır.
+        g.MapPost("/tenants/{id:guid}/purge", async (Guid id, ConnectorTenantPurgeRequest request, ConnectorTenantPurge purge, HttpContext http, CancellationToken ct) =>
+            (await purge.PurgeAsync(id, request, ct)).ToHttpResult(http))
+            .Scope("tenants.delete");
+
         // ÖDEME MAYDANOZ'DA: ödeme sayfası tutarı ve dönüş adresini buradan okur; sonucu buraya bildirir.
         g.MapGet("/checkouts/{reference}", async (string reference, IConnectorCheckouts checkouts, CancellationToken ct) =>
             await checkouts.GetAsync(reference, ct) is { } checkout

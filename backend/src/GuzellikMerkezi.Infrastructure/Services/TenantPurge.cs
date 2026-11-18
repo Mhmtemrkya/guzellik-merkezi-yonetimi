@@ -68,9 +68,9 @@ public static class TenantPurge
         var deleted = new Dictionary<string, int>();
         if (!db.Database.IsRelational())
         {
-            // InMemory (birim testleri): ham SQL yok. Takip edilen varlıklar üzerinden sil.
-            await PurgeInMemoryAsync(db, tenantId, ct);
-            return deleted;
+            // InMemory (birim testleri): ham SQL yok. Takip edilen varlıklar üzerinden sil. Sayımlar da döner: boş sözlük
+            // çağırana "hiçbir şey silinmedi" der ve DeleteAsync başarılı silmeyi "bulunamadı" diye raporluyordu.
+            return await PurgeInMemoryAsync(db, tenantId, ct);
         }
 
         // TOPOLOJİK SIRA + YENİDEN DENEME.
@@ -134,7 +134,7 @@ public static class TenantPurge
     }
 
     /// <summary>InMemory sağlayıcı için: TenantId'si eşleşen takip edilebilir varlıkları siler.</summary>
-    private static async Task PurgeInMemoryAsync(GuzellikDbContext db, Guid tenantId, CancellationToken ct)
+    private static async Task<Dictionary<string, int>> PurgeInMemoryAsync(GuzellikDbContext db, Guid tenantId, CancellationToken ct)
     {
         // Sıra InMemory'de FK zorlaması olmadığı için önemsiz; yalnız kurum en sonda silinir.
         var users = await db.TenantUsers.IgnoreQueryFilters().Where(x => x.TenantId == tenantId).ToListAsync(ct);
@@ -145,7 +145,24 @@ public static class TenantPurge
         db.Customers.RemoveRange(customers);
         var tenant = await db.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == tenantId, ct);
         if (tenant is not null) db.Tenants.Remove(tenant);
-        await db.SaveChangesAsync(ct);
+        // Gerçek silme (canlıdaki ham SQL DELETE gibi): bağlamın Remove→yumuşak silme dönüşümü burada kapalı.
+        db.HardDeleteEnabled = true;
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        finally
+        {
+            db.HardDeleteEnabled = false;
+        }
+
+        return new Dictionary<string, int>
+        {
+            ["tenant_users"] = users.Count,
+            ["branches"] = branches.Count,
+            ["customers"] = customers.Count,
+            ["tenants"] = tenant is null ? 0 : 1,
+        };
     }
 
     /// <summary>Silinecek (tablo, TenantId kolonu) çiftleri — çocuklar önce.</summary>
