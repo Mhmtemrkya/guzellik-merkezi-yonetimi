@@ -1,4 +1,5 @@
 using GuzellikMerkezi.Api.Extensions;
+using GuzellikMerkezi.Api.Services;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Billing;
@@ -33,7 +34,7 @@ public static class BillingEndpoints
             return t == Guid.Empty ? EndpointHelpers.MissingTenant(http) : (await svc.ListInvoicesAsync(t, ct)).ToHttpResult(http);
         });
 
-        group.MapPost("/checkout", async (StartCheckoutPayload payload, Guid? tenantId, ICurrentUser cu, IBillingService svc, HttpContext http, CancellationToken ct) =>
+        group.MapPost("/checkout", async (StartCheckoutPayload payload, Guid? tenantId, ICurrentUser cu, IBillingService svc, MaydanozHandoffService handoffs, HttpContext http, CancellationToken ct) =>
         {
             if (Forbidden(cu, http) is { } denied) return denied;
             var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
@@ -41,17 +42,18 @@ public static class BillingEndpoints
             // Dönüş adresi İSTEKTEN kurulur: ters proxy başlıkları uygulandığı için şema/host
             // burada doğrudur (ForwardedHeaders yapılandırılmış durumda).
             var callbackUrl = PaymentCallbacks.PaymentCallbackUrl(http, "/api/payments/callback");
-            return (await svc.StartCheckoutAsync(t, payload.SubscriptionPlanId, ParsePeriod(payload.BillingPeriod), callbackUrl, ct)).ToHttpResult(http);
+            // Maydanoz'a OTURUMLU geçiş: kurum yetkilisine tek kullanımlık jeton (form hesabın bilgileriyle dolu gelir).
+            return (await handoffs.AttachAsync(await svc.StartCheckoutAsync(t, payload.SubscriptionPlanId, ParsePeriod(payload.BillingPeriod), callbackUrl, ct), cu, t, ct)).ToHttpResult(http);
         });
 
         // AÇIK FATURAYI ÖDE: kurum Maydanoz'un ödeme sayfasına yönlenir; fatura ödendi bildirimiyle kapanır.
-        group.MapPost("/invoices/{invoiceId:guid}/pay", async (Guid invoiceId, Guid? tenantId, ICurrentUser cu, IInvoicePaymentService svc, HttpContext http, CancellationToken ct) =>
+        group.MapPost("/invoices/{invoiceId:guid}/pay", async (Guid invoiceId, Guid? tenantId, ICurrentUser cu, IInvoicePaymentService svc, MaydanozHandoffService handoffs, HttpContext http, CancellationToken ct) =>
         {
             if (Forbidden(cu, http) is { } denied) return denied;
             var t = EndpointHelpers.ResolveTenantId(cu, tenantId);
             if (t == Guid.Empty) return EndpointHelpers.MissingTenant(http);
             var callbackUrl = PaymentCallbacks.PaymentCallbackUrl(http, "/api/payments/invoice-callback");
-            return (await svc.StartAsync(t, invoiceId, callbackUrl, ct)).ToHttpResult(http);
+            return (await handoffs.AttachAsync(await svc.StartAsync(t, invoiceId, callbackUrl, ct), cu, t, ct)).ToHttpResult(http);
         });
 
         // TEKLİF: seçilen paket + dönem için kurumun güncel sayaçlarıyla (şube, müşteri, imzalı onam)

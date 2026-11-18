@@ -30,6 +30,12 @@ public sealed record ConnectorAccountVerifyRequest(string? ChallengeId, string? 
 /// <summary>Kod doğrulandı: Maydanoz kendi oturumunu bu kimlikle açar (BeautyAsist oturumu/token'ı VERİLMEZ).</summary>
 public sealed record ConnectorAccountIdentityDto(Guid TenantId, Guid UserId, string Email, string? FullName, string TenantName, string? TenantCode);
 
+/// <summary>Panelden gelen tek kullanımlık geçiş jetonu (bkz. <see cref="MaydanozHandoffService"/>).</summary>
+public sealed record ConnectorAccountHandoffRequest(string? Token);
+
+/// <summary>Jeton bozduruldu: kurum yetkilisinin kimliği ve jetonun bağlı olduğu ödeme kaydı.</summary>
+public sealed record ConnectorAccountHandoffDto(Guid TenantId, Guid UserId, string Email, string? FullName, string TenantName, string? TenantCode, string Reference);
+
 public sealed record ConnectorPriceDto(long NetKurus, long VatKurus, long TotalKurus, int Branches);
 
 /// <summary>Hesabım sayfası: durum + ödeme formuna doldurulacak bilgiler + bu kurumun güncel tutarları.</summary>
@@ -148,6 +154,47 @@ public sealed class ConnectorAccountService(
         await store.SetAsync(Key(challengeId), new PendingAccountLogin { Code = code, UserId = owner.Id, TenantId = owner.TenantId }, ChallengeLifetime, ct);
         return Result<ConnectorAccountLoginDto>.Success(new ConnectorAccountLoginDto(
             ConnectorAccountLoginDto.StepCode, challengeId, TenantTextHelper.MaskEmail(email), env.IsDevelopment() ? code : null));
+    }
+
+    /// <summary>
+    /// OTURUMLU GEÇİŞ (18 Kas 2026): panelin ürettiği tek kullanımlık jeton bozdurulur. Tek kullanım koşullu güncellemeyle
+    /// atomiktir (iki istek aynı jetonu kullanamaz); kimlik VERİTABANINDAN yeniden doğrulanır: kişi hâlâ bu kurumun etkin
+    /// yetkilisi olmalı, kurum kapalı ya da askıda olmamalı. Jeton günlüğe yazılmaz.
+    /// </summary>
+    public async Task<Result<ConnectorAccountHandoffDto>> HandoffAsync(ConnectorAccountHandoffRequest request, CancellationToken ct)
+    {
+        var expired = Result<ConnectorAccountHandoffDto>.Failure(Error.Unauthorized(
+            "Giriş bağlantısının süresi doldu. Hesabınızla giriş yapın ya da ödemeyi panelden yeniden başlatın."));
+        var token = (request.Token ?? string.Empty).Trim();
+        if (token.Length is < 32 or > 128) return expired;
+
+        var hash = MaydanozHandoffService.Hash(token);
+        var handoff = await db.MaydanozHandoffs.FirstOrDefaultAsync(h => h.TokenHash == hash, ct);
+        if (handoff is null) return expired;
+
+        var now = clock.UtcNow;
+        if (db.Database.IsRelational())
+        {
+#pragma warning disable EF1002 // Tablo adı sabit; değerler parametreli.
+            var consumed = await db.Database.ExecuteSqlRawAsync(
+                "UPDATE `maydanoz_handoffs` SET `ConsumedAtUtc` = {0} WHERE `Id` = {1} AND `ConsumedAtUtc` IS NULL AND `ExpiresAtUtc` > {0}",
+                [now, handoff.Id.ToString()], ct);
+#pragma warning restore EF1002
+            if (consumed != 1) return expired;
+        }
+        else
+        {
+            if (!handoff.TryConsume(now)) return expired;
+            await db.SaveChangesAsync(ct);
+        }
+
+        var user = await db.TenantUsers.IgnoreQueryFilters().Include(u => u.Tenant).AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == handoff.UserId && u.TenantId == handoff.TenantId && u.IsActive
+                                      && u.Role == UserRole.InstitutionOwner, ct);
+        if (user?.Tenant is null || StatusOf(user.Tenant, now) is "cancelled" or "suspended")
+            return Result<ConnectorAccountHandoffDto>.Failure(Error.Unauthorized("Hesap bulunamadı."));
+        return Result<ConnectorAccountHandoffDto>.Success(new ConnectorAccountHandoffDto(
+            user.TenantId, user.Id, user.Email, user.FullName, user.Tenant.Name, user.Tenant.Code, handoff.CheckoutRef));
     }
 
     public async Task<Result<ConnectorAccountIdentityDto>> VerifyAsync(ConnectorAccountVerifyRequest request, CancellationToken ct)

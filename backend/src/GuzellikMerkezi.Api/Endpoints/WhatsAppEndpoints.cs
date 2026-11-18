@@ -1,5 +1,6 @@
 using GuzellikMerkezi.Api.Authorization;
 using GuzellikMerkezi.Api.Extensions;
+using GuzellikMerkezi.Api.Services;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Domain;
@@ -84,12 +85,12 @@ public static class WhatsAppEndpoints
 
         // KARTLA KONTÖR ALMA: ödeme formunu başlatır. Bakiye BURADA artmaz — yalnız sağlayıcı
         // dönüşü doğrulandığında artar (bkz. /api/payments/credit-callback).
-        group.MapPost("/wallet/checkout", async (TopUpRequest request, Guid? tenantId, ICurrentUser currentUser, IWhatsAppBillingService billing, HttpContext http, CancellationToken ct) =>
+        group.MapPost("/wallet/checkout", async (TopUpRequest request, Guid? tenantId, ICurrentUser currentUser, IWhatsAppBillingService billing, MaydanozHandoffService handoffs, HttpContext http, CancellationToken ct) =>
         {
             var tid = EndpointHelpers.ResolveTenantId(currentUser, tenantId);
             if (tid == Guid.Empty) return EndpointHelpers.MissingTenant(http);
             var callbackUrl = PaymentCallbacks.PaymentCallbackUrl(http, "/api/payments/credit-callback");
-            return (await billing.StartCreditCheckoutAsync(tid, request, callbackUrl, currentUser.UserId, ct)).ToHttpResult(http);
+            return (await handoffs.AttachAsync(await billing.StartCreditCheckoutAsync(tid, request, callbackUrl, currentUser.UserId, ct), currentUser, tid, ct)).ToHttpResult(http);
         });
 
         // --- Webhook (anonim; Meta çağırır, /api/admin dışında → onay kapısı/auth uygulanmaz) ---

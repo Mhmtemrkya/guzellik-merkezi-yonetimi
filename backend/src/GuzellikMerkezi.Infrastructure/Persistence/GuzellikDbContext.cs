@@ -102,6 +102,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<ProcessedClientRequest> ProcessedClientRequests => Set<ProcessedClientRequest>();
     public DbSet<ConnectorNonce> ConnectorNonces => Set<ConnectorNonce>();
     public DbSet<ExternalCheckout> ExternalCheckouts => Set<ExternalCheckout>();
+    public DbSet<MaydanozHandoff> MaydanozHandoffs => Set<MaydanozHandoff>();
     public DbSet<Adisyon> Adisyonlar => Set<Adisyon>();
     public DbSet<AdisyonItem> AdisyonItems => Set<AdisyonItem>();
     public DbSet<StaffCommission> StaffCommissions => Set<StaffCommission>();
@@ -1118,6 +1119,15 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         cn.Property(x => x.Nonce).HasMaxLength(64).IsRequired();
         cn.HasIndex(x => new { x.KeyId, x.Nonce }).IsUnique();
         cn.HasIndex(x => x.ExpiresAtUtc);
+
+        // Maydanoz'a oturumlu geçiş jetonu: yalnız özet saklanır; özet benzersiz, süresi dolanlar tarihle temizlenir.
+        var mh = modelBuilder.Entity<MaydanozHandoff>();
+        mh.ToTable("maydanoz_handoffs");
+        mh.HasKey(x => x.Id);
+        mh.Property(x => x.TokenHash).HasMaxLength(64).IsRequired();
+        mh.HasIndex(x => x.TokenHash).IsUnique();
+        mh.Property(x => x.CheckoutRef).HasMaxLength(32).IsRequired();
+        mh.HasIndex(x => x.ExpiresAtUtc);
 
         // Maydanoz'da alınacak ödeme: adresteki anahtar ve işlem anahtarı benzersiz.
         var xc = modelBuilder.Entity<ExternalCheckout>();

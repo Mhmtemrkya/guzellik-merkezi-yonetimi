@@ -480,6 +480,24 @@ public sealed class MaydanozCheckoutTests
         Assert.Equal(TenantStatus.Active, (await check.Tenants.SingleAsync(t => t.Id == tenantId)).Status);
     }
 
+    /// <summary>
+    /// Ödeme Maydanoz'dayken mesaj kredisi yalnız kurum yetkilisince alınır (Maydanoz hesabı yetkilinindir): başka rol için
+    /// ödeme kaydı AÇILMAZ.
+    /// </summary>
+    [Fact]
+    public async Task CreditCheckout_OnMaydanoz_IsForTheInstitutionOwnerOnly()
+    {
+        var options = NewOptions();
+        var (tenantId, _) = await SeedAsync(options);
+        await using var db = NewDb(options);
+        var manager = new WhatsAppBillingService(db, NullLogger<WhatsAppBillingService>.Instance, Resolver(db), new NoopAuditLogger(), new TestCurrentUser(UserRole.BranchManager));
+        var refused = await manager.StartCreditCheckoutAsync(tenantId, new TopUpRequest(null, 250m), CreditCallback, null);
+        Assert.Equal("Forbidden", refused.Error.Code);
+        Assert.Empty(await db.ExternalCheckouts.ToListAsync());
+        var admin = new WhatsAppBillingService(db, NullLogger<WhatsAppBillingService>.Instance, Resolver(db), new NoopAuditLogger(), new TestCurrentUser(UserRole.PlatformAdmin));
+        Assert.True((await admin.StartCreditCheckoutAsync(tenantId, new TopUpRequest(null, 250m), CreditCallback, null)).IsSuccess);
+    }
+
     private static async Task<Guid> SeedOpenInvoiceAsync(DbContextOptions<GuzellikDbContext> options, Guid tenantId, decimal amount = 600m, bool withBranch = true)
     {
         await using var db = NewDb(options);

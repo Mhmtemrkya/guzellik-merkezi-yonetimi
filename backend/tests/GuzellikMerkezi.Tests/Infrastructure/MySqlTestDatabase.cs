@@ -197,6 +197,15 @@ public sealed class MySqlTestDatabase : IAsyncDisposable
     {
         try
         {
+            // Bu şemanın bağlantı havuzu HEMEN boşaltılır. Her test kendi şemasını (dolayısıyla kendi havuzunu) kurar;
+            // havuzdaki boştaki bağlantılar silinen şemaya açık kalıp dakikalarca birikiyordu ve tam takım sunucunun
+            // bağlantı sınırına dayanıp "Too many connections" ile rastgele testleri düşürüyordu (varsayılan
+            // max_connections 151; CI'daki MariaDB de öyle). 19 Kas 2026.
+            await using (var pooled = new MySqlConnection(_connectionString))
+            {
+                MySqlConnection.ClearPool(pooled);
+            }
+
             var builder = new MySqlConnectionStringBuilder(_connectionString) { Database = string.Empty };
             await using var connection = new MySqlConnection(builder.ConnectionString);
             await connection.OpenAsync();

@@ -754,6 +754,14 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         var context = await _gateways.ResolveAsync(ct);
         if (context.IsFailure) return Result<CheckoutStartedDto>.Failure(context.Error);
 
+        // ÖDEME MAYDANOZ'DAYSA YALNIZ KURUM YETKİLİSİ (18 Kas 2026): ödeme maydanozasist.com'da kurumun hesabıyla alınır ve
+        // o hesap kurum yetkilisinindir; başka rol için ödeme kaydı AÇILMAZ (sayfada girişe takılıp kalırdı).
+        if (context.Value!.Gateway is Payments.MaydanozPaymentGateway && !_currentUser.IsPlatformAdmin && _currentUser.Role != UserRole.InstitutionOwner)
+        {
+            return Result<CheckoutStartedDto>.Failure(Error.Forbidden(
+                "Mesaj kredisi kurum yetkilisinin hesabıyla maydanozasist.com'dan alınır. Kurum yetkilisinden satın almasını isteyin."));
+        }
+
         if (string.IsNullOrWhiteSpace(callbackUrl))
         {
             return Result<CheckoutStartedDto>.Failure(Error.Conflict(

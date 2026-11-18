@@ -42,6 +42,14 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
   /// yönlendirilir (kullanıcı kararı 18 Kas 2026). iOS'ta satın alma yüzeyi zaten yok (App Store 3.1.1).
   bool _payOnMaydanoz = false;
 
+  /// Ödeme Maydanoz'dayken kredi KURUM YETKİLİSİNİN hesabıyla alınır (web paritesi, 18 Kas 2026): Maydanoz oturumu
+  /// yetkilinindir; başka rolde satın alma yerine açıklama gösterilir (sunucu da reddeder).
+  bool get _canBuy {
+    if (!_payOnMaydanoz) return true;
+    final role = widget.api.auth?.user?.role;
+    return role == 'InstitutionOwner' || role == 'PlatformAdmin';
+  }
+
   /// SMS ve WhatsApp kredisi AYRI bakiyeler (18 Kas 2026): sekme hangi kanalın bakiyesini, paketlerini ve alımını
   /// gösterdiğini seçer ('WhatsApp' | 'Sms').
   String _creditChannel = 'WhatsApp';
@@ -456,7 +464,17 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
             for (final p in pending) _pendingRow(p),
           ],
           // iOS: kredi satın alma yok (StorePolicy — App Store 3.1.1); bakiye/kullanım görünür.
-          if (!StorePolicy.hidesPurchaseFlows) ...[
+          if (!StorePolicy.hidesPurchaseFlows && !_canBuy) ...[
+            const SizedBox(height: 12),
+            _card(
+              child: const Text(
+                "Mesaj kredisi kurum yetkilisinin hesabıyla alınır. Ödeme maydanozasist.com'da kurumun hesabıyla yapıldığı için "
+                'kredi satın almayı kurum yetkilisinden isteyin.',
+                style: TextStyle(fontSize: 12.5, height: 1.4),
+              ),
+            ),
+          ],
+          if (!StorePolicy.hidesPurchaseFlows && _canBuy) ...[
             const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.only(left: 4, bottom: 6),
@@ -476,8 +494,8 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
               padding: const EdgeInsets.all(6),
               child: Text(
                   _payOnMaydanoz
-                      ? "Ödeme sayfası maydanozasist.com'da (tarayıcıda) açılır; kartla ya da havale / EFT ile ödeyebilirsiniz. "
-                          'Krediniz ödeme onaylandığında yüklenir.'
+                      ? "Ödeme sayfası maydanozasist.com'da (tarayıcıda) hesabınızla giriş yapılmış olarak açılır; kartla ya da "
+                          'havale / EFT ile ödeyebilirsiniz. Krediniz ödeme onaylandığında yüklenir.'
                       : 'Kartla ödemede kredi anında yüklenir; havale yolunda BeautyAsist onayından sonra eklenir. '
                           'Kart bilgileriniz bizde saklanmaz.',
                   style: const TextStyle(fontSize: 11, color: AppColors.muted)),

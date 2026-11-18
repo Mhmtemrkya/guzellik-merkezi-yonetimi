@@ -102,6 +102,10 @@ public static class ConnectorEndpoints
         accounts.MapPost("/login/verify", async (ConnectorAccountVerifyRequest request, ConnectorAccountService service, HttpContext http, CancellationToken ct) =>
             (await service.VerifyAsync(request, ct)).ToHttpResult(http))
             .Scope("checkouts.write");
+        // OTURUMLU GEÇİŞ (18 Kas 2026): panelden başlayan ödemenin tek kullanımlık jetonu → Maydanoz'da kurum hesabıyla oturum.
+        accounts.MapPost("/handoff", async (ConnectorAccountHandoffRequest request, ConnectorAccountService service, HttpContext http, CancellationToken ct) =>
+            (await service.HandoffAsync(request, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
         accounts.MapPost("/password-reset/request", async (PasswordResetRequestBody request, PasswordResetService reset, HttpContext http, CancellationToken ct) =>
             (await reset.RequestAsync(request.Email, ct)).ToHttpResult(http))
             .Scope("checkouts.write");

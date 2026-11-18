@@ -15,6 +15,7 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react'
+import { useAuth } from '@/components/dashboard/AuthContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
 import type { ApiCreditPackage, ApiCreditPurchase, ApiMessagingWallet, ApiWalletTransaction, CreditChannel } from '@/lib/types'
@@ -44,6 +45,10 @@ const txLabels: Record<string, string> = {
  * maliyetler ve birim fiyatlar platformdan gelir. Bileşen adı geriye uyumluluk için korunur.
  */
 export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) {
+  // Ödeme Maydanoz'dayken kredi KURUM YETKİLİSİNİN hesabıyla alınır (18 Kas 2026): Maydanoz'da oturum yetkilinindir;
+  // başka rol için satın alma düğmeleri yerine açıklama gösterilir (sunucu da reddeder).
+  const { user } = useAuth()
+  const owner = user?.role === 'InstitutionOwner' || user?.role === 'PlatformAdmin'
   const { data: wallet, loading, reload } = useApiQuery<ApiMessagingWallet | null>(
     () => adminApi.whatsappWallet<ApiMessagingWallet>(tenantId),
     [tenantId],
@@ -259,6 +264,12 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
       )}
 
       {/* Satın alınabilir paketler */}
+      {onMaydanoz && !owner ? (
+        <div className="rounded-xl border border-[#EAD8DF] bg-[#F7F6F6] px-3 py-2.5 text-[11.5px] leading-relaxed text-[#5A4B53]">
+          <b className="text-[#2A2027]">Mesaj kredisi kurum yetkilisinin hesabıyla alınır.</b> Ödeme maydanozasist.com&apos;da kurumun hesabıyla
+          yapıldığı için kredi satın almayı kurum yetkilisinden isteyin.
+        </div>
+      ) : (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">{isSms ? 'SMS kredisi al' : 'WhatsApp kredisi al'}</div>
@@ -349,12 +360,13 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
         </div>
         <p className="text-[10px] leading-snug text-[#74616A]">
           {onMaydanoz
-            ? 'maydanozasist.com güvenli ödeme sayfasına yönlendirilirsiniz; kartla ya da havale / EFT ile ödeyebilirsiniz. Krediniz ödeme onaylandığında yüklenir; kart bilgileriniz bizde saklanmaz.'
+            ? 'maydanozasist.com güvenli ödeme sayfasına hesabınızla giriş yapılmış olarak yönlendirilirsiniz; bilgileriniz dolu gelir. Kartla ya da havale / EFT ile ödeyebilirsiniz; krediniz ödeme onaylandığında yüklenir, kart bilgileriniz bizde saklanmaz.'
             : payByCard
             ? 'Güvenli ödeme sayfasına yönlendirilirsiniz. Krediniz ödeme onaylandığı anda yüklenir; kart bilgileriniz bizde saklanmaz.'
             : 'Kredi talepleriniz BeautyAsist onayından sonra bakiyenize eklenir. Ödeme ve fatura için sizinle iletişime geçilir.'}
         </p>
       </div>
+      )}
 
       {/* Son hareketler — dönüşüm öncesi satırlar ₺ olarak gösterilir (geçmiş yeniden yazılmaz). */}
       <div className="mt-3 border-t border-[#f4e8ed] pt-2">
