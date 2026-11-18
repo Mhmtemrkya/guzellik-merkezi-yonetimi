@@ -46,11 +46,24 @@ public sealed class ConnectorAuthMiddleware(RequestDelegate next, ILogger<Connec
 
     public async Task InvokeAsync(HttpContext http, IConfiguration config, GuzellikDbContext db)
     {
+        var key = await AuthenticateAsync(http, config, db, logger);
+        if (key is null) return;
+        http.Items[KeyItem] = key;
+        await next(http);
+    }
+
+    /// <summary>
+    /// İmzayı, zamanı ve tek kullanımlık nonce'u doğrular; geçerliyse anahtarı döner. Geçersizse yanıtı (404/401/413)
+    /// YAZMIŞ olarak null döner. Platform köprüsü (<see cref="PlatformBridgeMiddleware"/>) de aynı kapıdan geçer:
+    /// doğrulamanın ikinci bir kopyası yoktur.
+    /// </summary>
+    public static async Task<ConnectorKey?> AuthenticateAsync(HttpContext http, IConfiguration config, GuzellikDbContext db, ILogger logger)
+    {
         var keys = LoadKeys(config);
         if (keys.Count == 0)
         {
             http.Response.StatusCode = StatusCodes.Status404NotFound;
-            return;
+            return null;
         }
 
         var req = http.Request;
@@ -62,20 +75,20 @@ public sealed class ConnectorAuthMiddleware(RequestDelegate next, ILogger<Connec
             || !ConnectorSignature.IsValidNonce(nonce))
         {
             await Reject(http, "signature.missing");
-            return;
+            return null;
         }
 
         var now = DateTimeOffset.UtcNow;
         if (Math.Abs(now.ToUnixTimeSeconds() - timestamp) > ConnectorSignature.MaxClockSkew.TotalSeconds)
         {
             await Reject(http, "signature.expired");
-            return;
+            return null;
         }
 
         if (req.ContentLength is > MaxBodyBytes)
         {
             http.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-            return;
+            return null;
         }
         req.EnableBuffering(bufferThreshold: 64 * 1024, bufferLimit: MaxBodyBytes);
         using var ms = new MemoryStream();
@@ -83,7 +96,7 @@ public sealed class ConnectorAuthMiddleware(RequestDelegate next, ILogger<Connec
         if (ms.Length > MaxBodyBytes)
         {
             http.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-            return;
+            return null;
         }
         req.Body.Position = 0;
 
@@ -94,7 +107,7 @@ public sealed class ConnectorAuthMiddleware(RequestDelegate next, ILogger<Connec
         {
             logger.LogWarning("Bağlayıcı imzası geçersiz ({KeyId} {Method} {Path}).", keyId, req.Method, req.Path);
             await Reject(http, "signature.invalid");
-            return;
+            return null;
         }
 
         // TEKRAR KORUMASI: aynı (anahtar, nonce) ikinci kez yazılamaz. İmza geçerli olsa da tekrar reddedilir.
@@ -111,15 +124,14 @@ public sealed class ConnectorAuthMiddleware(RequestDelegate next, ILogger<Connec
         catch (DbUpdateException)
         {
             await Reject(http, "signature.replayed");
-            return;
+            return null;
         }
         finally
         {
             db.ChangeTracker.Clear();
         }
 
-        http.Items[KeyItem] = key;
-        await next(http);
+        return key;
     }
 
     private static Task Reject(HttpContext http, string code)

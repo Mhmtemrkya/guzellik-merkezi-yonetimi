@@ -404,6 +404,13 @@ await DatabaseBootstrap.RepairInstallmentPlanDriftAsync(app.Services, app.Config
     app.UseForwardedHeaders(fh);
 }
 
+// MAYDANOZ PLATFORM KÖPRÜSÜ (18 Kas 2026): imzalı /api/connector/v1/platform/* isteğini izin listesindeki
+// /api/platform/* ucuna platform yöneticisi kimliğiyle aktarır. Yolu YENİDEN YAZDIĞI için yönlendirmeden ÖNCE
+// çalışmalı; yönlendirme bu yüzden burada AÇIKÇA başlatılır. Önceden örtük olarak hattın başındaydı — sıra
+// (iletme başlıkları → yönlendirme → geri kalan her şey) korunur.
+app.UseMiddleware<PlatformBridgeMiddleware>();
+app.UseRouting();
+
 // HSTS yalnız HTTPS isteklerinde yazılır (HstsMiddleware localhost'u zaten dışlar) ve
 // ForwardedHeaders'tan SONRA gelmelidir: `Request.IsHttps` kararı X-Forwarded-Proto'ya bağlıdır.
 // Development'ta kapalı — yerelde HTTP ile çalışılıyor.
