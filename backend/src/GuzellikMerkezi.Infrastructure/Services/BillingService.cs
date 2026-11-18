@@ -447,6 +447,14 @@ public sealed partial class BillingService : IBillingService
         if (tenant.SubscriptionPlanId is not { } planId || tenant.SubscriptionPeriod is not { } period)
             return Result<RenewalOutcomeDto>.Failure(Error.Conflict("Kurumun ücretli aboneliği yok."));
 
+        // ÖDEME MAYDANOZ'DAYSA BURADA HİÇBİR ŞEY ÇEKİLMEZ (18 Kas 2026). Otomatik ödeme Maydanoz'un
+        // kayıtlı kart talimatıyla orada yapılır ve sonucu imzalı "ödendi" bildirimiyle gelir. Eski bir
+        // kart satırı kalmışsa bu yol her turda ÇÖZÜLEMEYEN bekleyen bir deneme açıyordu (Maydanoz
+        // saklı kartla çekmez); hiç satır yazmadan dönülür.
+        if (context.Value!.Gateway.Provider == GuzellikMerkezi.Infrastructure.Payments.MaydanozPaymentGateway.ProviderName)
+            return Result<RenewalOutcomeDto>.Success(new RenewalOutcomeDto(
+                false, 0, "Otomatik ödeme maydanozasist.com'da yapılır.", tenant.SubscriptionEndsAtUtc));
+
         var plan = await _db.SubscriptionPlans.FirstOrDefaultAsync(p => p.Id == planId, ct);
         if (plan is null) return Result<RenewalOutcomeDto>.Failure(Error.NotFound("Paket bulunamadı."));
 

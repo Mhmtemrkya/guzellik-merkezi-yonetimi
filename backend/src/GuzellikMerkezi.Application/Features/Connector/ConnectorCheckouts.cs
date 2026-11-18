@@ -5,6 +5,8 @@ namespace GuzellikMerkezi.Application.Features.Connector;
 /// <summary>
 /// Maydanoz'un ödeme sayfasının okuduğu kayıt. Kişisel veri yoktur: yalnız kurum adı, tutar ve açıklama.
 /// Durum: <c>pending</c> (ödenebilir), <c>paid</c>, <c>expired</c> (süresi doldu; yeni ödeme panelden başlar).
+/// <para><c>Period</c>: yalnız abonelik DÖNEMİ ödemesinde <c>monthly</c> | <c>yearly</c> (şube/kademe farkı, kredi ve faturada boş).
+/// Maydanoz otomatik ödeme seçeneğini yalnız aylık dönem ödemesinde sunar (18 Kas 2026).</para>
 /// </summary>
 public sealed record ConnectorCheckoutDto(
     string Ref,
@@ -16,7 +18,8 @@ public sealed record ConnectorCheckoutDto(
     string TenantName,
     Guid TenantId,
     string ReturnUrl,
-    DateTime ExpiresAtUtc);
+    DateTime ExpiresAtUtc,
+    string? Period = null);
 
 /// <summary>Maydanoz'un "ödendi" bildirimi. Tutar kuruştur (tam sayı; para TL'den yeniden türetilmez).</summary>
 public sealed record ConnectorCheckoutPaidRequest(string? PaymentId, long AmountKurus, string? Currency);

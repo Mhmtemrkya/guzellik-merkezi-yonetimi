@@ -116,6 +116,8 @@ public sealed class MaydanozCheckoutTests
             Assert.Equal(("pending", "subscription", (long)(amount * 100), "TRY", "Işıl Güzellik", tenantId),
                 (view!.Status, view.Kind, view.AmountKurus, view.Currency, view.TenantName, view.TenantId));
             Assert.Equal($"{Callback}?token={reference}", view.ReturnUrl);
+            // Abonelik DÖNEMİ ödemesi: Maydanoz aylıkta otomatik ödeme seçeneğini bununla sunar.
+            Assert.Equal("monthly", view.Period);
             // Ödeme sayfasına kişisel veri gitmez.
             var json = System.Text.Json.JsonSerializer.Serialize(view);
             Assert.DoesNotContain("05550000000", json);
@@ -186,7 +188,9 @@ public sealed class MaydanozCheckoutTests
             Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Message : null);
             reference = (await db.ExternalCheckouts.SingleAsync()).PublicRef;
             Assert.Equal(ExternalCheckout.KindCredit, (await db.ExternalCheckouts.SingleAsync()).Kind);
-            Assert.Equal("credit", (await Connector(db).GetAsync(reference))!.Kind);
+            var creditView = (await Connector(db).GetAsync(reference))!;
+            Assert.Equal("credit", creditView.Kind);
+            Assert.Null(creditView.Period);
         }
 
         await using (var db = NewDb(options))
@@ -413,6 +417,67 @@ public sealed class MaydanozCheckoutTests
             var invoice = await check.TenantInvoices.SingleAsync(i => i.Status == "Paid");
             Assert.Equal(currentEnd, invoice.PeriodStartUtc);
         }
+    }
+
+    /// <summary>
+    /// Ödeme kaydı yalnız abonelik DÖNEMİ ödemesinde dönemini söyler (Maydanoz aylıkta otomatik ödeme sunar):
+    /// yıllık → "yearly"; aynı türde açılan şube farkı ödemesinde dönem boştur.
+    /// </summary>
+    [Fact]
+    public async Task CheckoutView_ReportsThePeriod_OnlyForASubscriptionPeriodPayment()
+    {
+        var options = NewOptions();
+        var (tenantId, planId) = await SeedAsync(options);
+        string yearlyRef;
+        await using (var db = NewDb(options))
+        {
+            var started = await Billing(db).StartCheckoutAsync(tenantId, planId, BillingPeriod.Yearly, Callback);
+            Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Message : null);
+            yearlyRef = started.Value!.CheckoutToken;
+
+            var branch = new SubscriptionPayment(tenantId, planId, BillingPeriod.Monthly, 600m, MaydanozPaymentGateway.ProviderName, "brn-test-1", attemptNumber: 1);
+            branch.MarkAsBranchAddon("{\"name\":\"Karşıyaka\"}");
+            db.SubscriptionPayments.Add(branch);
+            db.ExternalCheckouts.Add(new ExternalCheckout(new string('a', 32), "brn-test-1", ExternalCheckout.KindSubscription, tenantId, 600m, "Ek şube", Callback, DateTime.UtcNow));
+            await db.SaveChangesAsync();
+        }
+
+        await using var check = NewDb(options);
+        Assert.Equal("yearly", (await Connector(check).GetAsync(yearlyRef))!.Period);
+        var branchView = (await Connector(check).GetAsync(new string('a', 32)))!;
+        Assert.Equal(("subscription", null), (branchView.Kind, branchView.Period));
+    }
+
+    /// <summary>
+    /// Ödeme Maydanoz'dayken BeautyAsist'in kartlı yenileme işi hiçbir şey çekmez ve satır yazmaz: eski bir
+    /// kart satırı kalmış olsa bile çözülemeyen bekleyen deneme açılmaz, kurum askıya alınmaz.
+    /// </summary>
+    [Fact]
+    public async Task Renewal_WithMaydanoz_ChargesNothing_EvenWithALegacyCard()
+    {
+        var options = NewOptions();
+        var (tenantId, planId) = await SeedAsync(options);
+        await using (var db = NewDb(options))
+        {
+            var tenant = await db.Tenants.SingleAsync(t => t.Id == tenantId);
+            var plan = await db.SubscriptionPlans.SingleAsync(p => p.Id == planId);
+            tenant.StartSubscription(plan, BillingPeriod.Monthly, DateTime.UtcNow.AddMonths(-1).AddDays(1));
+            db.TenantPaymentMethods.Add(new TenantPaymentMethod(tenantId, "Iyzico", "u", "t", "552879******0004", null, null, null));
+            await db.SaveChangesAsync();
+        }
+
+        for (var tick = 0; tick < 4; tick++)
+        {
+            await using var db = NewDb(options);
+            var outcome = await Billing(db).ChargeRenewalAsync(tenantId);
+            Assert.True(outcome.IsSuccess);
+            Assert.False(outcome.Value!.Charged);
+            Assert.Equal(0, outcome.Value.AttemptNumber);
+        }
+
+        await using var check = NewDb(options);
+        Assert.Empty(await check.SubscriptionPayments.ToListAsync());
+        Assert.Equal(TenantStatus.Active, (await check.Tenants.SingleAsync(t => t.Id == tenantId)).Status);
     }
 
     private static async Task<Guid> SeedOpenInvoiceAsync(DbContextOptions<GuzellikDbContext> options, Guid tenantId, decimal amount = 600m, bool withBranch = true)

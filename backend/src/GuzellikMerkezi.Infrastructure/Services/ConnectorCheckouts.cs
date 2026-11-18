@@ -5,6 +5,7 @@ using GuzellikMerkezi.Application.Features.Billing;
 using GuzellikMerkezi.Application.Features.Connector;
 using GuzellikMerkezi.Application.Features.WhatsApp;
 using GuzellikMerkezi.Domain.Entities;
+using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -42,11 +43,18 @@ public sealed partial class ConnectorCheckouts(
             if (invoice is null || invoice.Status is "Paid" or "Cancelled" || invoice.AmountTRY != checkout.AmountTRY)
                 status = "expired";
         }
+        // Dönem yalnız abonelik DÖNEMİ ödemesinde (şube/kademe farkı da "subscription" türünde açılır).
+        var period = checkout.Kind == ExternalCheckout.KindSubscription
+            ? await db.SubscriptionPayments.AsNoTracking()
+                .Where(p => p.ConversationId == checkout.ConversationId && p.Kind == SubscriptionPayment.KindSubscription)
+                .Select(p => (BillingPeriod?)p.Period).FirstOrDefaultAsync(ct)
+            : null;
         var separator = checkout.CallbackUrl.Contains('?') ? '&' : '?';
         return new ConnectorCheckoutDto(
             checkout.PublicRef, status, checkout.Kind switch { ExternalCheckout.KindCredit => "credit", ExternalCheckout.KindInvoice => "invoice", _ => "subscription" },
             (long)decimal.Round(checkout.AmountTRY * 100m, 0), "TRY", checkout.Description, tenantName, checkout.TenantId,
-            $"{checkout.CallbackUrl}{separator}token={checkout.PublicRef}", checkout.ExpiresAtUtc);
+            $"{checkout.CallbackUrl}{separator}token={checkout.PublicRef}", checkout.ExpiresAtUtc,
+            period switch { BillingPeriod.Monthly => "monthly", BillingPeriod.Yearly => "yearly", _ => null });
     }
 
     public async Task<Result<ConnectorCheckoutDto>> AwaitTransferAsync(string publicRef, CancellationToken ct = default)
