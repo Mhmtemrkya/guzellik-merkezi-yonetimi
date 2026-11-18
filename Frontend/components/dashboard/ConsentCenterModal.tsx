@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import ModalPortal from '@/components/dashboard/ModalPortal'
 import { useBranch } from '@/components/dashboard/BranchContext'
+import TierFeeNotice from '@/components/dashboard/TierFeeNotice'
 import { adminApi, ApiClientError, consentApi } from '@/lib/apiClient'
 import { guidOrUndefined } from '@/lib/apiMappers'
 import { generateConsentPdf, fillConsentPlaceholders } from '@/lib/consentPdf'
@@ -249,15 +250,20 @@ export default function ConsentCenterModal({
               )}
             </AnimatePresence>
 
+            {/* Kademe ön uyarısı: imzalı onam sınırına yakın / dolu — "ücretinize bu kadar yansıyacak". */}
+            {!limitReached ? <TierFeeNotice dimension="consents" /> : null}
+
             {error && (
               <div className="rounded-[12px] border border-rose-200 bg-rose-50 px-4 py-2.5 text-[12.5px] font-medium text-rose-700">
                 {error}
                 {limitReached && (
-                  <span className="mt-1 block text-[12px] font-normal">
-                    Kurum yetkilisi onam kademesini{' '}
-                    <Link href="/panel/paket" className="font-semibold underline underline-offset-2">Paketim</Link>
-                    {' '}sayfasından yükseltebilir.
-                  </span>
+                  <TierFeeNotice dimension="consents" reached bare fallback={
+                    <span className="mt-1 block text-[12px] font-normal">
+                      Kurum yetkilisi onam kademesini{' '}
+                      <Link href="/panel/paket" className="font-semibold underline underline-offset-2">Paketim</Link>
+                      {' '}sayfasından yükseltebilir.
+                    </span>
+                  } />
                 )}
               </div>
             )}

@@ -112,7 +112,15 @@ public sealed record TierAllowanceDto(
     string ChargeMethod,
     string? CardMasked,
     string? OpenInvoiceNumber,
-    DateTime? SubscriptionEndsAtUtc);
+    DateTime? SubscriptionEndsAtUtc,
+    TierImpactDto? Impact = null);
+
+/// <summary>
+/// KADEMENİN ÜCRETE ETKİSİ (kullanıcı isteği 18 Kas 2026: "10 bin onam formu gibi ek ücret gereken yerde 'ücretinize bu kadar
+/// yansıyacak' uyarısı"). Sunucu hesaplar: <paramref name="Above"/> eşiği aşılınca aboneliğin dönem toplamı (KDV dahil)
+/// <paramref name="CurrentTotal"/> → <paramref name="NextTotal"/>. Dönem = kurumun dönemi; denemede / dönemsizde aylık.
+/// </summary>
+public sealed record TierImpactDto(bool Trial, string Period, int Above, decimal CurrentTotal, decimal NextTotal, decimal Increase, decimal IncreaseNet);
 
 public sealed record TierUpgradeRequest(decimal ConfirmedChargeTRY);
 
@@ -137,7 +145,29 @@ public sealed record BranchChargeQuoteDto(
     Domain.Billing.SubscriptionQuote? Quote,
     DateTime? SubscriptionEndsAtUtc,
     string? CardMasked,
-    string ChargeMethod = BranchChargeMethods.None);
+    string ChargeMethod = BranchChargeMethods.None,
+    BranchImpactDto? Impact = null,
+    bool InvoicePayOnline = false);
+
+// InvoicePayOnline: kesilen şube faturası maydanozasist.com ödeme sayfasında ödenebilir (ödeme sağlayıcısı Maydanoz).
+// Değilse fatura platformca tahsil edilir; arayüz "Faturayı öde" düğmesi göstermez.
+
+/// <summary>
+/// YENİ ŞUBENİN ÜCRETE ETKİSİ (kullanıcı isteği 18 Kas 2026: şube eklerken "ücretinize bu kadar yansıyacak" görünsün;
+/// deneme süresinde de). Tutarları SUNUCU hesaplar: şube başı birim fiyat (KDV hariç) ve bir şube daha eklenince
+/// paketin aylık / yıllık toplamı (müşteri ve onam kademeleri dahil). Şube başına olmayan pakette boştur.
+/// </summary>
+public sealed record BranchImpactDto(
+    string PlanName,
+    bool Trial,
+    int Branches,
+    decimal UnitMonthly,
+    decimal UnitYearly,
+    decimal VatRate,
+    Domain.Billing.SubscriptionQuote CurrentMonthly,
+    Domain.Billing.SubscriptionQuote NextMonthly,
+    Domain.Billing.SubscriptionQuote NextYearly,
+    string? Period);
 
 /// <summary>Dönem ortası şube ücretinin işlenme yolu (<see cref="BranchChargeQuoteDto.ChargeMethod"/>).</summary>
 public static class BranchChargeMethods

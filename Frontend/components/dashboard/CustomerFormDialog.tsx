@@ -28,6 +28,7 @@ import {
 import { downscaleImage } from '@/lib/imageUtils'
 import { formatPersonName } from '@/lib/utils'
 import KvkkConsentModal from '@/components/dashboard/KvkkConsentModal'
+import TierFeeNotice from '@/components/dashboard/TierFeeNotice'
 import type { CustomerGender } from '@/lib/types'
 
 export interface CustomerFormValues {
@@ -230,6 +231,8 @@ export default function CustomerFormDialog({
         {/* BODY */}
         <div className="relative min-h-0 flex-1 overflow-y-auto p-6 sm:p-8">
           <div className="space-y-7">
+            {/* Kademe ön uyarısı: sınıra yakın / dolu — "ücretinize bu kadar yansıyacak" (yalnız yeni kayıtta). */}
+            {mode === 'create' && isOpen && !limitReached ? <TierFeeNotice dimension="customers" /> : null}
             {/* Kimlik */}
             <Section icon={User} title="Kimlik">
               <div className="flex gap-4">
@@ -386,11 +389,13 @@ export default function CustomerFormDialog({
                 <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">
                   {error}
                   {limitReached && (
-                    <span className="mt-1 block text-[11.5px] font-normal text-rose-700/90">
-                      Kurum yöneticisi{' '}
-                      <Link href="/panel/paket" className="font-semibold underline underline-offset-2">Paketim</Link>
-                      {' '}sayfasındaki “Kayıtlı Müşteri” kartından bir sonraki kademeyi açabilir.
-                    </span>
+                    <TierFeeNotice dimension="customers" reached bare fallback={
+                      <span className="mt-1 block text-[11.5px] font-normal text-rose-700/90">
+                        Kurum yöneticisi{' '}
+                        <Link href="/panel/paket" className="font-semibold underline underline-offset-2">Paketim</Link>
+                        {' '}sayfasındaki “Kayıtlı Müşteri” kartından bir sonraki kademeyi açabilir.
+                      </span>
+                    } />
                   )}
                 </motion.div>
               )}

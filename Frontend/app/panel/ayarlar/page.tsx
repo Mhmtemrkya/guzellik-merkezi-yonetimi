@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useAuth } from '@/components/dashboard/AuthContext'
 import Topbar from '@/components/dashboard/Topbar'
 import AdminEditDialog from '@/components/dashboard/AdminEditDialog'
+import BranchCreateModal from '@/components/dashboard/BranchCreateModal'
 import ApiStateNotice from '@/components/dashboard/ApiStateNotice'
 import WhatsAppSettingsCard from '@/components/dashboard/WhatsAppSettingsCard'
 import WhatsAppWalletCard from '@/components/dashboard/WhatsAppWalletCard'
@@ -17,8 +18,7 @@ import { UsageBar } from '@/components/dashboard/UsageBar'
 import { useBranch } from '@/components/dashboard/BranchContext'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import { useApiQuery } from '@/hooks/useApiQuery'
-import { adminApi, ApiClientError } from '@/lib/apiClient'
-import { idempotencyKey, newIdempotencySalt } from '@/lib/idempotency'
+import { adminApi } from '@/lib/apiClient'
 import {
   apiItems, formatTL, guidOrUndefined, normalizeAccount, normalizeAdisyon, normalizeAppointment,
   normalizeService, normalizeStaff, normalizeSubscriptionPlan, normalizeTenant, normalizeTenantUsage,
@@ -31,7 +31,7 @@ import {
 } from 'lucide-react'
 import type {
   ApiAdisyon, ApiAuditLog, ApiBranch, ApiCustomerAccount, ApiAppointment, ApiService, ApiServicePackage,
-  ApiStaff, ApiSubscriptionPlan, ApiTenant, ApiTenantUsage, BranchChargeQuote, PagedResult, Service, Staff, SubscriptionPlan, Tenant,
+  ApiStaff, ApiSubscriptionPlan, ApiTenant, ApiTenantUsage, PagedResult, Service, Staff, SubscriptionPlan, Tenant,
 } from '@/lib/types'
 
 interface SettingsBranch {
@@ -156,67 +156,8 @@ export default function AyarlarPage() {
   const branchPayload = (values: BranchFormValues): Record<string, unknown> => ({
     name: values.name, city: values.city, isDefault: Boolean(values.isDefault),
   })
-
-  /**
-   * ŞUBE ÜCRETİ: şube başına paketli ücretli dönemde yeni şubenin dönem sonuna kadar orantılı ücreti
-   * HEMEN işlenir — kayıtlı kart + açık ödeme altyapısı varsa karttan çekilir, yoksa (`chargeMethod:
-   * 'Invoice'`) açık fatura kesilir. Tutar şube formunda ve düğmede gösterilir; düğmeye basmak o
-   * tutarın onayıdır (istek onaylanan tutarı taşır). Tutar arada değişirse sunucu 409 döner, teklif
-   * tazelenir ve kullanıcı yeni tutarı görür — ücret asla sessizce çekilmez. Platform yöneticisinin
-   * açtığı şube ücretlendirilmez (sunucu kuralı), bu yüzden onda teklif sorulmaz.
-   */
   const { user } = useAuth()
   const isPlatformAdmin = user?.role === 'PlatformAdmin'
-  const [chargeRefresh, setChargeRefresh] = useState(0)
-  const { data: branchCharge } = useApiQuery<BranchChargeQuote | null>(
-    () => (isPlatformAdmin ? Promise.resolve(null) : adminApi.branchChargeQuote<BranchChargeQuote>(tenantId).catch(() => null)),
-    [tenantId, isPlatformAdmin, chargeRefresh],
-    { initialData: null },
-  )
-  const chargeTotal = branchCharge?.chargeRequired ? branchCharge.quote?.total ?? null : null
-  // Kart yoksa / ödeme altyapısı kapalıysa şube engellenmez: aynı tutar AÇIK faturaya yazılır.
-  const chargeByInvoice = branchCharge?.chargeMethod === 'Invoice'
-  /** Kuruşlu tutar — orantılı ücret küsuratlıdır (580,64 ₺); yuvarlamak onaylanan tutarı yanlış gösterirdi. */
-  const formatTRY = (n: number) => `₺${n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  // İDEMPOTENCY (şube açma para yazabilir): anahtar İÇERİKTEN türer (tuz + ad/şehir/varsayılan/onaylı
-  // tutar). Sonucu BİLİNMEYEN deneme (ağ hatası, 5xx) aynı tuzla tekrarlanır → sunucu ilk yanıtı oynatır,
-  // ikinci şube / ücret / fatura yazılmaz. Sunucu KESİN yanıt verdiyse (başarı ya da 4xx) işlem bitmiştir:
-  // tuz döner — saklanan 409 "ödeme doğrulanıyor" yanıtı sonraki gerçek denemeye oynatılmasın.
-  const branchSaltRef = useRef<string>(newIdempotencySalt())
-  /** Kartsız kurumun şube talebi faturalandı — şube ÖDENİNCE açılır; bilgi sayfada kalır (hata değil). */
-  const [branchNotice, setBranchNotice] = useState<string | null>(null)
-  const createBranch = async (values: BranchFormValues) => {
-    const payload = branchPayload(values)
-    if (branchCharge?.chargeRequired) {
-      if (!branchCharge.canPurchase || chargeTotal == null) {
-        throw new Error(branchCharge.reason || 'Şube ücreti şu an tahsil edilemiyor.')
-      }
-      payload.confirmedChargeTRY = chargeTotal
-    }
-    const key = idempotencyKey(branchSaltRef.current, 'branch',
-      String(payload.name ?? ''), String(payload.city ?? ''), payload.isDefault ? 1 : 0,
-      typeof payload.confirmedChargeTRY === 'number' ? payload.confirmedChargeTRY : null)
-    try {
-      await adminApi.createBranch(payload, tenantId, key)
-    } catch (e) {
-      if (e instanceof ApiClientError && e.code === 'BranchAwaitingPayment') {
-        // ÖDEMEDEN AÇILMAZ: talep alındı, açık fatura kesildi; şube, platform ödemeyi "Ödendi" yapınca açılır.
-        // Hata değil — diyalog kapanır, durum sayfada bilgi olarak kalır.
-        branchSaltRef.current = newIdempotencySalt()
-        setChargeRefresh((k) => k + 1)
-        setBranchNotice(e.message)
-        return
-      }
-      if (e instanceof ApiClientError && e.status > 0 && e.status < 500) branchSaltRef.current = newIdempotencySalt()
-      // Tutar değiştiyse ya da önceki ödeme doğrulanıyorsa teklif tazelenir; mesaj diyalogda görünür.
-      setChargeRefresh((k) => k + 1)
-      throw e
-    }
-    branchSaltRef.current = newIdempotencySalt()
-    setChargeRefresh((k) => k + 1)
-    await reload()
-    refreshBranches()
-  }
 
   interface TenantProfileValues { name?: string; legalName?: string; ownerName?: string; phone?: string; email?: string; domain?: string; taxNumber?: string; taxOffice?: string }
   interface TenantFinanceValues { currency?: string; maxInstallments?: number; overdueGraceDays?: number }
@@ -291,24 +232,16 @@ export default function AyarlarPage() {
           <div className="flex flex-wrap items-center gap-2">
             {profileEditDialog}
             {(canMultiBranch || branches.length === 0) && (
-              <AdminEditDialog
-                triggerVariant="ghost" triggerLabel="Şube Ekle" titleIcon={Plus} title="Yeni şube oluştur"
-                description={chargeTotal != null
-                  ? chargeByInvoice
-                    ? `Şube fiziksel bir çalışma noktası tanımlar. Paketiniz şube başına ücretlendirilir: bu şube için bugün ${formatTRY(chargeTotal)} (KDV dahil, dönem sonuna kadar orantılı) tutarında fatura kesilir. Şube, ödeme alındığında açılır; sonraki dönemlerde tam şube ücreti eklenir.`
-                    : `Şube fiziksel bir çalışma noktası tanımlar. Paketiniz şube başına ücretlendirilir: bu şube için bugün ${formatTRY(chargeTotal)} (KDV dahil, dönem sonuna kadar orantılı) kayıtlı kartınızdan${branchCharge?.cardMasked ? ` (${branchCharge.cardMasked})` : ''} çekilir; sonraki yenilemelerde tam şube ücreti eklenir.`
-                  : branchCharge?.chargeRequired && branchCharge.reason
-                    ? `Şube fiziksel bir çalışma noktası tanımlar. ${branchCharge.reason}`
-                    : 'Şube fiziksel bir çalışma noktası tanımlar.'}
-                submitLabel={chargeTotal != null
-                  ? chargeByInvoice ? `${formatTRY(chargeTotal)} faturayı onayla` : `${formatTRY(chargeTotal)} öde ve şube oluştur`
-                  : 'Şube oluştur'}
-                onSubmit={async (values) => { await createBranch(values as BranchFormValues) }}
-                fields={[
-                  { label: 'Şube adı', name: 'name', value: 'Yeni Şube', required: true, icon: Building2, section: 'Lokasyon' },
-                  { label: 'Şehir', name: 'city', value: 'İstanbul', icon: MapPin },
-                  { label: 'Varsayılan şube', name: 'isDefault', type: 'checkbox', value: !branches.length, icon: Star, fullWidth: true },
-                ]}
+              <BranchCreateModal
+                tenantId={tenantId}
+                platformAdmin={isPlatformAdmin}
+                onCreated={async () => { await reload(); refreshBranches() }}
+                trigger={(open) => (
+                  <button type="button" onClick={open}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#EAD8DF] bg-white px-3.5 py-2 text-[12.5px] font-semibold text-[#8C4460] transition hover:border-[#A5556E] hover:bg-[#FCF3F6]">
+                    <Plus className="h-4 w-4" /> Şube Ekle
+                  </button>
+                )}
               />
             )}
           </div>
@@ -318,17 +251,6 @@ export default function AyarlarPage() {
       <div className="mx-auto w-full max-w-[1600px] space-y-5 p-4 sm:p-6 xl:px-8">
         <ApiStateNotice loading={loading} error={error} empty={!loading && !error && !tenant && !branches.length} emptyMessage="Bu kurum için ayar kaydı bulunamadı." />
 
-        {branchNotice && (
-          <div role="status" className="flex items-start justify-between gap-3 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] text-amber-800">
-            <span className="flex items-start gap-2">
-              <Building2 className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{branchNotice}</span>
-            </span>
-            <button type="button" onClick={() => setBranchNotice(null)} className="shrink-0 text-[11px] font-semibold text-amber-800/80 hover:text-amber-900">
-              Kapat
-            </button>
-          </div>
-        )}
 
         {/* SATIR 1: KURUM PROFİLİ + ÖDEME & TAKSİT */}
         <section data-guide="ayarlar-kurum" className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">

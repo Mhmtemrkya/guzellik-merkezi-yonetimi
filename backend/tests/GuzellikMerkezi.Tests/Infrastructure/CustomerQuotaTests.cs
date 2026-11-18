@@ -159,6 +159,24 @@ public sealed class CustomerQuotaTests
         Assert.Equal("Customers", allowance.Dimension);
     }
 
+    /// <summary>
+    /// ÜCRET ETKİSİ (18 Kas 2026): kademe eşiği aşılınca dönem toplamı ne olur — sunucu hesaplar, denemede de.
+    /// Paket: 1 şube × 1.000 + KDV; 2 müşteri üzeri kademe 250 + KDV/ay → aylık 1.200 → 1.500 (+300, KDV hariç +250).
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Allowance_TellsTheFeeImpactOfTheNextTier(bool paid)
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options, customers: 2, paid: paid);
+
+        await using var db = NewDb(options);
+        var impact = (await NewBilling(db, new ScriptedGateway()).GetTierAllowanceAsync(seed.TenantId, TierDimension.Customers)).Value!.Impact!;
+        Assert.Equal((!paid, "monthly", 2), (impact.Trial, impact.Period, impact.Above));
+        Assert.Equal((1_200m, 1_500m, 300m, 250m), (impact.CurrentTotal, impact.NextTotal, impact.Increase, impact.IncreaseNet));
+    }
+
     // ───────────── Excel içe aktarma ─────────────
 
     [Fact]
@@ -180,6 +198,7 @@ public sealed class CustomerQuotaTests
         Assert.Equal(1, result.CustomersCreated);                            // kapasite 2, mevcut 1
         Assert.Equal(3, result.Failed);
         Assert.Contains("sınırına ulaşıldı", result.Errors.First());
+        Assert.Equal(3, result.CustomersOverCapacity);
         Assert.Equal(2, await CountAsync(options, seed));
     }
 

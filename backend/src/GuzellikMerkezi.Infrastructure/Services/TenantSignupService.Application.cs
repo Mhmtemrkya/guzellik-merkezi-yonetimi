@@ -221,19 +221,40 @@ public sealed partial class TenantSignupService : IConnectorApplications
         }
 
         var link = SafeLink(request.Link);
-        var greeting = $"<p>Merhaba {WebUtility.HtmlEncode(owner)},</p>";
-        var (subject, body) = kind == "received"
-            ? ("BeautyAsist başvurunuz alındı",
-                greeting +
-                $"<p><b>{WebUtility.HtmlEncode(tenantName)}</b> için BeautyAsist başvurunuzu ve belgelerinizi aldık. " +
-                "Ekibimiz belgeleri inceledikten sonra (genellikle 1 iş günü) hesabınızı açacak ve bu adrese giriş bilgilerini göndereceğiz.</p>" +
-                "<p>Hesabınız açıldığında BeautyAsist'i <b>14 gün ücretsiz</b> deneyebilirsiniz.</p>")
-            : ("BeautyAsist başvurunuz hakkında",
-                greeting +
-                $"<p><b>{WebUtility.HtmlEncode(tenantName)}</b> için yaptığınız başvuruyu bu haliyle onaylayamadık.</p>" +
-                $"<p style='padding:12px 16px;background:#f7eef2;border-radius:8px'><b>Gerekçe:</b> {WebUtility.HtmlEncode(reason!)}</p>" +
-                (link is null ? string.Empty : $"<p>Eksikleri tamamlayıp <a href='{WebUtility.HtmlEncode(link)}'>yeniden başvurabilirsiniz</a>.</p>"));
-        var html = $"<div style='font-family:sans-serif;font-size:15px;color:#2f1724'>{body}</div>";
+        var greeting = $"Merhaba {owner},";
+        // ŞIK ŞABLON (kullanıcı isteği 18 Kas 2026): doğrulama kodu e-postasıyla aynı görsel dil — NoticeEmailTemplate.
+        var (subject, content) = kind == "received"
+            ? ("BeautyAsist başvurunuz alındı", new NoticeEmailContent(
+                Title: "BAŞVURUNUZ ALINDI",
+                Preheader: $"{tenantName} için başvurunuz incelemede; hesabınız açılınca giriş bilgilerini göndereceğiz.",
+                Greeting: greeting,
+                Paragraphs:
+                [
+                    $"{tenantName} için BeautyAsist başvurunuzu ve belgelerinizi aldık. Ekibimiz belgeleri inceledikten sonra (genellikle 1 iş günü) hesabınızı açacak ve bu adrese giriş bilgilerini göndereceğiz.",
+                    "Hesabınız açıldığında BeautyAsist'i 14 gün ücretsiz deneyebilirsiniz.",
+                ],
+                TenantName: tenantName,
+                CardTitle: "BAŞVURU BİLGİLERİ",
+                Rows: [new("Kurum", tenantName), new("E-Posta", email), new("Durum", "İnceleniyor")],
+                StepsTitle: "SIRADAKİ ADIMLAR",
+                Steps: ["Belgeleriniz incelenir.", "Hesabınız açılır.", "Giriş bilgileri e-postanıza gelir.", "14 gün ücretsiz denersiniz."],
+                Notes: ["Belgelerinizde eksik olursa sizinle bu adresten iletişime geçeriz.", "Güvenlik gereği şifre e-postayla gönderilmez; ilk girişte kendiniz belirlersiniz."]))
+            : ("BeautyAsist başvurunuz hakkında", new NoticeEmailContent(
+                Title: "BAŞVURU SONUCU",
+                Preheader: $"{tenantName} için başvurunuz bu haliyle onaylanamadı.",
+                Greeting: greeting,
+                Paragraphs:
+                [
+                    $"{tenantName} için yaptığınız başvuruyu bu haliyle onaylayamadık.",
+                    link is null ? string.Empty : "Eksikleri tamamlayıp yeniden başvurabilirsiniz.",
+                ],
+                TenantName: tenantName,
+                CalloutLabel: "Gerekçe",
+                Callout: reason,
+                ActionText: link is null ? null : "Yeniden başvur",
+                ActionUrl: link,
+                Notes: ["Sorularınız için bu e-postayı aldığınız adresle destek ekibimize yazabilirsiniz."]));
+        var html = NoticeEmailTemplate.Build(content);
         var sent = await TrySendAsync(() => _messaging.SendEmailAsync(email, subject, html, ct), kind == "received" ? "başvuru alındı e-postası" : "başvuru red e-postası");
         return Result<ConnectorApplicationNotifyDto>.Success(new ConnectorApplicationNotifyDto(sent));
     }
@@ -241,19 +262,27 @@ public sealed partial class TenantSignupService : IConnectorApplications
     /// <summary>Hesap açıldı e-postası (best-effort). PAROLA YAZILMAZ: ilk giriş "Şifremi unuttum" ile.</summary>
     private async Task<bool> SendApprovedAsync(TenantSignupStartRequest form, string tenantCode, string planName, string loginUrl, CancellationToken ct)
     {
-        var login = WebUtility.HtmlEncode(loginUrl);
-        var body =
-            "<div style='font-family:sans-serif;font-size:15px;color:#2f1724'>" +
-            $"<p>Merhaba {WebUtility.HtmlEncode(form.OwnerName)},</p>" +
-            $"<p>Başvurunuz onaylandı. <b>{WebUtility.HtmlEncode(form.TenantName)}</b> için {WebUtility.HtmlEncode(planName)} hesabınız hazır.</p>" +
-            "<table style='border-collapse:collapse;margin:16px 0'>" +
-            $"<tr><td style='padding:4px 12px 4px 0;color:#7c6170'>Kurum kodu</td><td style='font-weight:700'>{tenantCode}</td></tr>" +
-            $"<tr><td style='padding:4px 12px 4px 0;color:#7c6170'>E-posta</td><td>{WebUtility.HtmlEncode(form.Email)}</td></tr>" +
-            "</table>" +
-            $"<p><b>İlk giriş:</b> <a href='{login}'>{login}</a> adresinde <b>“Şifremi unuttum”</b> bağlantısıyla " +
-            "bu e-posta adresine gelen kodu girip kendi şifrenizi belirleyin. Güvenlik gereği şifre e-postayla gönderilmez.</p>" +
-            $"<p><b>14 günlük ücretsiz deneme</b> panele ilk girişinizde başlar. Deneme bitiminde paketinizi maydanozasist.com'dan aylık ya da yıllık satın alabilirsiniz.</p>" +
-            $"<p>Destek almak için <b>kurum kodunuzu</b> ({tenantCode}) belirtmeniz yeterlidir.</p></div>";
+        // ŞIK ŞABLON (kullanıcı isteği 18 Kas 2026): doğrulama kodu e-postasıyla aynı görsel dil; kurum kodu kod kutusunda.
+        var body = NoticeEmailTemplate.Build(new NoticeEmailContent(
+            Title: "HESABINIZ AÇILDI",
+            Preheader: $"{form.TenantName} için BeautyAsist hesabınız hazır. İlk girişte şifrenizi siz belirlersiniz.",
+            Greeting: $"Merhaba {form.OwnerName},",
+            Paragraphs:
+            [
+                $"Başvurunuz onaylandı. {form.TenantName} için {planName} hesabınız hazır.",
+                $"İlk giriş: {loginUrl} adresinde “Şifremi unuttum” bağlantısıyla bu e-posta adresine gelen kodu girip kendi şifrenizi belirleyin. Güvenlik gereği şifre e-postayla gönderilmez.",
+                "14 günlük ücretsiz deneme panele ilk girişinizde başlar. Deneme bitiminde paketinizi maydanozasist.com'dan aylık ya da yıllık satın alabilirsiniz.",
+            ],
+            TenantName: form.TenantName,
+            HighlightLabel: "Kurum Kodu",
+            Highlight: tenantCode,
+            CardTitle: "HESAP BİLGİLERİ",
+            Rows: [new("E-Posta", form.Email), new("Paket", planName), new("Deneme", "14 gün ücretsiz (ilk girişte başlar)")],
+            StepsTitle: "İLK GİRİŞ NASIL YAPILIR?",
+            Steps: ["Giriş sayfasını açın.", "“Şifremi unuttum” bağlantısına basın.", "E-postanıza gelen kodu girin.", "Kendi şifrenizi belirleyin."],
+            ActionText: "Giriş sayfasını aç",
+            ActionUrl: loginUrl,
+            Notes: ["Güvenlik gereği şifre e-postayla gönderilmez.", $"Destek almak için kurum kodunuzu ({tenantCode}) belirtmeniz yeterlidir."]));
 
         return await TrySendAsync(() => _messaging.SendEmailAsync(form.Email, $"BeautyAsist hesabınız açıldı ({tenantCode})", body, ct), "başvuru onayı e-postası");
     }

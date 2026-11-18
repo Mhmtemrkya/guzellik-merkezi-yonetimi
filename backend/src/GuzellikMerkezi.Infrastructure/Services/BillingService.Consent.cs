@@ -67,7 +67,28 @@ public sealed partial class BillingService
             dimension.ToString(), ent.Allowed, ent.Count, ent.Capacity, ent.PaidTierAbove,
             e.Target?.Above, e.Target?.MonthlyFee,
             e.CanPurchase, e.Reason, e.Quote, e.Method, e.Card?.MaskedNumber,
-            e.OpenInvoice?.Number, AsUtc(tenant.SubscriptionEndsAtUtc)));
+            e.OpenInvoice?.Number, AsUtc(tenant.SubscriptionEndsAtUtc),
+            await TierImpactAsync(tenant, dimension, e.Target, ct)));
+    }
+
+    /// <summary>
+    /// Bir sonraki kademe eşiği aşılınca aboneliğin DÖNEM toplamı nasıl değişir (KDV dahil) — denemede de gösterilir
+    /// ("paket alınca ücretinize yansır"). Yenileme teklifiyle aynı motor: sayaç eşiğin bir üstüne çekilir.
+    /// </summary>
+    private async Task<TierImpactDto?> TierImpactAsync(Tenant tenant, TierDimension dimension, PricingTier? target, CancellationToken ct)
+    {
+        var plan = tenant.SubscriptionPlan;
+        if (plan is null || target is null) return null;
+        var counts = await BillingCountsQuery.CountAsync(_db, tenant.Id, ct);
+        var over = target.Above + 1;
+        var next = dimension == TierDimension.Customers
+            ? counts with { Customers = Math.Max(counts.Customers, over) }
+            : counts with { SignedConsentForms = Math.Max(counts.SignedConsentForms, over) };
+        var period = tenant.Status == TenantStatus.Trial ? BillingPeriod.Monthly : tenant.SubscriptionPeriod ?? BillingPeriod.Monthly;
+        var current = SubscriptionPricing.Quote(plan, period, counts);
+        var after = SubscriptionPricing.Quote(plan, period, next);
+        return new TierImpactDto(tenant.Status == TenantStatus.Trial, period == BillingPeriod.Yearly ? "yearly" : "monthly",
+            target.Above, current.Total, after.Total, after.Total - current.Total, after.Subtotal - current.Subtotal);
     }
 
     /// <summary>

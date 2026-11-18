@@ -38,6 +38,7 @@ public sealed class DataImportService : IDataImportService
         }
 
         var errors = new List<string>();
+        var customersOverCapacity = 0;
         int custCreated = 0, custSkipped = 0, svcCreated = 0, svcSkipped = 0, pkgCreated = 0, pkgSkipped = 0, prodCreated = 0, prodSkipped = 0, staffCreated = 0, staffSkipped = 0, failed = 0;
 
         // ---- MÜŞTERİLER --------------------------------------------------------
@@ -119,6 +120,7 @@ public sealed class DataImportService : IDataImportService
 
             if (tierSkipped > 0)
             {
+                customersOverCapacity = tierSkipped;
                 failed += tierSkipped;
                 errors.Insert(0, $"{tierSkipped} müşteri satırı içe aktarılmadı: kayıtlı müşteri sınırına ulaşıldı " +
                                  $"({(tier.Capacity ?? 0):N0} müşteri). Bu kademenin bedeli ödenmeden yeni müşteri eklenemez.");
@@ -316,7 +318,8 @@ public sealed class DataImportService : IDataImportService
             new { custCreated, svcCreated, pkgCreated, prodCreated, staffCreated, custSkipped, svcSkipped, pkgSkipped, prodSkipped, staffSkipped, failed }, cancellationToken);
 
         return Result<BulkImportResultDto>.Success(new BulkImportResultDto(
-            custCreated, custSkipped, svcCreated, svcSkipped, pkgCreated, pkgSkipped, failed, errors, prodCreated, prodSkipped, staffCreated, staffSkipped));
+            custCreated, custSkipped, svcCreated, svcSkipped, pkgCreated, pkgSkipped, failed, errors, prodCreated, prodSkipped, staffCreated, staffSkipped,
+            customersOverCapacity));
     }
 
     /// <summary>

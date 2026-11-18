@@ -58,25 +58,25 @@ public sealed record VerificationEmailContent(
 public static class VerificationEmailTemplate
 {
     // --- tasarımdan örneklenen palet ---
-    private const string HeaderBg = "#E093A6";
-    private const string HeaderInk = "#3B1526";
-    private const string PageBg = "#F1E4E9";
-    private const string CardBorder = "#F6DDE4";
-    private const string TintBg = "#FDECED";
-    private const string CodeBoxBg = "#FCE4E7";
-    private const string CodeBoxBorder = "#F7CFDB";
-    private const string CodeInk = "#2A0317";
-    private const string Ink = "#2F1724";
-    private const string BodyInk = "#4A2E3B";
-    private const string Muted = "#7C6170";
-    private const string Accent = "#D14E78";
-    private const string AccentSoft = "#E48AA6";
-    private const string StepBadge = "#DA6285";
-    private const string RowRule = "#F7E7EC";
-    private const string FooterBg = "#001C35";
+    internal const string HeaderBg = "#E093A6";
+    internal const string HeaderInk = "#3B1526";
+    internal const string PageBg = "#F1E4E9";
+    internal const string CardBorder = "#F6DDE4";
+    internal const string TintBg = "#FDECED";
+    internal const string CodeBoxBg = "#FCE4E7";
+    internal const string CodeBoxBorder = "#F7CFDB";
+    internal const string CodeInk = "#2A0317";
+    internal const string Ink = "#2F1724";
+    internal const string BodyInk = "#4A2E3B";
+    internal const string Muted = "#7C6170";
+    internal const string Accent = "#D14E78";
+    internal const string AccentSoft = "#E48AA6";
+    internal const string StepBadge = "#DA6285";
+    internal const string RowRule = "#F7E7EC";
+    internal const string FooterBg = "#001C35";
 
-    private const string Sans = "'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
-    private const string Serif = "Georgia,'Times New Roman',Times,serif";
+    internal const string Sans = "'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
+    internal const string Serif = "Georgia,'Times New Roman',Times,serif";
 
     private static readonly string[] Schemes = ["https://", "http://"];
 

@@ -7,6 +7,7 @@ import '../../core/platform/store_policy.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/consent/consent_pdf.dart';
 import '../../shared/json_helpers.dart';
+import '../../shared/tier_fee.dart';
 import 'consent_models.dart';
 
 /// Bekleyen imzayı yakalamak için yoklama sıklığı.
@@ -186,9 +187,12 @@ class _ConsentCenterSheetState extends State<ConsentCenterSheet> {
     } on ApiException catch (e) {
       // Onam kotası doldu (409 ConsentLimitReached): sunucu mesajı NÖTR. Yükseltme yolu yalnız satın
       // almaya izin verilen yüzeyde söylenir — iOS'ta (App Store 3.1.1) dışarıya yönlendirme yapılmaz.
-      final hint = e.code == 'ConsentLimitReached' && !StorePolicy.hidesPurchaseFlows
-          ? '\nKurum yetkilisi onam kademesini Paketim ekranından yükseltebilir.'
-          : '';
+      // Faturalama yetkisi olan kullanıcıya "ücretinize bu kadar yansıyacak" (sunucu hesaplar); diğerine nötr ipucu.
+      final limit = e.code == 'ConsentLimitReached' && !StorePolicy.hidesPurchaseFlows;
+      final fee = limit ? await loadTierFeeText(widget.api, 'consents', reached: true) : null;
+      final hint = !limit
+          ? ''
+          : '\n${fee ?? 'Kurum yetkilisi onam kademesini Paketim ekranından yükseltebilir.'}';
       if (mounted) setState(() => _error = '${e.message}$hint');
     } catch (e) {
       if (mounted) setState(() => _error = '$e');

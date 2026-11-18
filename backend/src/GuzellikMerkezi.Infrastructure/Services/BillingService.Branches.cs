@@ -53,8 +53,32 @@ public sealed partial class BillingService
         if (tenant is null) return Result<BranchChargeQuoteDto>.Failure(Error.NotFound("Kurum bulunamadı."));
 
         var e = await EvaluateBranchChargeAsync(tenant, ct);
+        var gateway = await _gateways.ResolveAsync(ct);
         return Result<BranchChargeQuoteDto>.Success(new BranchChargeQuoteDto(
-            e.Required, e.CanPurchase, e.Reason, e.Quote, AsUtc(tenant.SubscriptionEndsAtUtc), e.Card?.MaskedNumber, e.Method));
+            e.Required, e.CanPurchase, e.Reason, e.Quote, AsUtc(tenant.SubscriptionEndsAtUtc), e.Card?.MaskedNumber, e.Method,
+            await BranchImpactAsync(tenant, ct),
+            InvoicePayOnline: gateway.IsSuccess && gateway.Value!.Gateway is Payments.MaydanozPaymentGateway));
+    }
+
+    /// <summary>Bir şube daha eklenince paket tutarı (deneme dahil). Şube başına olmayan pakette null.</summary>
+    private async Task<BranchImpactDto?> BranchImpactAsync(Tenant tenant, CancellationToken ct)
+    {
+        var plan = tenant.SubscriptionPlan;
+        if (plan is null || !plan.ChargePerBranch) return null;
+        var counts = await BillingCountsQuery.CountAsync(_db, tenant.Id, ct);
+        var next = counts with { Branches = counts.Branches + 1 };
+        var current = SubscriptionPricing.Quote(plan, BillingPeriod.Monthly, counts);
+        return new BranchImpactDto(
+            plan.Name,
+            tenant.Status == TenantStatus.Trial,
+            counts.Branches,
+            SubscriptionPricing.UnitPrice(plan, BillingPeriod.Monthly),
+            SubscriptionPricing.UnitPrice(plan, BillingPeriod.Yearly),
+            current.VatRate,
+            current,
+            SubscriptionPricing.Quote(plan, BillingPeriod.Monthly, next),
+            SubscriptionPricing.Quote(plan, BillingPeriod.Yearly, next),
+            tenant.SubscriptionPeriod switch { BillingPeriod.Yearly => "yearly", BillingPeriod.Monthly => "monthly", _ => null });
     }
 
     /// <summary>

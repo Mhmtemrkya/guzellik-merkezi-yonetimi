@@ -1083,6 +1083,9 @@ public sealed class TenantSignupTests
         Assert.Contains("Şifremi unuttum", body);
         Assert.Contains("14 günlük ücretsiz deneme", body);
         Assert.Contains("https://maydanozasist.com/giris/beauty", body);
+        Assert.Contains("HESABINIZ AÇILDI", body);
+        Assert.Contains("İLK GİRİŞ NASIL YAPILIR?", body);
+        Assert.Contains("href=\"https://maydanozasist.com/giris/beauty\"", body);
     }
 
     [Fact]
@@ -1124,6 +1127,13 @@ public sealed class TenantSignupTests
         Assert.Contains("Vergi levhası okunmuyor.", bodies[1]);
         Assert.Contains("https://maydanozasist.com/kayit/beauty", bodies[1]);
         Assert.DoesNotContain("javascript", bodies[2]);
+        // Şık şablon (18 Kas 2026): doğrulama e-postasıyla aynı görsel dil, görsel yok.
+        Assert.All(bodies, b => Assert.DoesNotContain("<img", b, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("BAŞVURUNUZ ALINDI", bodies[0]);
+        Assert.Contains("İnceleniyor", bodies[0]);
+        Assert.Contains("<b>Gerekçe:</b> Vergi levhası okunmuyor.", bodies[1]);
+        Assert.Contains("Yeniden başvur", bodies[1]);
+        Assert.DoesNotContain("Yeniden başvur", bodies[2]);
 
         Assert.Equal("Validation", (await service.NotifyAsync(Notice("rejected"))).Error.Code);
         Assert.Equal("Validation", (await service.NotifyAsync(Notice("approved"))).Error.Code);

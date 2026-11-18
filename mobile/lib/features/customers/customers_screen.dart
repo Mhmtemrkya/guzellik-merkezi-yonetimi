@@ -9,6 +9,7 @@ import '../../core/theme/app_theme.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
 import '../../shared/kvkk/kvkk_view_sheet.dart';
+import '../../shared/tier_fee.dart';
 import '../../shared/widgets/async_list_page.dart';
 import 'customer_summary_panel.dart';
 
@@ -29,8 +30,10 @@ Future<dynamic> postNewCustomer(ApiClient api, Map<String, dynamic> body) async 
     return await api.post('/api/admin/customers/', body);
   } on ApiException catch (e) {
     if (e.code == 'CustomerLimitReached' && !StorePolicy.hidesPurchaseFlows) {
+      // Faturalama yetkisi olan kullanıcıya "ücretinize bu kadar yansıyacak" (sunucu hesaplar); diğerine nötr ipucu.
+      final fee = await loadTierFeeText(api, 'customers', reached: true);
       throw ApiException(
-        '${e.message}\nKurum yetkilisi müşteri kademesini Paketim ekranından yükseltebilir.',
+        '${e.message}\n${fee ?? 'Kurum yetkilisi müşteri kademesini Paketim ekranından yükseltebilir.'}',
         statusCode: e.statusCode,
         code: e.code,
       );

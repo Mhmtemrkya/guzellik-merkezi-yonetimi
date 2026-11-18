@@ -5,7 +5,7 @@ import '../../core/network/idempotency.dart';
 import '../../core/platform/store_policy.dart';
 import '../../shared/crud/crud_screen.dart';
 import '../../shared/json_helpers.dart';
-import '../appointments/calendar_theme.dart';
+import 'branch_fee.dart';
 
 /// İdempotency tuzu (web Ayarlar > Şube Ekle paritesi): sonucu BİLİNMEYEN deneme (ağ hatası, 5xx) aynı
 /// tuzla tekrarlanır → sunucu ilk yanıtı oynatır, ikinci şube / ücret / fatura yazılmaz. Sunucu KESİN
@@ -13,67 +13,40 @@ import '../appointments/calendar_theme.dart';
 /// yanıtı sonraki gerçek denemeye oynatılmasın.
 String _branchSalt = newIdempotencySalt();
 
-/// ŞUBE AÇMA — ücret onayı + mağaza kuralı + idempotency TEK YERDE (Şubeler ekranı ve Ayarlar kullanır).
+/// ŞUBE AÇMA — ücret etkisi + tutar onayı + mağaza kuralı + idempotency TEK YERDE (Şubeler ekranı ve Ayarlar
+/// kullanır; web `BranchCreateModal` paritesi).
 ///
-/// Şube başına ücretlendirilen pakette ücretli dönem ortasında açılan şubenin dönem sonuna kadar
-/// orantılı ücreti HEMEN işlenir: kayıtlı kart + açık ödeme altyapısı varsa karttan çekilir, yoksa
-/// açık fatura kesilir. Tutar bu diyalogda gösterilir ve onaylanır; istek onaylanan tutarı taşır.
-/// Tutar arada değişirse sunucu 409 döner — ücret asla sessizce işlenmez. Teklif okunamazsa (yetki
-/// yok vb.) karar sunucunundur: ücret gerekiyorsa 409 gelir.
+/// Android: ücret etkisi her zaman gösterilir (deneme dahil: "paket alınca ücretinize +X yansır"). Ücretli dönemde
+/// yeni şubenin dönem sonuna kadar orantılı ücreti HEMEN işlenir — kayıtlı kart varsa karttan çekilir, yoksa açık
+/// fatura kesilir; tutar onaylanır ve istek onaylanan tutarı taşır (arada değişirse sunucu 409 döner, ücret asla
+/// sessizce işlenmez). Fatura kesilirse ödeme WEB'de alınır: "Faturayı öde" maydanozasist.com ödeme sayfasını
+/// tarayıcıda açar (kullanıcı kararı 18 Kas 2026: mobilde satın alma web'e yönlendirilir).
+/// iOS (App Store 3.1.1): fiyat / ödeme yüzeyi ve dışarıya satın alma yönlendirmesi YOK — ücretli şube eklenmez.
+/// Teklif okunamazsa (yetki yok vb.) karar sunucunundur: ücret gerekiyorsa 409 gelir.
 Future<dynamic> createBranchWithCharge(BuildContext context, ApiClient api, Map<String, dynamic> body) async {
-  Map<String, dynamic>? charge;
+  BranchFeeView? view;
   try {
     final q = await api.get('/api/admin/billing/branch-quote');
-    if (q is Map) charge = q.cast<String, dynamic>();
+    if (q is Map) view = BranchFeeView.from(q.cast<String, dynamic>());
   } catch (_) {
-    charge = null;
+    view = null;
   }
 
-  if (charge != null && charge['chargeRequired'] == true) {
-    // iOS (App Store 3.1.1): ücretli işlem / fiyat yüzeyi bu uygulamada gösterilmez — Paketim ile aynı
-    // kural. Ücret ne çekilir ne faturalanır; dışarıya satın alma yönlendirmesi de yapılmaz.
-    if (StorePolicy.hidesPurchaseFlows) {
-      throw const ApiException('Ek şube ekleme bu uygulamadan yapılmaz.');
-    }
-    if (charge['canPurchase'] != true) {
-      throw ApiException('${charge['reason'] ?? 'Şube ücreti şu an tahsil edilemiyor.'}');
-    }
-    final quote = charge['quote'] is Map ? (charge['quote'] as Map).cast<String, dynamic>() : const <String, dynamic>{};
-    final total = numberOf(quote, const ['total']);
-    final lines = (quote['lines'] as List? ?? const []).whereType<Map>().toList();
-    final lineLabel = lines.isEmpty ? '' : '${lines.first['label'] ?? ''}';
-    final card = '${charge['cardMasked'] ?? ''}';
-    // Kart yoksa / ödeme altyapısı kapalıysa (web paritesi) aynı tutar AÇIK faturaya yazılır, tahsilatı
-    // platform yapar — şube ÖDEMEDEN AÇILMAZ: platform faturayı "Ödendi" yapınca açılır.
-    final byInvoice = '${charge['chargeMethod'] ?? ''}' == 'Invoice';
+  if (view != null && view.chargeRequired) {
+    if (StorePolicy.hidesPurchaseFlows) throw const ApiException(_storeNeutral);
+    if (!view.canPurchase) throw ApiException(view.reason ?? 'Şube ücreti şu an tahsil edilemiyor.');
+  }
+  if (view != null && view.worthShowing && !StorePolicy.hidesPurchaseFlows) {
     if (!context.mounted) throw const ApiException('İşlem iptal edildi.');
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(byInvoice ? 'Ek şube faturası' : 'Ek şube ücreti'),
-        content: Text(
-          'Paketiniz şube başına ücretlendirilir.\n\n'
-          '${byInvoice
-              ? 'Bu şube için bugün ${CalendarText.tl(total)} (KDV dahil, dönem sonuna kadar orantılı) tutarında fatura kesilecek. Şube, ödeme alındığında açılır.'
-              : 'Bu şube için bugün ${CalendarText.tl(total)} (KDV dahil) kayıtlı kartınızdan${card.isNotEmpty ? ' ($card)' : ''} çekilecek.'}'
-          '${lineLabel.isNotEmpty ? '\n\n$lineLabel' : ''}'
-          '\n\nSonraki dönemlerde tam şube ücreti eklenir. Onaylıyor musunuz?',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Vazgeç')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(byInvoice ? 'Onayla (${CalendarText.tl(total)})' : '${CalendarText.tl(total)} öde'),
-          ),
-        ],
-      ),
-    );
+    final ok = await showBranchFeeSheet(context, view, name: '${body['name'] ?? ''}', city: '${body['city'] ?? ''}');
     if (ok != true) {
-      throw ApiException(byInvoice
-          ? 'Şube oluşturma iptal edildi; fatura kesilmedi.'
-          : 'Şube oluşturma iptal edildi; ücret çekilmedi.');
+      throw ApiException(view.chargeTotal == null
+          ? 'Şube oluşturma iptal edildi.'
+          : view.byInvoice
+              ? 'Şube oluşturma iptal edildi; fatura kesilmedi.'
+              : 'Şube oluşturma iptal edildi; ücret çekilmedi.');
     }
-    body = {...body, 'confirmedChargeTRY': total};
+    if (view.chargeTotal != null) body = {...body, 'confirmedChargeTRY': view.chargeTotal};
   }
 
   final key = idempotencyKey(_branchSalt, [
@@ -90,24 +63,27 @@ Future<dynamic> createBranchWithCharge(BuildContext context, ApiClient api, Map<
   } on ApiException catch (e) {
     final status = e.statusCode;
     if (status != null && status > 0 && status < 500) _branchSalt = newIdempotencySalt();
+    // iOS: sunucunun "tutarı onaylayın" mesajı da fiyat taşır — nötr metin.
+    if (e.code == 'BranchChargeRequired' && StorePolicy.hidesPurchaseFlows) {
+      throw const ApiException(_storeNeutral, code: 'BranchChargeRequired');
+    }
     if (e.code == 'BranchAwaitingPayment') {
-      // ÖDEMEDEN AÇILMAZ: talep alındı, açık fatura kesildi; şube, platform ödemeyi "Ödendi" yapınca açılır.
-      // Hata değil — kalıcı bilgi diyaloğu gösterilir; çağıranın "Şube oluşturuldu" mesajı yerine kısa durum düşer.
+      // ÖDEMEDEN AÇILMAZ: talep alındı, açık fatura kesildi; şube ödeme alınınca açılır. Hata değil — ödeme adımı
+      // gösterilir (fatura sitede ödenebiliyorsa "Faturayı öde" web'i açar); çağıranın "Şube oluşturuldu" mesajı
+      // yerine kısa durum düşer.
       if (context.mounted) {
-        await showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Şube talebi alındı'),
-            content: Text(e.message),
-            actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tamam'))],
-          ),
-        );
+        await showBranchAwaitingPaymentSheet(context, api,
+            message: e.message,
+            branchName: '${body['name'] ?? ''}',
+            payOnline: view?.payOnline == true && !StorePolicy.hidesPurchaseFlows);
       }
       throw const ApiException('Şube, ödeme alındığında açılacak.', code: 'BranchAwaitingPayment');
     }
     rethrow;
   }
 }
+
+const _storeNeutral = 'Ek şube ekleme bu uygulamadan yapılmaz.';
 
 class BranchesScreen extends StatelessWidget {
   const BranchesScreen({required this.api, super.key});

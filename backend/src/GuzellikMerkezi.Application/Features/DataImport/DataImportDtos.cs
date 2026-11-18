@@ -71,4 +71,6 @@ public sealed record BulkImportResultDto(
     int Failed,
     IReadOnlyCollection<string> Errors,
     int ProductsCreated = 0, int ProductsSkipped = 0,
-    int StaffCreated = 0, int StaffSkipped = 0);
+    int StaffCreated = 0, int StaffSkipped = 0,
+    // Ödenmiş müşteri kademesi dolduğu için alınmayan müşteri satırı (arayüz "ücretinize +X yansır" uyarısını gösterir).
+    int CustomersOverCapacity = 0);

@@ -497,6 +497,23 @@ export interface BranchChargeQuote {
   cardMasked?: string | null
   /** Card = kayıtlı karttan çekilir · Invoice = açık fatura kesilir (kart yok / ödeme kapalı) · None = ücret yok. */
   chargeMethod?: 'Card' | 'Invoice' | 'None' | string
+  /** Bir şube daha eklenince ücret etkisi (deneme dahil) — sunucu hesaplar; şube başına olmayan pakette yok. */
+  impact?: BranchImpact | null
+  /** Kesilen şube faturası maydanozasist.com'da ödenebilir (sağlayıcı Maydanoz); değilse platform tahsil eder. */
+  invoicePayOnline?: boolean
+}
+
+export interface BranchImpact {
+  planName: string
+  trial: boolean
+  branches: number
+  unitMonthly: number
+  unitYearly: number
+  vatRate: number
+  currentMonthly: SubscriptionQuote
+  nextMonthly: SubscriptionQuote
+  nextYearly: SubscriptionQuote
+  period?: 'monthly' | 'yearly' | null
 }
 
 /**
@@ -522,6 +539,18 @@ export interface TierAllowance {
   /** Bu kademe için kesilmiş, henüz ÖDENMEMİŞ fatura. */
   openInvoiceNumber?: string | null
   subscriptionEndsAtUtc?: string | null
+  /** Bir sonraki kademe eşiği aşılınca dönem toplamı (KDV dahil) — sunucu hesaplar; denemede de dolu. */
+  impact?: TierImpact | null
+}
+
+export interface TierImpact {
+  trial: boolean
+  period: 'monthly' | 'yearly' | string
+  above: number
+  currentTotal: number
+  nextTotal: number
+  increase: number
+  increaseNet: number
 }
 
 export interface TierUpgradeResult {

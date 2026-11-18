@@ -987,19 +987,22 @@ public sealed partial class TenantSignupService : ITenantSignupService
     /// </remarks>
     private async Task SendWelcomeAsync(TenantSignupStartRequest form, string tenantCode, CancellationToken ct)
     {
-        var body =
-            $"<div style='font-family:sans-serif;font-size:15px;color:#2f1724'>" +
-            $"<p>Merhaba {System.Net.WebUtility.HtmlEncode(form.OwnerName)},</p>" +
-            $"<p><b>{System.Net.WebUtility.HtmlEncode(form.TenantName)}</b> için BeautyAsist hesabınız hazır. " +
-            $"{TrialDays} günlük ücretsiz denemeniz başladı.</p>" +
-            $"<table style='border-collapse:collapse;margin:16px 0'>" +
-            $"<tr><td style='padding:4px 12px 4px 0;color:#7c6170'>Kurum kodu</td><td style='font-weight:700'>{tenantCode}</td></tr>" +
-            $"<tr><td style='padding:4px 12px 4px 0;color:#7c6170'>E-posta</td><td>{System.Net.WebUtility.HtmlEncode(form.Email)}</td></tr>" +
-            $"</table>" +
-            $"<p>Geçici şifreniz güvenlik gereği bu e-postaya yazılmaz; kayıt ekranında gösterildi ve " +
-            $"indirdiğiniz <b>giriş bilgileri belgesinde</b> yer alıyor. Belgeyi indirmediyseniz " +
-            $"giriş ekranındaki “şifremi unuttum” akışını kullanın.</p>" +
-            $"<p>Destek almak için <b>kurum kodunuzu</b> ({tenantCode}) belirtmeniz yeterlidir.</p></div>";
+        // ŞIK ŞABLON (18 Kas 2026): doğrulama kodu e-postasıyla aynı görsel dil (NoticeEmailTemplate).
+        var body = NoticeEmailTemplate.Build(new NoticeEmailContent(
+            Title: "HESABINIZ HAZIR",
+            Preheader: $"{form.TenantName} için BeautyAsist hesabınız hazır; {TrialDays} günlük ücretsiz denemeniz başladı.",
+            Greeting: $"Merhaba {form.OwnerName},",
+            Paragraphs:
+            [
+                $"{form.TenantName} için BeautyAsist hesabınız hazır. {TrialDays} günlük ücretsiz denemeniz başladı.",
+                "Geçici şifreniz güvenlik gereği bu e-postaya yazılmaz; kayıt ekranında gösterildi ve indirdiğiniz giriş bilgileri belgesinde yer alıyor. Belgeyi indirmediyseniz giriş ekranındaki “şifremi unuttum” akışını kullanın.",
+            ],
+            TenantName: form.TenantName,
+            HighlightLabel: "Kurum Kodu",
+            Highlight: tenantCode,
+            CardTitle: "HESAP BİLGİLERİ",
+            Rows: [new("E-Posta", form.Email), new("Deneme", $"{TrialDays} gün ücretsiz")],
+            Notes: ["Güvenlik gereği şifre e-postayla gönderilmez.", $"Destek almak için kurum kodunuzu ({tenantCode}) belirtmeniz yeterlidir."]));
 
         await TrySendAsync(() => _messaging.SendEmailAsync(form.Email, $"BeautyAsist hesabınız hazır ({tenantCode})", body, ct), "hoş geldin e-postası");
     }

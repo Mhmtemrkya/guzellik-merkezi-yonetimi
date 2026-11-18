@@ -217,6 +217,75 @@ public sealed class PerBranchBillingTests
     }
 
     /// <summary>
+    /// ÜCRET ETKİSİ (18 Kas 2026): şube eklerken "ücretinize bu kadar yansıyacak" — denemede de. Tutarları sunucu
+    /// hesaplar: şube başı birim (KDV hariç) ve bir şube daha eklenince aylık / yıllık toplam (KDV dahil).
+    /// </summary>
+    [Fact]
+    public async Task Quote_TellsTheFeeImpact_EvenDuringTrial()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options, paid: false);
+        await using (var setup = NewDb(options))
+        {
+            var tenant = await setup.Tenants.IgnoreQueryFilters().SingleAsync(t => t.Id == seed.TenantId);
+            tenant.AssignSubscriptionPlan(await setup.SubscriptionPlans.SingleAsync(p => p.Id == seed.PlanId));
+            await setup.SaveChangesAsync();
+        }
+
+        await using var db = NewDb(options);
+        var trial = (await NewBilling(db, new ScriptedGateway()).GetBranchChargeQuoteAsync(seed.TenantId)).Value!;
+        Assert.False(trial.ChargeRequired);
+        var impact = trial.Impact!;
+        Assert.Equal((true, 1, 1_000m, 10_000m, 0.20m, (string?)null), (impact.Trial, impact.Branches, impact.UnitMonthly, impact.UnitYearly, impact.VatRate, impact.Period));
+        Assert.Equal((1_200m, 2_400m, 24_000m), (impact.CurrentMonthly.Total, impact.NextMonthly.Total, impact.NextYearly.Total));
+        Assert.Equal(2, impact.NextMonthly.Branches);
+    }
+
+    [Fact]
+    public async Task Quote_FeeImpact_ForAPaidTenant_AndNoneWithoutPerBranchPricing()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options, paid: true, period: BillingPeriod.Yearly);
+        await using (var db = NewDb(options))
+        {
+            var paid = (await NewBilling(db, new ScriptedGateway()).GetBranchChargeQuoteAsync(seed.TenantId)).Value!;
+            Assert.True(paid.ChargeRequired);
+            Assert.Equal((false, "yearly", 24_000m), (paid.Impact!.Trial, paid.Impact.Period, paid.Impact.NextYearly.Total));
+        }
+
+        await using (var change = NewDb(options))
+        {
+            var plan = await change.SubscriptionPlans.SingleAsync(p => p.Id == seed.PlanId);
+            plan.SetPricingModel(chargePerBranch: false, Tiers, Tiers, 10m);
+            await change.SaveChangesAsync();
+        }
+
+        await using var check = NewDb(options);
+        Assert.Null((await NewBilling(check, new ScriptedGateway()).GetBranchChargeQuoteAsync(seed.TenantId)).Value!.Impact);
+    }
+
+    /// <summary>
+    /// "Faturayı öde" düğmesi yalnız fatura maydanozasist.com'da ödenebiliyorsa: sağlayıcı Maydanoz. Başka sağlayıcıda ya da
+    /// ödeme kapalıyken fatura platformca tahsil edilir (ödeme ucu 409 döner) — düğme gösterilmez.
+    /// </summary>
+    [Fact]
+    public async Task Quote_SaysWhetherTheBranchInvoiceCanBePaidOnline()
+    {
+        var options = NewOptions();
+        var seed = await SeedAsync(options, paid: true, card: false);
+        await using var db = NewDb(options);
+
+        var maydanoz = new BillingService(db, new FixedResolver(new GuzellikMerkezi.Infrastructure.Payments.MaydanozPaymentGateway(db, "https://maydanoz.test/")),
+            new Passthrough(), new NoopAuditLogger(), new AllowAllFeatureService(), new TestCurrentUser(UserRole.InstitutionOwner),
+            NullLogger<BillingService>.Instance);
+        var online = (await maydanoz.GetBranchChargeQuoteAsync(seed.TenantId)).Value!;
+        Assert.Equal((BranchChargeMethods.Invoice, true), (online.ChargeMethod, online.InvoicePayOnline));
+
+        Assert.False((await NewBilling(db, new ScriptedGateway()).GetBranchChargeQuoteAsync(seed.TenantId)).Value!.InvoicePayOnline);
+        Assert.False((await NewBilling(db, new ScriptedGateway(), paymentsOn: false).GetBranchChargeQuoteAsync(seed.TenantId)).Value!.InvoicePayOnline);
+    }
+
+    /// <summary>
     /// SONUCU BELİRSİZ ÇEKİM: şube açılmaz, ikinci istek ikinci çekimi YAPMAZ; sağlayıcı sonradan
     /// "başarılı" deyince şube ödemedeki bilgiden açılır ve fatura kesilir.
     /// </summary>

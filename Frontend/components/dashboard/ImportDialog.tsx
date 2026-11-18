@@ -26,6 +26,7 @@ import {
 import { adminApi } from '@/lib/apiClient'
 import { useBranch } from './BranchContext'
 import ModalPortal from '@/components/dashboard/ModalPortal'
+import TierFeeNotice from '@/components/dashboard/TierFeeNotice'
 
 interface ImportDialogProps {
   open: boolean
@@ -53,6 +54,8 @@ interface ImportTotals {
   staffSkipped: number
   failed: number
   errors: string[]
+  /** Ödenmiş müşteri kademesi dolduğu için alınmayan satır — "ücretinize +X yansır" uyarısı gösterilir. */
+  customersOverCapacity: number
 }
 
 type Step = 'pick' | 'preview' | 'importing' | 'done'
@@ -148,6 +151,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
       staffSkipped: 0,
       failed: 0,
       errors: [],
+      customersOverCapacity: 0,
     }
 
     const rows =
@@ -189,6 +193,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
           staffSkipped: number
           failed: number
           errors: string[]
+          customersOverCapacity?: number
         }>(body)
 
         acc.customersCreated += result.customersCreated ?? 0
@@ -202,6 +207,7 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
         acc.staffCreated += result.staffCreated ?? 0
         acc.staffSkipped += result.staffSkipped ?? 0
         acc.failed += result.failed ?? 0
+        acc.customersOverCapacity += result.customersOverCapacity ?? 0
         if (result.errors?.length && acc.errors.length < 20) acc.errors.push(...result.errors.slice(0, 20 - acc.errors.length))
         setProgress(Math.round(((i + 1) / chunks.length) * 100))
       }
@@ -514,6 +520,8 @@ export default function ImportDialog({ open, onClose, entityType, onDone }: Impo
                       ))}
                     </div>
                   )}
+                  {/* Kademe doldu: alınmayan satırlar için "ücretinize +X yansır" (yalnız faturalama yetkisi olana). */}
+                  {totals.customersOverCapacity > 0 && <TierFeeNotice dimension="customers" reached />}
                   <div className="flex justify-end gap-2">
                     <button
                       type="button"

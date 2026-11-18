@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../../shared/tier_fee.dart';
 
 /// EXCEL'DEN TOPLU İÇERİ AKTARMA — web `ImportDialog` paritesi.
 ///
@@ -87,6 +88,9 @@ class _ImportSheetState extends State<ImportSheet> {
   int _progress = 0;
   Map<String, dynamic>? _result;
 
+  /// Ödenmiş müşteri kademesi dolduğu için alınmayan satır varsa "ücretinize +X yansır" (Android; iOS'ta null).
+  String? _tierFee;
+
   /// Türkçe karakterleri sadeleştirip yalnız harf+rakam bırakır (web normalizeText).
   static String _normalize(String h) => h
       .toLowerCase()
@@ -137,6 +141,7 @@ class _ImportSheetState extends State<ImportSheet> {
     setState(() {
       _error = null;
       _result = null;
+      _tierFee = null;
     });
     try {
       // file_picker v11: pickFiles STATİK (eski sürümdeki FilePicker.platform kaldırıldı).
@@ -228,6 +233,7 @@ class _ImportSheetState extends State<ImportSheet> {
       _error = null;
       _progress = 0;
       _result = null;
+      _tierFee = null;
     });
 
     final payloads = _rows.map(_toPayload).where((p) {
@@ -271,6 +277,10 @@ class _ImportSheetState extends State<ImportSheet> {
         }
       }
       if (mounted) setState(() => _result = acc);
+      if ((acc['customersOverCapacity'] as num? ?? 0) > 0) {
+        final fee = await loadTierFeeText(widget.api, 'customers', reached: true);
+        if (mounted && fee != null) setState(() => _tierFee = fee);
+      }
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     } finally {
@@ -534,6 +544,19 @@ class _ImportSheetState extends State<ImportSheet> {
             ),
           ),
         ],
+        if (_tierFee != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFCF3F6),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.danger.withValues(alpha: 0.25)),
+            ),
+            child: Text(_tierFee!, style: const TextStyle(fontSize: 12, height: 1.45, color: Color(0xFF7A2942))),
+          ),
+        ],
         const SizedBox(height: 14),
         SizedBox(
           width: double.infinity,
@@ -557,6 +580,7 @@ class _ImportSheetState extends State<ImportSheet> {
         'productsSkipped' => 'Ürün atlandı (mevcut)',
         'staffCreated' => 'Personel eklendi',
         'staffSkipped' => 'Personel atlandı (mevcut)',
+        'customersOverCapacity' => 'Müşteri alınmadı (kademe dolu)',
         _ => key,
       };
 }
