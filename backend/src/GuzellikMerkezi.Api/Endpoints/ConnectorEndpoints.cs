@@ -53,6 +53,11 @@ public static class ConnectorEndpoints
                 : Results.NotFound(new { success = false, error = new { code = "checkout.not-found", message = "Ödeme kaydı bulunamadı." } }))
             .Scope("checkouts.read");
 
+        // HAVALE / EFT (18 Kas 2026): kurum Maydanoz ödeme sayfasında havaleyi seçti — kayıt havale süresince açık kalır.
+        g.MapPost("/checkouts/{reference}/transfer", async (string reference, IConnectorCheckouts checkouts, HttpContext http, CancellationToken ct) =>
+            (await checkouts.AwaitTransferAsync(reference, ct)).ToHttpResult(http))
+            .Scope("checkouts.write");
+
         g.MapPost("/checkouts/{reference}/paid", async (string reference, ConnectorCheckoutPaidRequest request, IConnectorCheckouts checkouts, HttpContext http, CancellationToken ct) =>
             (await checkouts.RecordPaidAsync(reference, request, ct)).ToHttpResult(http))
             .Scope("checkouts.write");

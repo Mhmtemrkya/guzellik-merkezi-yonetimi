@@ -49,6 +49,21 @@ public sealed partial class ConnectorCheckouts(
             $"{checkout.CallbackUrl}{separator}token={checkout.PublicRef}", checkout.ExpiresAtUtc);
     }
 
+    public async Task<Result<ConnectorCheckoutDto>> AwaitTransferAsync(string publicRef, CancellationToken ct = default)
+    {
+        var closed = Error.Conflict("Bu ödeme artık açık değil: alınmış ya da süresi dolmuş.");
+        if (!RefPattern().IsMatch(publicRef ?? string.Empty))
+            return Result<ConnectorCheckoutDto>.Failure(Error.NotFound("Ödeme kaydı bulunamadı."));
+        var checkout = await db.ExternalCheckouts.FirstOrDefaultAsync(c => c.PublicRef == publicRef, ct);
+        if (checkout is null) return Result<ConnectorCheckoutDto>.Failure(Error.NotFound("Ödeme kaydı bulunamadı."));
+
+        // Fatura değişmişse (iptal / tutar) GET kaydı kapalı gösterir: havale de başlatılmaz, ömür uzatılmaz.
+        if (await GetAsync(publicRef!, ct) is not { Status: "pending" } || !checkout.AwaitTransfer(DateTime.UtcNow))
+            return Result<ConnectorCheckoutDto>.Failure(closed);
+        await db.SaveChangesAsync(ct);
+        return Result<ConnectorCheckoutDto>.Success((await GetAsync(publicRef!, ct))!);
+    }
+
     public async Task<Result<ConnectorCheckoutPaidDto>> RecordPaidAsync(string publicRef, ConnectorCheckoutPaidRequest request, CancellationToken ct = default)
     {
         if (!RefPattern().IsMatch(publicRef ?? string.Empty))

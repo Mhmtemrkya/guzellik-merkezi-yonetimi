@@ -69,9 +69,16 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
   const [payError, setPayError] = useState('')
   /** Kartla öde (varsayılan) ↔ havale talebi. Havale yolu KALDIRILMADI: kurumların bir kısmı
       hâlâ havale/fatura ile ödüyor ve platformun her yüklemeyi denetlemesi bilinçli bir tercih. */
-  const [payByCard, setPayByCard] = useState(true)
+  const [payByCardChoice, setPayByCard] = useState(true)
 
   const w = wallet
+  /**
+   * ÖDEME MAYDANOZ'DA (kullanıcı isteği 18 Kas 2026: "mesaj kredisini maydanozasist ile satın almaya bağla"):
+   * sağlayıcı Maydanoz iken tek yol maydanozasist.com ödeme sayfasıdır — kart ya da havale / EFT orada seçilir;
+   * eski "havale talebi" (platform onayı) yalnız diğer sağlayıcılarda kalır.
+   */
+  const onMaydanoz = Boolean(w?.payOnMaydanoz)
+  const payByCard = onMaydanoz || payByCardChoice
   const customAmount = Math.floor(Number(customCredits) || 0)
   // Ödenecek tutar yalnız GÖSTERİMDİR: sunucu fiyatı kendi birim fiyatından yeniden hesaplar.
   const customPrice = customAmount * (w?.creditUnitPriceTry ?? 0)
@@ -223,7 +230,12 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
           </button>
         </div>
 
-        {/* Ödeme yolu seçimi — kartla anında, havalede onay beklenir. */}
+        {/* Ödeme yolu seçimi — kartla anında, havalede onay beklenir. Ödeme Maydanoz'daysa seçim orada yapılır. */}
+        {onMaydanoz ? (
+          <div className="flex items-center gap-2 rounded-xl border border-[#1E8C60]/25 bg-[#DFF3EA] px-3 py-2 text-[11px] font-semibold text-[#15694A]">
+            <CreditCard className="h-3.5 w-3.5 shrink-0" /> Ödeme maydanozasist.com&apos;da: kartla ya da havale / EFT ile
+          </div>
+        ) : (
         <div className="flex items-center gap-1 rounded-xl border border-[#EAD8DF] bg-[#F7F6F6] p-1">
           {([true, false] as const).map((card) => (
             <button
@@ -242,6 +254,7 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
             </button>
           ))}
         </div>
+        )}
 
         {customOpen && (
           <div className="rounded-xl border border-[#EAD8DF] bg-[#F7F6F6] p-2">
@@ -287,13 +300,15 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
               )}
               {pkg.description && <span className="mt-1 text-[10px] leading-snug text-[#5A4B53]">{pkg.description}</span>}
               <span className="mt-2 inline-flex items-center gap-1 text-[10.5px] font-semibold text-[#8C4460] group-hover:underline">
-                {buyingId === pkg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : payByCard ? <CreditCard className="h-3 w-3" /> : <Plus className="h-3 w-3" />} {payByCard ? 'Kartla al' : 'Talep et'}
+                {buyingId === pkg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : payByCard ? <CreditCard className="h-3 w-3" /> : <Plus className="h-3 w-3" />} {onMaydanoz ? 'Satın al' : payByCard ? 'Kartla al' : 'Talep et'}
               </span>
             </button>
           ))}
         </div>
         <p className="text-[10px] leading-snug text-[#74616A]">
-          {payByCard
+          {onMaydanoz
+            ? 'maydanozasist.com güvenli ödeme sayfasına yönlendirilirsiniz; kartla ya da havale / EFT ile ödeyebilirsiniz. Krediniz ödeme onaylandığında yüklenir; kart bilgileriniz bizde saklanmaz.'
+            : payByCard
             ? 'Güvenli ödeme sayfasına yönlendirilirsiniz. Krediniz ödeme onaylandığı anda yüklenir; kart bilgileriniz bizde saklanmaz.'
             : 'Kredi talepleriniz BeautyAsist onayından sonra bakiyenize eklenir. Ödeme ve fatura için sizinle iletişime geçilir.'}
         </p>

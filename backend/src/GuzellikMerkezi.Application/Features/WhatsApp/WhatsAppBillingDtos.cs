@@ -85,7 +85,9 @@ public sealed record MessagingWalletDto(
     int EstimatedSmsMessages,
     decimal CreditUnitPriceTry,
     bool BillingEnabled,
-    IReadOnlyCollection<CreditPackageDto> CreditPackages);
+    IReadOnlyCollection<CreditPackageDto> CreditPackages,
+    // Kredi ödemesi maydanozasist.com'da alınır (ödeme sağlayıcısı Maydanoz; kart ya da havale / EFT orada seçilir).
+    bool PayOnMaydanoz = false);
 
 public sealed record CreditPackageDto(
     Guid Id,

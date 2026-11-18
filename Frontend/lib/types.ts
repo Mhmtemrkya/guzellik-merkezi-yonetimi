@@ -1793,6 +1793,8 @@ export interface ApiMessagingWallet {
   creditUnitPriceTry: number
   billingEnabled: boolean
   creditPackages: ApiCreditPackage[]
+  /** Ödeme maydanozasist.com'da (sağlayıcı Maydanoz): kart ya da havale / EFT orada seçilir. */
+  payOnMaydanoz?: boolean
 }
 
 export interface ApiWalletTransaction {

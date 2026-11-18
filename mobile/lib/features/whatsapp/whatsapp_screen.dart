@@ -38,6 +38,10 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
     _future = _load();
   }
 
+  /// Ödeme maydanozasist.com'da (sağlayıcı Maydanoz): kart ya da havale / EFT orada seçilir — mobilde web'e
+  /// yönlendirilir (kullanıcı kararı 18 Kas 2026). iOS'ta satın alma yüzeyi zaten yok (App Store 3.1.1).
+  bool _payOnMaydanoz = false;
+
   Future<_WaData> _load() async {
     final results = await Future.wait([
       widget.api.get('/api/admin/whatsapp/settings').catchError((_) => <String, dynamic>{}),
@@ -46,6 +50,7 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
       widget.api.get('/api/admin/whatsapp/messages').catchError((_) => const <dynamic>[]),
       widget.api.get('/api/admin/sms/connection').catchError((_) => <String, dynamic>{}),
     ]);
+    _payOnMaydanoz = results[1] is Map && (results[1] as Map)['payOnMaydanoz'] == true;
     return _WaData(
       settings: results[0] is Map ? (results[0] as Map).cast<String, dynamic>() : const {},
       wallet: results[1] is Map ? (results[1] as Map).cast<String, dynamic>() : const {},
@@ -139,6 +144,11 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
 
   /// Paket kartına dokununca ödeme yolunu sorar — web'deki Kartla öde / Havale seçiminin karşılığı.
   Future<void> _buyCredit(Map<String, dynamic> pkg) async {
+    // Ödeme Maydanoz'daysa yöntem orada seçilir (kart / havale-EFT): doğrudan ödeme sayfası tarayıcıda açılır.
+    if (_payOnMaydanoz) {
+      await _buyCreditByCard(pkg);
+      return;
+    }
     final byCard = await showModalBottomSheet<bool>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -383,12 +393,15 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
               child: Text('Kredi yükle', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
             ),
             for (final pkg in packages) _packageCard(pkg),
-            const Padding(
-              padding: EdgeInsets.all(6),
+            Padding(
+              padding: const EdgeInsets.all(6),
               child: Text(
-                  'Kartla ödemede kredi anında yüklenir; havale yolunda BeautyAsist onayından sonra eklenir. '
-                  'Kart bilgileriniz bizde saklanmaz.',
-                  style: TextStyle(fontSize: 11, color: AppColors.muted)),
+                  _payOnMaydanoz
+                      ? "Ödeme sayfası maydanozasist.com'da (tarayıcıda) açılır; kartla ya da havale / EFT ile ödeyebilirsiniz. "
+                          'Krediniz ödeme onaylandığında yüklenir.'
+                      : 'Kartla ödemede kredi anında yüklenir; havale yolunda BeautyAsist onayından sonra eklenir. '
+                          'Kart bilgileriniz bizde saklanmaz.',
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted)),
             ),
           ],
         ],

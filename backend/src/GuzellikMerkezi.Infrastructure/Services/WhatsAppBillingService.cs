@@ -1547,7 +1547,15 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
             estUtility, estSms,
             billing.CreditUnitPriceTry,
             billing.BillingEnabled,
-            packages.Select(p => ToPackageDto(p, utilityCost)).ToList());
+            packages.Select(p => ToPackageDto(p, utilityCost)).ToList(),
+            PayOnMaydanoz: await PaysOnMaydanozAsync(ct));
+    }
+
+    /// <summary>Ödeme sağlayıcısı Maydanoz mu? (Kart ve havale / EFT maydanozasist.com ödeme sayfasında seçilir.)</summary>
+    private async Task<bool> PaysOnMaydanozAsync(CancellationToken ct)
+    {
+        var context = await _gateways.ResolveAsync(ct);
+        return context.IsSuccess && context.Value!.Gateway is Payments.MaydanozPaymentGateway;
     }
 
     private Task<int> CountQuotaUsedAsync(Guid tenantId, WhatsAppMessageCategory category, DateTime monthStart, CancellationToken ct)

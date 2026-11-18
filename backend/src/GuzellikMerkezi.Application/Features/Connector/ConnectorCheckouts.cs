@@ -29,4 +29,7 @@ public interface IConnectorCheckouts
     Task<ConnectorCheckoutDto?> GetAsync(string publicRef, CancellationToken ct = default);
 
     Task<Result<ConnectorCheckoutPaidDto>> RecordPaidAsync(string publicRef, ConnectorCheckoutPaidRequest request, CancellationToken ct = default);
+
+    /// <summary>Kurum havaleyi seçti: kayıt havale süresince açık kalır (bkz. ExternalCheckout.AwaitTransfer).</summary>
+    Task<Result<ConnectorCheckoutDto>> AwaitTransferAsync(string publicRef, CancellationToken ct = default);
 }

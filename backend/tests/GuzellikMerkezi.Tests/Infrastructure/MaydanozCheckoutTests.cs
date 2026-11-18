@@ -196,6 +196,8 @@ public sealed class MaydanozCheckoutTests
             Assert.Equal("settled", paid.Value!.Status);
             var wallet = await db.TenantMessagingWallets.IgnoreQueryFilters().SingleAsync(w => w.TenantId == tenantId);
             Assert.Equal(250m, wallet.BalanceCredits);
+            // Mesaj kredisi kartı: ödeme maydanozasist.com'da (kart ya da havale / EFT orada seçilir).
+            Assert.True((await Credits(db).GetWalletAsync(tenantId)).Value!.PayOnMaydanoz);
         }
     }
 
@@ -220,6 +222,66 @@ public sealed class MaydanozCheckoutTests
         db.Entry(row).Property(nameof(ExternalCheckout.ExpiresAtUtc)).CurrentValue = DateTime.UtcNow.AddMinutes(-1);
         await db.SaveChangesAsync();
         Assert.Equal("expired", (await connector.GetAsync(reference))!.Status);
+    }
+
+    /// <summary>
+    /// HAVALE / EFT (18 Kas 2026): kurum havaleyi seçince kayıt havale süresince açık kalır (sayfa ve fatura ödeme kaydı
+    /// yeniden kullanılabilir); geç gelen "ödendi" bildirimi her zamanki yoldan işlenir.
+    /// </summary>
+    [Fact]
+    public async Task Transfer_KeepsTheCheckoutOpen_AndALateNoticeStillSettles()
+    {
+        var options = NewOptions();
+        var (tenantId, planId) = await SeedAsync(options);
+        var (reference, amount) = await StartSubscriptionAsync(options, tenantId, planId);
+
+        await using (var db = NewDb(options))
+        {
+            var connector = Connector(db);
+            Assert.Equal("NotFound", (await connector.AwaitTransferAsync("x")).Error.Code);
+            Assert.Equal("NotFound", (await connector.AwaitTransferAsync(new string('a', 32))).Error.Code);
+            var started = await connector.AwaitTransferAsync(reference);
+            Assert.True(started.IsSuccess, started.IsFailure ? started.Error.Message : null);
+            Assert.Equal("pending", started.Value!.Status);
+            Assert.True((await db.ExternalCheckouts.SingleAsync()).ExpiresAtUtc > DateTime.UtcNow.AddDays(6));
+            Assert.True((await connector.AwaitTransferAsync(reference)).IsSuccess);   // tekrar zararsız
+        }
+
+        // 24 saat geçti: havale bekleyen kayıt hâlâ açık; bildirim gelince abonelik açılır.
+        await using (var db = NewDb(options))
+        {
+            Assert.Equal("pending", (await Connector(db).GetAsync(reference))!.Status);
+            var paid = await Connector(db).RecordPaidAsync(reference, new ConnectorCheckoutPaidRequest("chk_havale", (long)(amount * 100), "TRY"));
+            Assert.True(paid.IsSuccess, paid.IsFailure ? paid.Error.Message : null);
+            Assert.Equal("Conflict", (await Connector(db).AwaitTransferAsync(reference)).Error.Code);   // ödendi
+        }
+    }
+
+    [Fact]
+    public async Task Transfer_IsRefusedForAnExpiredCheckout()
+    {
+        var options = NewOptions();
+        var (tenantId, planId) = await SeedAsync(options);
+        var (reference, _) = await StartSubscriptionAsync(options, tenantId, planId);
+        await using var db = NewDb(options);
+        var row = await db.ExternalCheckouts.SingleAsync();
+        db.Entry(row).Property(nameof(ExternalCheckout.ExpiresAtUtc)).CurrentValue = DateTime.UtcNow.AddMinutes(-1);
+        await db.SaveChangesAsync();
+        Assert.Equal("Conflict", (await Connector(db).AwaitTransferAsync(reference)).Error.Code);
+    }
+
+    [Fact]
+    public void AwaitTransfer_ExtendsButNeverShortens_AndOnlyWhilePending()
+    {
+        var now = DateTime.UtcNow;
+        var checkout = new ExternalCheckout(MaydanozPaymentGateway.NewRef(), "c", ExternalCheckout.KindSubscription, Guid.NewGuid(), 1m, "x", Callback, now);
+        Assert.True(checkout.AwaitTransfer(now));
+        Assert.Equal(now + ExternalCheckout.TransferLifetime, checkout.ExpiresAtUtc);
+        Assert.True(checkout.AwaitTransfer(now.AddDays(-1)));                      // daha erken bir an kısaltmaz
+        Assert.Equal(now + ExternalCheckout.TransferLifetime, checkout.ExpiresAtUtc);
+        Assert.False(checkout.AwaitTransfer(now + ExternalCheckout.TransferLifetime)); // süresi doldu
+        checkout.RecordPaid("p", 1m, "TRY", now);
+        Assert.False(checkout.AwaitTransfer(now));                                // ödendi
     }
 
     [Fact]

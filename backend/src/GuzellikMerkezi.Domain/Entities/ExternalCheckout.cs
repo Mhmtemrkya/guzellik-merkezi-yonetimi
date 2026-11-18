@@ -32,6 +32,12 @@ public sealed class ExternalCheckout : Entity
     /// <summary>Ödeme sayfası bu süreden sonra açılmaz (yeni ödeme panelden başlatılır).</summary>
     public static readonly TimeSpan Lifetime = TimeSpan.FromHours(24);
 
+    /// <summary>
+    /// HAVALE / EFT (18 Kas 2026): kurum Maydanoz ödeme sayfasında havaleyi seçince kayıt bu kadar açık kalır — para
+    /// bankada 1-3 iş gününde görünür; 24 saatlik ömür dolunca sayfa kapanır ve fatura yeniden ödemeye açılırdı.
+    /// </summary>
+    public static readonly TimeSpan TransferLifetime = TimeSpan.FromDays(7);
+
     private ExternalCheckout() { }
 
     public ExternalCheckout(string publicRef, string conversationId, string kind, Guid tenantId, decimal amountTry,
@@ -84,6 +90,23 @@ public sealed class ExternalCheckout : Entity
     public DateTime? PaidAtUtc { get; private set; }
 
     public bool IsExpired(DateTime nowUtc) => Status == StatusPending && nowUtc >= ExpiresAtUtc;
+
+    /// <summary>
+    /// Havale bekleniyor: açık kaydın ömrünü <see cref="TransferLifetime"/> kadar uzatır (asla kısaltmaz). Yalnız açık ve
+    /// süresi dolmamış kayıtta; tekrar çağrı zararsızdır. Ödeme bildirimi (<see cref="RecordPaid"/>) ömre bakmaz; ömür
+    /// yalnız ödeme sayfasını ve aynı faturanın ödeme kaydının yeniden kullanılmasını açık tutar.
+    /// </summary>
+    public bool AwaitTransfer(DateTime nowUtc)
+    {
+        if (Status != StatusPending || IsExpired(nowUtc)) return false;
+        var until = nowUtc.Add(TransferLifetime);
+        if (until > ExpiresAtUtc)
+        {
+            ExpiresAtUtc = until;
+            Touch(nowUtc);
+        }
+        return true;
+    }
 
     public enum RecordOutcome { Recorded, AlreadyRecorded, Conflict }
 
