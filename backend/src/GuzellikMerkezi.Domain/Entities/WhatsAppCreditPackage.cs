@@ -1,3 +1,4 @@
+using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Domain.Exceptions;
 
 namespace GuzellikMerkezi.Domain.Entities;
@@ -11,8 +12,10 @@ public sealed class WhatsAppCreditPackage : Entity
 {
     private WhatsAppCreditPackage() { }
 
-    public WhatsAppCreditPackage(string name, decimal priceTry, decimal grantsCredits, int displayOrder = 0, string? description = null)
+    public WhatsAppCreditPackage(string name, decimal priceTry, decimal grantsCredits, int displayOrder = 0, string? description = null,
+        CreditChannel channel = CreditChannel.WhatsApp)
     {
+        Channel = channel;
         Rename(name);
         SetAmounts(priceTry, grantsCredits);
         DisplayOrder = displayOrder;
@@ -35,6 +38,9 @@ public sealed class WhatsAppCreditPackage : Entity
     /// </summary>
     public decimal GrantsTry { get; private set; }
 
+    /// <summary>Paketin yüklediği kredi kanalı (18 Kas 2026; eski paketler WhatsApp).</summary>
+    public CreditChannel Channel { get; private set; } = CreditChannel.WhatsApp;
+
     public int DisplayOrder { get; private set; }
     public bool IsActive { get; private set; } = true;
 
@@ -56,6 +62,7 @@ public sealed class WhatsAppCreditPackage : Entity
     }
 
     public void SetDescription(string? description) { Description = Clean(description); Touch(); }
+    public void SetChannel(CreditChannel channel) { Channel = channel; Touch(); }
     public void SetDisplayOrder(int order) { DisplayOrder = order; Touch(); }
     public void Activate() { IsActive = true; Touch(); }
     public void Deactivate() { IsActive = false; Touch(); }

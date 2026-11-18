@@ -122,7 +122,7 @@ public sealed class BalanceRaceMySqlTests
         await using (var db = database.NewContext())
         {
             var wallet = new TenantMessagingWallet(seed.TenantId);
-            wallet.TopUp(10m);
+            wallet.TopUp(CreditChannel.WhatsApp, 10m);
             db.TenantMessagingWallets.Add(wallet);
             await db.SaveChangesAsync();
         }
@@ -144,7 +144,7 @@ public sealed class BalanceRaceMySqlTests
         await using var check = database.NewContext();
         var final = await check.TenantMessagingWallets.IgnoreQueryFilters().SingleAsync(w => w.TenantId == seed.TenantId);
         Assert.Equal(10m, final.ReservedCredits);          // yalnız bir rezervasyon
-        Assert.True(final.AvailableCredits >= 0m);         // kullanılabilir bakiye ASLA eksiye düşmez
+        Assert.True(final.AvailableFor(CreditChannel.WhatsApp) >= 0m);         // kullanılabilir bakiye ASLA eksiye düşmez
     }
 
     /// <summary>
@@ -162,7 +162,7 @@ public sealed class BalanceRaceMySqlTests
         await RowLock.LockRowAsync(db, "tenant_messaging_wallets", wallet.Id, CancellationToken.None);
         await db.Entry(wallet).ReloadAsync();
 
-        if (!wallet.TryReserve(amount)) return false;
+        if (!wallet.TryReserve(CreditChannel.WhatsApp, amount)) return false;
 
         await db.SaveChangesAsync();
         await tx.CommitAsync();

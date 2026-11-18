@@ -1759,8 +1759,14 @@ export interface ApiCreditPackage {
   grantsCredits: number
   displayOrder: number
   isActive: boolean
+  /** Paketin kanalındaki tahmini mesaj (WhatsApp: hatırlatma, SMS: tek parçalık SMS). */
   estimatedUtilityMessages: number
+  /** SMS ve WhatsApp kredisi ayrı (18 Kas 2026); eski paketler WhatsApp. */
+  channel?: CreditChannel
 }
+
+/** Mesaj kredisinin kanalı: her kanalın kendi bakiyesi, paketi ve birim fiyatı vardır. */
+export type CreditChannel = 'WhatsApp' | 'Sms'
 
 export interface ApiMessagingWallet {
   tenantId: string
@@ -1795,6 +1801,15 @@ export interface ApiMessagingWallet {
   creditPackages: ApiCreditPackage[]
   /** Ödeme maydanozasist.com'da (sağlayıcı Maydanoz): kart ya da havale / EFT orada seçilir. */
   payOnMaydanoz?: boolean
+  // ---- SMS KREDİSİ (18 Kas 2026: WhatsApp'tan AYRI; yukarıdaki bakiye / harcama / fiyat alanları WhatsApp'ın) ----
+  smsBalanceCredits?: number
+  smsReservedCredits?: number
+  smsAvailableCredits?: number
+  smsLifetimeTopUpCredits?: number
+  smsLifetimeSpentCredits?: number
+  smsIsLowBalance?: boolean
+  smsMonthlySpentCredits?: number
+  smsCreditUnitPriceTry?: number
 }
 
 export interface ApiWalletTransaction {
@@ -1823,6 +1838,8 @@ export interface ApiCreditPurchase {
   processedAtUtc?: string | null
   /** Kartla ödeme talebiyse sağlayıcı adı; havale talebinde null. Elle onay YALNIZ null olanlarda. */
   provider?: string | null
+  /** Yüklenecek kredinin kanalı (eski talepler WhatsApp). */
+  channel?: CreditChannel
 }
 
 export interface ApiWhatsAppPricingRule {
@@ -1845,7 +1862,10 @@ export interface ApiWhatsAppBillingSettings {
   defaultMonthlySpendCapCredits?: number | null
   autoApproveTopUps: boolean
   smsCreditsPerPart: number
+  /** WhatsApp kredisinin paket dışı birim fiyatı (₺). */
   creditUnitPriceTry: number
+  /** SMS kredisinin paket dışı birim fiyatı (₺, 18 Kas 2026). */
+  smsCreditUnitPriceTry?: number
 }
 
 /** Toplu gönderim ÖNCESİ tahmin (gönderimle aynı kitle + metin kuralı; kesin karar gönderimde). */

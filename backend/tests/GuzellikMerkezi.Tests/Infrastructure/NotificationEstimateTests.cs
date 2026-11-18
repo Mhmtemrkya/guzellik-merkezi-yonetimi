@@ -51,7 +51,8 @@ public sealed class NotificationEstimateTests
         if (walletCredits > 0)
         {
             var wallet = new TenantMessagingWallet(tenant.Id);
-            wallet.TopUp(walletCredits);
+            wallet.TopUp(CreditChannel.WhatsApp, walletCredits);
+            wallet.TopUp(CreditChannel.Sms, walletCredits);
             db.TenantMessagingWallets.Add(wallet);
         }
         if (smsLive)
@@ -236,9 +237,11 @@ public sealed class NotificationEstimateTests
 
         var spent = expectedCharged * 2m;
         var wallet = await check.TenantMessagingWallets.IgnoreQueryFilters().AsNoTracking().SingleAsync(w => w.TenantId == tenantId);
-        Assert.Equal(100m - spent, wallet.BalanceCredits);
-        Assert.Equal(0m, wallet.ReservedCredits);
-        Assert.Equal(spent, wallet.LifetimeSpentCredits);
+        // SMS yalnız SMS kredisinden düşer; WhatsApp kredisi dokunulmaz (18 Kas 2026: ayrı bakiyeler).
+        Assert.Equal(100m - spent, wallet.SmsBalanceCredits);
+        Assert.Equal(0m, wallet.SmsReservedCredits);
+        Assert.Equal(spent, wallet.SmsLifetimeSpentCredits);
+        Assert.Equal((100m, 0m), (wallet.BalanceCredits, wallet.LifetimeSpentCredits));
     }
 
     [Fact]

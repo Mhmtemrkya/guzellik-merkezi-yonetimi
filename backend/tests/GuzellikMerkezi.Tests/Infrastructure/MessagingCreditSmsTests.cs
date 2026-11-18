@@ -52,7 +52,7 @@ public sealed class MessagingCreditSmsTests
         if (walletCredits > 0)
         {
             var wallet = new TenantMessagingWallet(tenant.Id);
-            wallet.TopUp(walletCredits);
+            wallet.TopUp(CreditChannel.Sms, walletCredits);
             db.TenantMessagingWallets.Add(wallet);
         }
         await db.SaveChangesAsync();
@@ -109,8 +109,8 @@ public sealed class MessagingCreditSmsTests
         }
 
         var wallet = await WalletAsync(options, tenantId);
-        Assert.Equal(0m, wallet.ReservedCredits);
-        Assert.Equal(100m, wallet.BalanceCredits);
+        Assert.Equal(0m, wallet.SmsReservedCredits);
+        Assert.Equal(100m, wallet.SmsBalanceCredits);
     }
 
     /// <summary>Kota bittiğinde kurum izin vermediyse kredi HARCANMAZ — sürpriz harcama freni.</summary>
@@ -150,17 +150,17 @@ public sealed class MessagingCreditSmsTests
 
             // Rezervasyon sağlayıcıdan ÖNCE kalıcıdır.
             var reserved = await WalletAsync(options, tenantId);
-            Assert.Equal(4m, reserved.ReservedCredits);
-            Assert.Equal(96m, reserved.AvailableCredits);
+            Assert.Equal(4m, reserved.SmsReservedCredits);
+            Assert.Equal(96m, reserved.AvailableFor(CreditChannel.Sms));
 
             log.MarkSent();
             await billing.SettleSmsAsync(log, accepted: true);
         }
 
         var wallet = await WalletAsync(options, tenantId);
-        Assert.Equal(96m, wallet.BalanceCredits);
-        Assert.Equal(0m, wallet.ReservedCredits);
-        Assert.Equal(4m, wallet.LifetimeSpentCredits);
+        Assert.Equal(96m, wallet.SmsBalanceCredits);
+        Assert.Equal(0m, wallet.SmsReservedCredits);
+        Assert.Equal(4m, wallet.SmsLifetimeSpentCredits);
 
         await using var check = NewDb(options);
         var saved = await check.NotificationLogs.IgnoreQueryFilters().AsNoTracking().SingleAsync(l => l.Id == logId);
@@ -194,8 +194,8 @@ public sealed class MessagingCreditSmsTests
         }
 
         var wallet = await WalletAsync(options, tenantId);
-        Assert.Equal(100m, wallet.BalanceCredits);
-        Assert.Equal(0m, wallet.ReservedCredits);
+        Assert.Equal(100m, wallet.SmsBalanceCredits);
+        Assert.Equal(0m, wallet.SmsReservedCredits);
         await using var check = NewDb(options);
         Assert.Empty(await check.WalletTransactions.IgnoreQueryFilters().AsNoTracking().ToListAsync());
     }
@@ -215,7 +215,7 @@ public sealed class MessagingCreditSmsTests
             Assert.Contains("yetersiz", decision.BlockReason, StringComparison.OrdinalIgnoreCase);
         }
 
-        Assert.Equal(0m, (await WalletAsync(options, tenantId)).ReservedCredits);
+        Assert.Equal(0m, (await WalletAsync(options, tenantId)).SmsReservedCredits);
     }
 
     /// <summary>Aylık tavan WhatsApp + SMS toplamına uygulanır; aşan gönderim engellenir.</summary>
@@ -254,7 +254,7 @@ public sealed class MessagingCreditSmsTests
             Assert.Equal(first.Credits, again.Credits);
         }
 
-        Assert.Equal(4m, (await WalletAsync(options, tenantId)).ReservedCredits);
+        Assert.Equal(4m, (await WalletAsync(options, tenantId)).SmsReservedCredits);
     }
 
     /// <summary>Simülasyon teslimat değildir: ne kota ne kredi düşer.</summary>
@@ -272,7 +272,7 @@ public sealed class MessagingCreditSmsTests
             Assert.Equal(WhatsAppBillingSource.Simulation, decision.Source);
         }
 
-        Assert.Equal(0m, (await WalletAsync(options, tenantId)).ReservedCredits);
+        Assert.Equal(0m, (await WalletAsync(options, tenantId)).SmsReservedCredits);
     }
 
     // ---------------- Süpürme ----------------
@@ -301,7 +301,7 @@ public sealed class MessagingCreditSmsTests
             stuckId = stuck.Id;
         }
 
-        Assert.Equal(6m, (await WalletAsync(options, tenantId)).ReservedCredits);
+        Assert.Equal(6m, (await WalletAsync(options, tenantId)).SmsReservedCredits);
 
         await using (var db = NewDb(options))
         {
@@ -311,8 +311,8 @@ public sealed class MessagingCreditSmsTests
         }
 
         var wallet = await WalletAsync(options, tenantId);
-        Assert.Equal(0m, wallet.ReservedCredits);
-        Assert.Equal(98m, wallet.BalanceCredits);   // yalnız gönderilen 2 kredi harcandı
+        Assert.Equal(0m, wallet.SmsReservedCredits);
+        Assert.Equal(98m, wallet.SmsBalanceCredits);   // yalnız gönderilen 2 kredi harcandı
 
         await using var check = NewDb(options);
         var sentRow = await check.NotificationLogs.IgnoreQueryFilters().AsNoTracking().SingleAsync(l => l.Id == sentId);

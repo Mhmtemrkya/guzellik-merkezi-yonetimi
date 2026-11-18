@@ -87,7 +87,16 @@ public sealed record MessagingWalletDto(
     bool BillingEnabled,
     IReadOnlyCollection<CreditPackageDto> CreditPackages,
     // Kredi ödemesi maydanozasist.com'da alınır (ödeme sağlayıcısı Maydanoz; kart ya da havale / EFT orada seçilir).
-    bool PayOnMaydanoz = false);
+    bool PayOnMaydanoz = false,
+    // ---- SMS KREDİSİ (18 Kas 2026: WhatsApp'tan AYRI bakiye; yukarıdaki bakiye/harcama/fiyat alanları WhatsApp'ındır) ----
+    decimal SmsBalanceCredits = 0m,
+    decimal SmsReservedCredits = 0m,
+    decimal SmsAvailableCredits = 0m,
+    decimal SmsLifetimeTopUpCredits = 0m,
+    decimal SmsLifetimeSpentCredits = 0m,
+    bool SmsIsLowBalance = false,
+    decimal SmsMonthlySpentCredits = 0m,
+    decimal SmsCreditUnitPriceTry = 0m);
 
 public sealed record CreditPackageDto(
     Guid Id,
@@ -97,7 +106,9 @@ public sealed record CreditPackageDto(
     decimal GrantsCredits,
     int DisplayOrder,
     bool IsActive,
-    int EstimatedUtilityMessages);
+    int EstimatedUtilityMessages,
+    // Paketin yüklediği kanal (18 Kas 2026: SMS ve WhatsApp kredisi ayrı).
+    CreditChannel Channel = CreditChannel.WhatsApp);
 
 /// <param name="Unit">
 /// Tutarların birimi. 12 Kas 2026 öncesi satırlar ₺ kontördür (<see cref="WalletUnit.Try"/>) ve
@@ -114,8 +125,11 @@ public sealed record WalletTransactionDto(
     NotificationChannel? Channel,
     DateTime CreatedAtUtc);
 
-/// <summary>Kredi alım talebi: paket seçilir ya da paket dışı kredi miktarı girilir.</summary>
-public sealed record TopUpRequest(Guid? CreditPackageId, decimal? Credits);
+/// <summary>
+/// Kredi alım talebi: paket seçilir ya da paket dışı kredi miktarı girilir. Kanal paketten gelir; paket dışı
+/// miktarda <paramref name="Channel"/> belirler (gönderilmezse WhatsApp — ayrımdan önceki istemciler).
+/// </summary>
+public sealed record TopUpRequest(Guid? CreditPackageId, decimal? Credits, CreditChannel? Channel = null);
 
 /// <summary>Kredi satın alma talebi (kurum) / platform onay kuyruğu satırı.</summary>
 public sealed record CreditPurchaseDto(
@@ -131,7 +145,8 @@ public sealed record CreditPurchaseDto(
     DateTime CreatedAtUtc,
     DateTime? ProcessedAtUtc,
     /// <summary>Kartla ödendiyse sağlayıcı adı; havale talebinde null (platform kuyruğunda ayırt etmek için).</summary>
-    string? Provider = null);
+    string? Provider = null,
+    CreditChannel Channel = CreditChannel.WhatsApp);
 
 /// <param name="Succeeded">Tahsilat doğrulandı ve kredi yüklendi mi.</param>
 /// <param name="NewBalanceCredits">Yükleme sonrası cüzdan kredisi (başarısızsa null).</param>
@@ -163,7 +178,9 @@ public sealed record SaveCreditPackageRequest(
     decimal PriceTry,
     decimal GrantsCredits,
     int DisplayOrder,
-    bool IsActive);
+    bool IsActive,
+    // null = korunur (alanı göndermeyen eski istemci); yeni pakette null = WhatsApp.
+    CreditChannel? Channel = null);
 
 public sealed record WhatsAppBillingSettingsDto(
     bool BillingEnabled,
@@ -173,7 +190,8 @@ public sealed record WhatsAppBillingSettingsDto(
     decimal? DefaultMonthlySpendCapCredits,
     bool AutoApproveTopUps,
     decimal SmsCreditsPerPart,
-    decimal CreditUnitPriceTry);
+    decimal CreditUnitPriceTry,
+    decimal SmsCreditUnitPriceTry = 0m);
 
 public sealed record SaveBillingSettingsRequest(
     bool BillingEnabled,
@@ -183,8 +201,11 @@ public sealed record SaveBillingSettingsRequest(
     decimal? DefaultMonthlySpendCapCredits,
     bool AutoApproveTopUps,
     decimal SmsCreditsPerPart,
-    decimal CreditUnitPriceTry);
+    decimal CreditUnitPriceTry,
+    // SMS kredisinin birim fiyatı; null = korunur (tam gövde PUT'ta alanı göndermeyen eski istemci sıfırlamasın).
+    decimal? SmsCreditUnitPriceTry = null);
 
 public sealed record RejectPurchaseRequest(string? Note);
 
-public sealed record AdjustWalletRequest(decimal DeltaCredits, string? Description);
+/// <summary>Platform düzeltmesi; kanal gönderilmezse WhatsApp (ayrımdan önceki istemciler).</summary>
+public sealed record AdjustWalletRequest(decimal DeltaCredits, string? Description, CreditChannel? Channel = null);

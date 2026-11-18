@@ -104,7 +104,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         var cap = ResolveSpendCap(settings, plan, billing);
         if (cap.HasValue)
         {
-            var committed = await MonthlyWalletCommittedAsync(tenantId, monthStart, ct);
+            var committed = await MonthlyWalletCommittedAsync(tenantId, monthStart, CreditChannel.WhatsApp, ct);
             if (committed + cost.Value > cap.Value)
                 return BillingDecision.Block(category,
                     $"Aylık kredi harcama tavanına ulaşıldı ({FormatCredits(cap.Value)} kredi). Tavanı yükseltin ya da sonraki ayı bekleyin.");
@@ -119,10 +119,10 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         return await InWalletTransactionAsync(async () =>
         {
             var wallet = await GetOrCreateWalletAsync(tenantId, ct);
-            if (!wallet.TryReserve(cost.Value))
+            if (!wallet.TryReserve(CreditChannel.WhatsApp, cost.Value))
             {
                 return BillingDecision.Block(category,
-                    $"Mesaj krediniz yetersiz (gerekli {FormatCredits(cost.Value)}, kullanılabilir {FormatCredits(wallet.AvailableCredits)} kredi). Kredi yükleyin.");
+                    $"WhatsApp krediniz yetersiz (gerekli {FormatCredits(cost.Value)}, kullanılabilir {FormatCredits(wallet.AvailableFor(CreditChannel.WhatsApp))} kredi). Kredi yükleyin.");
             }
 
             await _db.SaveChangesAsync(ct);
@@ -143,7 +143,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         await InWalletTransactionAsync(async () =>
         {
             var wallet = await GetOrCreateWalletAsync(message.TenantId, ct);
-            wallet.Capture(message.ChargedCredits);
+            wallet.Capture(CreditChannel.WhatsApp, message.ChargedCredits);
             _db.WalletTransactions.Add(new WalletTransaction(
                 message.TenantId, WalletTransactionType.Capture, -message.ChargedCredits,
                 wallet.BalanceCredits, wallet.ReservedCredits,
@@ -172,7 +172,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         if (!save)
         {
             var inlineWallet = await GetOrCreateWalletAsync(message.TenantId, ct);
-            inlineWallet.Refund(amount);
+            inlineWallet.Refund(CreditChannel.WhatsApp, amount);
             message.ClearCharge(); // tekrar iade edilmesin + aylık taahhüt sayımından düşsün
             return;
         }
@@ -180,7 +180,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         await InWalletTransactionAsync(async () =>
         {
             var wallet = await GetOrCreateWalletAsync(message.TenantId, ct);
-            wallet.Refund(amount);
+            wallet.Refund(CreditChannel.WhatsApp, amount);
             message.ClearCharge();
             await _db.SaveChangesAsync(ct);
             return true;
@@ -218,7 +218,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
                 await InWalletTransactionAsync(async () =>
                 {
                     var wallet = await GetOrCreateWalletAsync(m.TenantId, ct);
-                    wallet.Refund(m.ChargedCredits);
+                    wallet.Refund(CreditChannel.WhatsApp, m.ChargedCredits);
                     m.ClearCharge();
                     await _db.SaveChangesAsync(ct);
                     return true;
@@ -313,7 +313,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         var cap = ResolveSpendCap(settings, plan, billing);
         if (cap.HasValue)
         {
-            var committed = await MonthlyWalletCommittedAsync(tenantId, monthStart, ct);
+            var committed = await MonthlyWalletCommittedAsync(tenantId, monthStart, CreditChannel.Sms, ct);
             if (committed + credits > cap.Value)
                 return SmsBillingDecision.Block(
                     $"Aylık kredi harcama tavanına ulaşıldı ({FormatCredits(cap.Value)} kredi). Tavanı yükseltin ya da sonraki ayı bekleyin.",
@@ -328,10 +328,10 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         return await InWalletTransactionAsync(async () =>
         {
             var wallet = await GetOrCreateWalletAsync(tenantId, ct);
-            if (!wallet.TryReserve(credits))
+            if (!wallet.TryReserve(CreditChannel.Sms, credits))
             {
                 return SmsBillingDecision.Block(
-                    $"Mesaj krediniz yetersiz (gerekli {FormatCredits(credits)}, kullanılabilir {FormatCredits(wallet.AvailableCredits)} kredi). Kredi yükleyin.",
+                    $"SMS krediniz yetersiz (gerekli {FormatCredits(credits)}, kullanılabilir {FormatCredits(wallet.AvailableFor(CreditChannel.Sms))} kredi). Kredi yükleyin.",
                     parts);
             }
 
@@ -369,17 +369,17 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
 
             if (accepted)
             {
-                wallet.Capture(log.ChargedCredits);
+                wallet.Capture(CreditChannel.Sms, log.ChargedCredits);
                 _db.WalletTransactions.Add(new WalletTransaction(
                     log.TenantId, WalletTransactionType.Capture, -log.ChargedCredits,
-                    wallet.BalanceCredits, wallet.ReservedCredits,
+                    wallet.BalanceFor(CreditChannel.Sms), wallet.ReservedFor(CreditChannel.Sms),
                     description: $"SMS gönderildi ({log.SmsParts} parça)",
                     channel: NotificationChannel.Sms, notificationLogId: log.Id));
                 log.MarkChargeCaptured(DateTime.UtcNow);
             }
             else
             {
-                wallet.Refund(log.ChargedCredits);
+                wallet.Refund(CreditChannel.Sms, log.ChargedCredits);
                 log.ClearCharge();
             }
 
@@ -424,10 +424,10 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
                     if (log.Status == NotificationLogStatus.Sent)
                     {
                         // Sağlayıcı kabul etti ama kesinleşme yazılamadan süreç çöktü.
-                        wallet.Capture(log.ChargedCredits);
+                        wallet.Capture(CreditChannel.Sms, log.ChargedCredits);
                         _db.WalletTransactions.Add(new WalletTransaction(
                             log.TenantId, WalletTransactionType.Capture, -log.ChargedCredits,
-                            wallet.BalanceCredits, wallet.ReservedCredits,
+                            wallet.BalanceFor(CreditChannel.Sms), wallet.ReservedFor(CreditChannel.Sms),
                             description: $"SMS gönderildi ({log.SmsParts} parça) — gecikmeli kesinleşme",
                             channel: NotificationChannel.Sms, notificationLogId: log.Id));
                         log.MarkChargeCaptured(DateTime.UtcNow);
@@ -436,7 +436,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
                     {
                         // Gönderilemeyen ya da sonucu DOĞRULANAMAYAN SMS: kredi kurumdan yana iade
                         // edilir. Satır yeniden devralınıp gönderilirse rezervasyon baştan yapılır.
-                        wallet.Refund(log.ChargedCredits);
+                        wallet.Refund(CreditChannel.Sms, log.ChargedCredits);
                         log.ClearCharge();
                     }
 
@@ -486,12 +486,12 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
 
         var wallet = await _db.TenantMessagingWallets.IgnoreQueryFilters().AsNoTracking()
             .FirstOrDefaultAsync(w => w.TenantId == tenantId && !w.IsDeleted, ct);
-        var available = wallet?.AvailableCredits ?? 0m;
+        var available = wallet?.AvailableFor(CreditChannel.Sms) ?? 0m;
         if (available < billing.SmsCreditsPerPart)
-            return $"Mesaj krediniz yetersiz (kullanılabilir {FormatCredits(available)} kredi; bir SMS en az {FormatCredits(billing.SmsCreditsPerPart)} kredi). Kredi yükleyin.";
+            return $"SMS krediniz yetersiz (kullanılabilir {FormatCredits(available)} kredi; bir SMS en az {FormatCredits(billing.SmsCreditsPerPart)} kredi). Kredi yükleyin.";
 
         var cap = ResolveSpendCap(settings, plan, billing);
-        if (cap.HasValue && await MonthlyWalletCommittedAsync(tenantId, monthStart, ct) + billing.SmsCreditsPerPart > cap.Value)
+        if (cap.HasValue && await MonthlyWalletCommittedAsync(tenantId, monthStart, CreditChannel.Sms, ct) + billing.SmsCreditsPerPart > cap.Value)
             return $"Aylık kredi harcama tavanına ulaşıldı ({FormatCredits(cap.Value)} kredi). Tavanı yükseltin ya da sonraki ayı bekleyin.";
 
         return null;
@@ -510,7 +510,8 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
             .Where(t => t.Id == tenantId).Select(t => t.SubscriptionPlan).FirstOrDefaultAsync(ct);
         var wallet = await _db.TenantMessagingWallets.IgnoreQueryFilters().AsNoTracking()
             .FirstOrDefaultAsync(w => w.TenantId == tenantId && !w.IsDeleted, ct);
-        var available = wallet?.AvailableCredits ?? 0m;
+        var creditChannel = channel == NotificationChannel.Sms ? CreditChannel.Sms : CreditChannel.WhatsApp;
+        var available = wallet?.AvailableFor(creditChannel) ?? 0m;
 
         // ---- E-POSTA: krediden düşmez, yalnız plan e-posta kotası ----
         if (channel == NotificationChannel.Email)
@@ -590,7 +591,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
                 var capLeft = decimal.MaxValue;
                 if (cap.HasValue)
                 {
-                    capLeft = Math.Max(0m, cap.Value - await MonthlyWalletCommittedAsync(tenantId, monthStart, ct));
+                    capLeft = Math.Max(0m, cap.Value - await MonthlyWalletCommittedAsync(tenantId, monthStart, creditChannel, ct));
                     budget = Math.Min(budget, capLeft);
                 }
 
@@ -672,39 +673,46 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
     /// ikisi ayrı hesaplasaydı, kartla ödenen tutar ile cüzdana yüklenen kredi birbirinden
     /// kayabilirdi (paket fiyatı değiştiğinde sessizce).
     /// </summary>
-    private async Task<Result<(decimal Price, decimal Grants, string Name, Guid? PackageId)>> ResolveTopUpAsync(
-        TopUpRequest request, CancellationToken ct)
+    private sealed record TopUpResolution(decimal Price, decimal Grants, string Name, Guid? PackageId, CreditChannel Channel);
+
+    private async Task<Result<TopUpResolution>> ResolveTopUpAsync(TopUpRequest request, CancellationToken ct)
     {
         if (request.CreditPackageId is { } pkgId)
         {
             var pkg = await _db.WhatsAppCreditPackages.FirstOrDefaultAsync(p => p.Id == pkgId && !p.IsDeleted, ct);
             if (pkg is null || !pkg.IsActive)
-                return Result<(decimal, decimal, string, Guid?)>.Failure(Error.NotFound("Kredi paketi bulunamadı."));
-            return Result<(decimal, decimal, string, Guid?)>.Success((pkg.PriceTry, pkg.GrantsCredits, pkg.Name, pkg.Id));
+                return Result<TopUpResolution>.Failure(Error.NotFound("Kredi paketi bulunamadı."));
+            // SMS ve WhatsApp kredisi ayrı (18 Kas 2026): istenen kanal paketinkiyle çelişirse yükleme yapılmaz.
+            if (request.Channel is { } wanted && wanted != pkg.Channel)
+                return Result<TopUpResolution>.Failure(Error.Validation($"Bu paket {pkg.Channel.Label()} paketi; seçtiğiniz kredi türüyle uyuşmuyor."));
+            return Result<TopUpResolution>.Success(new(pkg.PriceTry, pkg.GrantsCredits, pkg.Name, pkg.Id, pkg.Channel));
         }
 
-        // PAKET DIŞI MİKTAR: kurum kredi sayısını yazar, fiyatı SUNUCU belirler (platformun kredi
-        // birim fiyatı). İstemciden gelen bir ₺ tutarına güvenilseydi fiyat-kredi oranını kurum seçerdi.
+        // PAKET DIŞI MİKTAR: kurum kredi sayısını yazar, fiyatı SUNUCU belirler (kanalın kredi birim fiyatı).
+        // İstemciden gelen bir ₺ tutarına güvenilseydi fiyat-kredi oranını kurum seçerdi. Kanal gönderilmezse
+        // WhatsApp (ayrımdan önceki istemciler).
         if (request.Credits is { } requested && requested > 0)
         {
             var credits = decimal.Round(requested, 0, MidpointRounding.AwayFromZero);
             if (credits < 1)
-                return Result<(decimal, decimal, string, Guid?)>.Failure(Error.Validation("En az 1 kredi girin."));
+                return Result<TopUpResolution>.Failure(Error.Validation("En az 1 kredi girin."));
+            var channel = request.Channel ?? CreditChannel.WhatsApp;
             var billing = await GetOrCreateBillingSettingsAsync(ct);
-            var price = decimal.Round(credits * billing.CreditUnitPriceTry, 2, MidpointRounding.AwayFromZero);
-            return Result<(decimal, decimal, string, Guid?)>.Success((price, credits, $"Özel kredi ({FormatCredits(credits)})", null));
+            var unit = channel == CreditChannel.Sms ? billing.SmsCreditUnitPriceTry : billing.CreditUnitPriceTry;
+            var price = decimal.Round(credits * unit, 2, MidpointRounding.AwayFromZero);
+            return Result<TopUpResolution>.Success(new(price, credits, $"Özel {channel.Label()} ({FormatCredits(credits)})", null, channel));
         }
 
-        return Result<(decimal, decimal, string, Guid?)>.Failure(Error.Validation("Paket seçin veya kredi miktarı girin."));
+        return Result<TopUpResolution>.Failure(Error.Validation("Paket seçin veya kredi miktarı girin."));
     }
 
     public async Task<Result<CreditPurchaseDto>> RequestPurchaseAsync(Guid tenantId, TopUpRequest request, Guid? requestedByUserId, CancellationToken ct = default)
     {
         var resolved = await ResolveTopUpAsync(request, ct);
         if (resolved.IsFailure) return Result<CreditPurchaseDto>.Failure(resolved.Error);
-        var (price, grants, name, packageId) = resolved.Value;
+        var (price, grants, name, packageId, channel) = resolved.Value;
 
-        var purchase = new WhatsAppCreditPurchase(tenantId, packageId, name, price, grants, requestedByUserId);
+        var purchase = new WhatsAppCreditPurchase(tenantId, packageId, name, price, grants, requestedByUserId, channel);
         _db.WhatsAppCreditPurchases.Add(purchase);
 
         // Otomatik onay açıksa (ör. ödeme ağ geçidi bağlıysa) hemen bakiyeye yansıt.
@@ -714,7 +722,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
             if (billing.AutoApproveTopUps)
             {
                 purchase.Approve(requestedByUserId);
-                await CreditWalletAsync(tenantId, grants, $"Kredi: {name}", packageId, requestedByUserId, ct);
+                await CreditWalletAsync(tenantId, channel, grants, $"Kredi: {name}", packageId, requestedByUserId, ct);
             }
             await _db.SaveChangesAsync(ct);
             return true;
@@ -729,7 +737,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         var rows = await _db.WhatsAppCreditPurchases.IgnoreQueryFilters().AsNoTracking()
             .Where(p => p.TenantId == tenantId && !p.IsDeleted)
             .OrderByDescending(p => p.CreatedAtUtc).Take(take).ToListAsync(ct);
-        var dtos = rows.Select(p => new CreditPurchaseDto(p.Id, p.TenantId, null, p.CreditPackageId, p.PackageName, p.PriceTry, p.GrantsCredits, p.Status, p.Note, p.CreatedAtUtc, p.ProcessedAtUtc, p.Provider)).ToList();
+        var dtos = rows.Select(p => new CreditPurchaseDto(p.Id, p.TenantId, null, p.CreditPackageId, p.PackageName, p.PriceTry, p.GrantsCredits, p.Status, p.Note, p.CreatedAtUtc, p.ProcessedAtUtc, p.Provider, p.Channel)).ToList();
         return Result<IReadOnlyCollection<CreditPurchaseDto>>.Success(dtos);
     }
 
@@ -754,7 +762,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
 
         var resolved = await ResolveTopUpAsync(request, ct);
         if (resolved.IsFailure) return Result<CheckoutStartedDto>.Failure(resolved.Error);
-        var (price, grants, name, packageId) = resolved.Value;
+        var (price, grants, name, packageId, channel) = resolved.Value;
 
         if (price <= 0)
         {
@@ -770,7 +778,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         // Talep ÖNCE yazılır: sağlayıcı dönüşü (callback) bu satırı işlem anahtarıyla bulur. Sonra
         // yazsaydık, hızlı dönen bir callback karşılığını bulamayıp tahsilatı kayıtsız bırakırdı.
         var purchase = new WhatsAppCreditPurchase(
-            tenantId, packageId, name, price, grants, requestedByUserId,
+            tenantId, packageId, name, price, grants, requestedByUserId, channel,
             context.Value!.Gateway.Provider, conversationId);
         _db.WhatsAppCreditPurchases.Add(purchase);
         await _db.SaveChangesAsync(ct);
@@ -778,7 +786,8 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         var init = await context.Value.Gateway.InitCheckoutAsync(new CheckoutInitRequest(
             conversationId,
             price,
-            $"Mesaj kredisi · {name}",
+            // Ödeme sayfası (Maydanoz) hangi kredinin alındığını göstersin: "SMS kredisi · …" / "WhatsApp kredisi · …".
+            $"{channel.Label()} · {name}",
             tenantId.ToString("N"),
             tenant.OwnerName ?? tenant.Name,
             "Yetkili",
@@ -894,7 +903,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         {
             var already = await BuildWalletDtoAsync(purchase.TenantId, ct);
             return Result<CreditCheckoutCompletedDto>.Success(new CreditCheckoutCompletedDto(
-                true, "Ödeme zaten alınmıştı.", purchase.GrantsCredits, already.BalanceCredits));
+                true, "Ödeme zaten alınmıştı.", purchase.GrantsCredits, BalanceOf(already, purchase.Channel)));
         }
 
         if (purchase.Status != CreditPurchaseStatus.Pending)
@@ -989,7 +998,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         {
             var already = await BuildWalletDtoAsync(purchase.TenantId, ct);
             return Result<CreditCheckoutCompletedDto>.Success(new CreditCheckoutCompletedDto(
-                true, "Ödeme zaten alınmıştı.", purchase.GrantsCredits, already.BalanceCredits));
+                true, "Ödeme zaten alınmıştı.", purchase.GrantsCredits, BalanceOf(already, purchase.Channel)));
         }
         if (purchase.Status != CreditPurchaseStatus.Pending)
         {
@@ -1077,7 +1086,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         // ONAY DAMGASI İLE BAKİYE ARTIŞI AYNI KAYITTA: biri olup diğeri olmazsa ya para alınıp
         // kredi yüklenmez ya da aynı tahsilat ikinci kez yüklenebilir.
         purchase.MarkPaidAndApprove(providerPaymentId, nowUtc);
-        await CreditWalletAsync(purchase.TenantId, purchase.GrantsCredits,
+        await CreditWalletAsync(purchase.TenantId, purchase.Channel, purchase.GrantsCredits,
             $"Kredi: {purchase.PackageName}", purchase.CreditPackageId, purchase.RequestedByUserId, ct);
         await _db.SaveChangesAsync(ct);
         // PARA TARAFI ÖNCE KALICI OLUR: denetim kaydı commit'ten sonra gelir, yan iş tahsilatı geri almaz.
@@ -1085,7 +1094,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
 
         var wallet = await BuildWalletDtoAsync(purchase.TenantId, ct);
         return Result<CreditCheckoutCompletedDto>.Success(new CreditCheckoutCompletedDto(
-            true, "Ödeme alındı, krediniz yüklendi.", purchase.GrantsCredits, wallet.BalanceCredits));
+            true, "Ödeme alındı, krediniz yüklendi.", purchase.GrantsCredits, BalanceOf(wallet, purchase.Channel)));
     }
 
     public async Task<Result<IReadOnlyCollection<CreditPurchaseDto>>> GetPurchasesAsync(bool onlyPending, CancellationToken ct = default)
@@ -1103,7 +1112,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         var names = await _db.Tenants.IgnoreQueryFilters().AsNoTracking()
             .Select(t => new { t.Id, t.Name }).ToListAsync(ct);
         var nameMap = names.ToDictionary(x => x.Id, x => x.Name);
-        var dtos = rows.Select(p => new CreditPurchaseDto(p.Id, p.TenantId, nameMap.GetValueOrDefault(p.TenantId), p.CreditPackageId, p.PackageName, p.PriceTry, p.GrantsCredits, p.Status, p.Note, p.CreatedAtUtc, p.ProcessedAtUtc, p.Provider)).ToList();
+        var dtos = rows.Select(p => new CreditPurchaseDto(p.Id, p.TenantId, nameMap.GetValueOrDefault(p.TenantId), p.CreditPackageId, p.PackageName, p.PriceTry, p.GrantsCredits, p.Status, p.Note, p.CreatedAtUtc, p.ProcessedAtUtc, p.Provider, p.Channel)).ToList();
         return Result<IReadOnlyCollection<CreditPurchaseDto>>.Success(dtos);
     }
 
@@ -1141,7 +1150,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
             }
 
             purchase.Approve(processedByUserId);
-            await CreditWalletAsync(purchase.TenantId, purchase.GrantsCredits, $"Kredi: {purchase.PackageName}", purchase.CreditPackageId, processedByUserId, ct);
+            await CreditWalletAsync(purchase.TenantId, purchase.Channel, purchase.GrantsCredits, $"Kredi: {purchase.PackageName}", purchase.CreditPackageId, processedByUserId, ct);
             await _db.SaveChangesAsync(ct);
             return true;
         }, ct);
@@ -1188,19 +1197,20 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
     }
 
     /// <summary>Bakiyeyi artıran ortak işlem (TopUp defter kaydı ekler). SaveChanges ÇAĞIRMAZ.</summary>
-    private async Task CreditWalletAsync(Guid tenantId, decimal grants, string description, Guid? packageId, Guid? performedByUserId, CancellationToken ct)
+    private async Task CreditWalletAsync(Guid tenantId, CreditChannel channel, decimal grants, string description, Guid? packageId, Guid? performedByUserId, CancellationToken ct)
     {
         var wallet = await GetOrCreateWalletAsync(tenantId, ct);
-        wallet.TopUp(grants);
+        wallet.TopUp(channel, grants);
         _db.WalletTransactions.Add(new WalletTransaction(
-            tenantId, WalletTransactionType.TopUp, grants, wallet.BalanceCredits, wallet.ReservedCredits,
-            description: description, creditPackageId: packageId, performedByUserId: performedByUserId));
+            tenantId, WalletTransactionType.TopUp, grants, wallet.BalanceFor(channel), wallet.ReservedFor(channel),
+            description: description, creditPackageId: packageId, performedByUserId: performedByUserId,
+            channel: channel.ToNotificationChannel()));
     }
 
     private async Task<CreditPurchaseDto> ToPurchaseDtoAsync(WhatsAppCreditPurchase p, CancellationToken ct)
     {
         var name = await _db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == p.TenantId).Select(t => t.Name).FirstOrDefaultAsync(ct);
-        return new CreditPurchaseDto(p.Id, p.TenantId, name, p.CreditPackageId, p.PackageName, p.PriceTry, p.GrantsCredits, p.Status, p.Note, p.CreatedAtUtc, p.ProcessedAtUtc, p.Provider);
+        return new CreditPurchaseDto(p.Id, p.TenantId, name, p.CreditPackageId, p.PackageName, p.PriceTry, p.GrantsCredits, p.Status, p.Note, p.CreatedAtUtc, p.ProcessedAtUtc, p.Provider, p.Channel);
     }
 
     public async Task<Result<IReadOnlyCollection<WalletTransactionDto>>> GetTransactionsAsync(Guid tenantId, int take, CancellationToken ct = default)
@@ -1264,11 +1274,12 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
     public async Task<Result<IReadOnlyCollection<CreditPackageDto>>> GetCreditPackagesAsync(bool includeInactive, CancellationToken ct = default)
     {
         var now = DateTime.UtcNow;
+        var billing = await GetOrCreateBillingSettingsAsync(ct);
         var utilityCost = await GetCreditCostAsync(WhatsAppMessageCategory.Utility, now, ct) ?? 0m;
         var q = _db.WhatsAppCreditPackages.AsNoTracking().Where(p => !p.IsDeleted);
         if (!includeInactive) q = q.Where(p => p.IsActive);
         var rows = await q.OrderBy(p => p.DisplayOrder).ThenBy(p => p.PriceTry).ToListAsync(ct);
-        var dtos = rows.Select(p => ToPackageDto(p, utilityCost)).ToList();
+        var dtos = rows.Select(p => ToPackageDto(p, utilityCost, billing.SmsCreditsPerPart)).ToList();
         return Result<IReadOnlyCollection<CreditPackageDto>>.Success(dtos);
     }
 
@@ -1283,18 +1294,20 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
             existing.SetAmounts(request.PriceTry, request.GrantsCredits);
             existing.SetDescription(request.Description);
             existing.SetDisplayOrder(request.DisplayOrder);
+            if (request.Channel is { } channel) existing.SetChannel(channel);
             if (request.IsActive) existing.Activate(); else existing.Deactivate();
             pkg = existing;
         }
         else
         {
-            pkg = new WhatsAppCreditPackage(request.Name, request.PriceTry, request.GrantsCredits, request.DisplayOrder, request.Description);
+            pkg = new WhatsAppCreditPackage(request.Name, request.PriceTry, request.GrantsCredits, request.DisplayOrder, request.Description,
+                request.Channel ?? CreditChannel.WhatsApp);
             if (!request.IsActive) pkg.Deactivate();
             _db.WhatsAppCreditPackages.Add(pkg);
         }
         await _db.SaveChangesAsync(ct);
         var utilityCost = await GetCreditCostAsync(WhatsAppMessageCategory.Utility, DateTime.UtcNow, ct) ?? 0m;
-        return Result<CreditPackageDto>.Success(ToPackageDto(pkg, utilityCost));
+        return Result<CreditPackageDto>.Success(ToPackageDto(pkg, utilityCost, (await GetOrCreateBillingSettingsAsync(ct)).SmsCreditsPerPart));
     }
 
     public async Task<Result> DeleteCreditPackageAsync(Guid id, CancellationToken ct = default)
@@ -1316,7 +1329,7 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         var s = await GetOrCreateBillingSettingsAsync(ct);
         s.Update(request.BillingEnabled, request.ChargeSimulated, request.UsdTryRate,
             request.LowBalanceThresholdCredits, request.DefaultMonthlySpendCapCredits, request.AutoApproveTopUps,
-            request.SmsCreditsPerPart, request.CreditUnitPriceTry);
+            request.SmsCreditsPerPart, request.CreditUnitPriceTry, request.SmsCreditUnitPriceTry);
         await _db.SaveChangesAsync(ct);
         return Result<WhatsAppBillingSettingsDto>.Success(ToSettingsDto(s));
     }
@@ -1329,12 +1342,13 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         // biri diğerinin yazdığını ezer. Diğer bakiye yolları ile AYNI kilit protokolünden geçer.
         await InWalletTransactionAsync(async () =>
         {
+            var channel = request.Channel ?? CreditChannel.WhatsApp;
             var wallet = await GetOrCreateWalletAsync(tenantId, ct);
-            wallet.Adjust(request.DeltaCredits);
+            wallet.Adjust(channel, request.DeltaCredits);
             _db.WalletTransactions.Add(new WalletTransaction(
-                tenantId, WalletTransactionType.Adjustment, request.DeltaCredits, wallet.BalanceCredits, wallet.ReservedCredits,
-                description: string.IsNullOrWhiteSpace(request.Description) ? "Platform düzeltmesi" : request.Description,
-                performedByUserId: performedByUserId));
+                tenantId, WalletTransactionType.Adjustment, request.DeltaCredits, wallet.BalanceFor(channel), wallet.ReservedFor(channel),
+                description: string.IsNullOrWhiteSpace(request.Description) ? $"Platform düzeltmesi ({channel.Label()})" : request.Description,
+                performedByUserId: performedByUserId, channel: channel.ToNotificationChannel()));
             await _db.SaveChangesAsync(ct);
             return true;
         }, ct);
@@ -1358,24 +1372,28 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
     /// Bu ay KREDİDEN karşılanan toplam (rezerve + kesinleşen) — WhatsApp ve SMS birlikte. Harcama
     /// tavanı ortak cüzdana konduğu için iki kanal ayrı sayılsaydı tavan iki katına çıkardı.
     /// </summary>
-    private async Task<decimal> MonthlyWalletCommittedAsync(Guid tenantId, DateTime monthStart, CancellationToken ct)
+    /// <summary>
+    /// Ayın cüzdandan taahhüt edilen kredisi — KANAL BAŞINA (18 Kas 2026: SMS ve WhatsApp kredisi ayrı birimdir;
+    /// aylık harcama tavanı her kanala ayrı ayrı uygulanır).
+    /// </summary>
+    private async Task<decimal> MonthlyWalletCommittedAsync(Guid tenantId, DateTime monthStart, CreditChannel channel, CancellationToken ct)
     {
-        var whatsApp = await _db.WhatsAppMessages.IgnoreQueryFilters().AsNoTracking()
+        if (channel == CreditChannel.Sms)
+        {
+            // İade edilen SMS'in kaynağı None'a döner (ClearCharge) → burada sayılmaz.
+            return await _db.NotificationLogs.IgnoreQueryFilters().AsNoTracking()
+                .Where(l => l.TenantId == tenantId && !l.IsDeleted
+                         && l.BillingSource == WhatsAppBillingSource.Wallet
+                         && l.CreatedAtUtc >= monthStart)
+                .SumAsync(l => (decimal?)l.ChargedCredits, ct) ?? 0m;
+        }
+
+        return await _db.WhatsAppMessages.IgnoreQueryFilters().AsNoTracking()
             .Where(m => m.TenantId == tenantId && !m.IsDeleted
                      && m.BillingSource == WhatsAppBillingSource.Wallet
                      && m.Status != WhatsAppMessageStatus.Failed
                      && m.CreatedAtUtc >= monthStart)
             .SumAsync(m => (decimal?)m.ChargedCredits, ct) ?? 0m;
-
-        // İade edilen SMS'in kaynağı None'a döner (ClearCharge) → burada sayılmaz. Henüz iade
-        // edilmemiş başarısız satır (süpürme bekleyen) temkinli olarak sayılır.
-        var sms = await _db.NotificationLogs.IgnoreQueryFilters().AsNoTracking()
-            .Where(l => l.TenantId == tenantId && !l.IsDeleted
-                     && l.BillingSource == WhatsAppBillingSource.Wallet
-                     && l.CreatedAtUtc >= monthStart)
-            .SumAsync(l => (decimal?)l.ChargedCredits, ct) ?? 0m;
-
-        return whatsApp + sms;
     }
 
     private static decimal? ResolveSpendCap(WhatsAppSettings? settings, SubscriptionPlan? plan, WhatsAppBillingSettings billing)
@@ -1516,16 +1534,21 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
         var utilityUsed = await CountQuotaUsedAsync(tenantId, WhatsAppMessageCategory.Utility, monthStart, ct);
         var marketingUsed = await CountQuotaUsedAsync(tenantId, WhatsAppMessageCategory.Marketing, monthStart, ct);
         var smsUsed = await CountSmsQuotaUsedAsync(tenantId, monthStart, ct);
-        var monthlySpent = await MonthlyWalletCommittedAsync(tenantId, monthStart, ct);
+        var monthlySpent = await MonthlyWalletCommittedAsync(tenantId, monthStart, CreditChannel.WhatsApp, ct);
+        var smsMonthlySpent = await MonthlyWalletCommittedAsync(tenantId, monthStart, CreditChannel.Sms, ct);
 
         var utilityCost = await GetCreditCostAsync(WhatsAppMessageCategory.Utility, now, ct) ?? 0m;
         var marketingCost = await GetCreditCostAsync(WhatsAppMessageCategory.Marketing, now, ct) ?? 0m;
 
-        var balance = wallet?.BalanceCredits ?? 0m;
-        var reserved = wallet?.ReservedCredits ?? 0m;
+        // WhatsApp ve SMS kredisi ayrı bakiyeler (18 Kas 2026).
+        var balance = wallet?.BalanceFor(CreditChannel.WhatsApp) ?? 0m;
+        var reserved = wallet?.ReservedFor(CreditChannel.WhatsApp) ?? 0m;
         var available = decimal.Round(balance - reserved, 4);
+        var smsBalance = wallet?.BalanceFor(CreditChannel.Sms) ?? 0m;
+        var smsReserved = wallet?.ReservedFor(CreditChannel.Sms) ?? 0m;
+        var smsAvailable = decimal.Round(smsBalance - smsReserved, 4);
         var estUtility = utilityCost > 0 ? (int)Math.Floor(available / utilityCost) : 0;
-        var estSms = billing.SmsCreditsPerPart > 0 ? (int)Math.Floor(available / billing.SmsCreditsPerPart) : 0;
+        var estSms = billing.SmsCreditsPerPart > 0 ? (int)Math.Floor(smsAvailable / billing.SmsCreditsPerPart) : 0;
 
         var packages = await _db.WhatsAppCreditPackages.AsNoTracking()
             .Where(p => !p.IsDeleted && p.IsActive)
@@ -1547,9 +1570,21 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
             estUtility, estSms,
             billing.CreditUnitPriceTry,
             billing.BillingEnabled,
-            packages.Select(p => ToPackageDto(p, utilityCost)).ToList(),
-            PayOnMaydanoz: await PaysOnMaydanozAsync(ct));
+            packages.Select(p => ToPackageDto(p, utilityCost, billing.SmsCreditsPerPart)).ToList(),
+            PayOnMaydanoz: await PaysOnMaydanozAsync(ct),
+            SmsBalanceCredits: smsBalance,
+            SmsReservedCredits: smsReserved,
+            SmsAvailableCredits: smsAvailable,
+            SmsLifetimeTopUpCredits: wallet?.LifetimeTopUpFor(CreditChannel.Sms) ?? 0m,
+            SmsLifetimeSpentCredits: wallet?.LifetimeSpentFor(CreditChannel.Sms) ?? 0m,
+            SmsIsLowBalance: smsAvailable < billing.LowBalanceThresholdCredits,
+            SmsMonthlySpentCredits: smsMonthlySpent,
+            SmsCreditUnitPriceTry: billing.SmsCreditUnitPriceTry);
     }
+
+    /// <summary>Satın alınan kanalın yükleme sonrası bakiyesi (SMS ve WhatsApp kredisi ayrı).</summary>
+    private static decimal BalanceOf(MessagingWalletDto wallet, CreditChannel channel) =>
+        channel == CreditChannel.Sms ? wallet.SmsBalanceCredits : wallet.BalanceCredits;
 
     /// <summary>Ödeme sağlayıcısı Maydanoz mu? (Kart ve havale / EFT maydanozasist.com ödeme sayfasında seçilir.)</summary>
     private async Task<bool> PaysOnMaydanozAsync(CancellationToken ct)
@@ -1567,9 +1602,12 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
                           && m.Status != WhatsAppMessageStatus.Failed
                           && m.CreatedAtUtc >= monthStart, ct);
 
-    private static CreditPackageDto ToPackageDto(WhatsAppCreditPackage p, decimal utilityCost) =>
-        new(p.Id, p.Name, p.Description, p.PriceTry, p.GrantsCredits, p.DisplayOrder, p.IsActive,
-            utilityCost > 0 ? (int)Math.Floor(p.GrantsCredits / utilityCost) : 0);
+    private static CreditPackageDto ToPackageDto(WhatsAppCreditPackage p, decimal utilityCost, decimal smsCreditsPerPart)
+    {
+        var perMessage = p.Channel == CreditChannel.Sms ? smsCreditsPerPart : utilityCost;
+        return new(p.Id, p.Name, p.Description, p.PriceTry, p.GrantsCredits, p.DisplayOrder, p.IsActive,
+            perMessage > 0 ? (int)Math.Floor(p.GrantsCredits / perMessage) : 0, p.Channel);
+    }
 
     private static WhatsAppPricingRuleDto ToPricingDto(WhatsAppPricingRule r, decimal usdTryRate) =>
         new(r.Id, r.Category, r.MetaUsdPrice, r.CreditCost, r.EffectiveFromUtc, r.Note, r.IsActive,
@@ -1577,5 +1615,5 @@ public sealed class WhatsAppBillingService : IWhatsAppBillingService
 
     private static WhatsAppBillingSettingsDto ToSettingsDto(WhatsAppBillingSettings s) =>
         new(s.BillingEnabled, s.ChargeSimulated, s.UsdTryRate, s.LowBalanceThresholdCredits, s.DefaultMonthlySpendCapCredits,
-            s.AutoApproveTopUps, s.SmsCreditsPerPart, s.CreditUnitPriceTry);
+            s.AutoApproveTopUps, s.SmsCreditsPerPart, s.CreditUnitPriceTry, s.SmsCreditUnitPriceTry);
 }

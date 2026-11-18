@@ -39,6 +39,13 @@ public sealed class WhatsAppBillingSettings : Entity
     public decimal CreditUnitPriceTry { get; private set; } = 0.15m;
 
     /// <summary>
+    /// SMS KREDİSİNİN paket dışı birim fiyatı (₺, 18 Kas 2026: SMS ve WhatsApp kredisi ayrı, fiyatları farklı
+    /// olabilir). Geçişte WhatsApp birim fiyatıyla başlatıldı; platform ayrıca belirler. <see cref="CreditUnitPriceTry"/>
+    /// artık YALNIZ WhatsApp kredisinindir.
+    /// </summary>
+    public decimal SmsCreditUnitPriceTry { get; private set; } = 0.15m;
+
+    /// <summary>
     /// Kurumun kredi satın alma talepleri otomatik onaylansın mı? Varsayılan KAPALI — her yükleme platform
     /// onayından geçer (fatura denetimi). İleride ödeme ağ geçidi bağlanınca açılabilir.
     /// </summary>
@@ -62,8 +69,10 @@ public sealed class WhatsAppBillingSettings : Entity
         decimal? defaultMonthlySpendCapCredits,
         bool autoApproveTopUps,
         decimal smsCreditsPerPart,
-        decimal creditUnitPriceTry)
+        decimal creditUnitPriceTry,
+        decimal? smsCreditUnitPriceTry = null)
     {
+        if (smsCreditUnitPriceTry is <= 0) throw new DomainException("SMS kredisi birim fiyatı pozitif olmalı.");
         if (usdTryRate <= 0) throw new DomainException("USD/₺ kuru pozitif olmalı.");
         if (lowBalanceThresholdCredits < 0) throw new DomainException("Düşük bakiye eşiği negatif olamaz.");
         if (defaultMonthlySpendCapCredits is < 0) throw new DomainException("Harcama tavanı negatif olamaz.");
@@ -77,6 +86,8 @@ public sealed class WhatsAppBillingSettings : Entity
         AutoApproveTopUps = autoApproveTopUps;
         SmsCreditsPerPart = decimal.Round(smsCreditsPerPart, 2);
         CreditUnitPriceTry = decimal.Round(creditUnitPriceTry, 4);
+        // Alanı göndermeyen eski istemci (tam gövde PUT) SMS fiyatını SIFIRLAMAZ: null = korunur.
+        if (smsCreditUnitPriceTry is { } smsPrice) SmsCreditUnitPriceTry = decimal.Round(smsPrice, 4);
         Touch();
     }
 }

@@ -539,6 +539,8 @@ function BillingSettingsCard({ settings, onSaved }: { settings: ApiWhatsAppBilli
   const [cap, setCap] = useState(settings.defaultMonthlySpendCapCredits != null ? String(settings.defaultMonthlySpendCapCredits) : '')
   const [smsPerPart, setSmsPerPart] = useState(String(settings.smsCreditsPerPart))
   const [unitPrice, setUnitPrice] = useState(String(settings.creditUnitPriceTry))
+  // SMS kredisinin birim fiyatı (18 Kas 2026: SMS ve WhatsApp kredisi ayrı, fiyatları farklı olabilir).
+  const [smsUnitPrice, setSmsUnitPrice] = useState(String(settings.smsCreditUnitPriceTry ?? settings.creditUnitPriceTry))
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -554,6 +556,7 @@ function BillingSettingsCard({ settings, onSaved }: { settings: ApiWhatsAppBilli
         autoApproveTopUps: autoApprove,
         smsCreditsPerPart: Number(smsPerPart) || 0,
         creditUnitPriceTry: Number(unitPrice) || 0,
+        smsCreditUnitPriceTry: Number(smsUnitPrice) || 0,
       })
       setSaved(true); onSaved(); setTimeout(() => setSaved(false), 2000)
     } catch (e) { setErr(e instanceof Error ? e.message : 'Kaydedilemedi.') } finally { setBusy(false) }
@@ -561,17 +564,19 @@ function BillingSettingsCard({ settings, onSaved }: { settings: ApiWhatsAppBilli
 
   return (
     <div className="rounded-[16px] border border-[#ecd9e1] bg-white p-4">
-      <div className="mb-3 flex items-center gap-2 text-[12px] font-semibold text-[#3f2d36]"><Settings2 className="h-4 w-4 text-[#c2436a]" /> Mesaj kredisi ayarları <span className="font-normal text-[#9a7d88]">· WhatsApp + SMS ortak cüzdan</span></div>
+      <div className="mb-3 flex items-center gap-2 text-[12px] font-semibold text-[#3f2d36]"><Settings2 className="h-4 w-4 text-[#c2436a]" /> Mesaj kredisi ayarları <span className="font-normal text-[#9a7d88]">· WhatsApp ve SMS kredisi ayrı bakiyeler</span></div>
       <div className="grid gap-3 sm:grid-cols-3">
         <NumField label="SMS kredi / parça" value={smsPerPart} onChange={setSmsPerPart} />
-        <NumField label="1 kredi fiyatı (₺) — paket dışı alım" value={unitPrice} onChange={setUnitPrice} />
+        <NumField label="1 WhatsApp kredisi (₺) — paket dışı" value={unitPrice} onChange={setUnitPrice} />
+        <NumField label="1 SMS kredisi (₺) — paket dışı" value={smsUnitPrice} onChange={setSmsUnitPrice} />
         <NumField label="USD/₺ kuru (Meta maliyeti)" value={rate} onChange={setRate} />
         <NumField label="Düşük bakiye eşiği (kredi)" value={lowBalance} onChange={setLowBalance} />
         <NumField label="Varsayılan aylık tavan (kredi)" value={cap} onChange={setCap} placeholder="boş = sınırsız" />
       </div>
       <p className="mt-2 text-[10.5px] leading-relaxed text-[#9a7d88]">
-        SMS Unicode gider: 70 karaktere kadar 1 parça, daha uzunu 67&apos;lik parçalara bölünür; mesajın kredisi = parça × SMS kredisi.
-        Paket fiyatları paketlerin kendisindedir; birim fiyat yalnız kurumun serbest miktarda aldığı kredi içindir.
+        SMS Unicode gider: 70 karaktere kadar 1 parça, daha uzunu 67&apos;lik parçalara bölünür; mesajın SMS kredisi = parça × SMS kredi / parça.
+        WhatsApp ve SMS kredisi ayrı bakiyelerdir; biri diğerinde harcanmaz. Paket fiyatları paketlerin kendisindedir; birim fiyatlar
+        yalnız kurumun serbest miktarda aldığı kredi içindir. Aylık tavan her kanala ayrı uygulanır.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <MiniToggle label="Faturalama açık" on={billingEnabled} toggle={() => setBillingEnabled((v) => !v)} />
@@ -669,7 +674,10 @@ function PackagesTab() {
                 <div className="text-[13px] font-semibold text-[#3f2d36]">{p.name}</div>
                 {p.description && <div className="text-[10.5px] text-[#9a7d88]">{p.description}</div>}
               </div>
-              {!p.isActive && <span className="rounded bg-[#f3e6ec] px-1.5 py-0.5 text-[9px] font-semibold text-[#9a7d88]">Pasif</span>}
+              <div className="flex gap-1">
+                <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${p.channel === 'Sms' ? 'bg-[#1E4E8C] text-white' : 'bg-[#1E8C60] text-white'}`}>{p.channel === 'Sms' ? 'SMS' : 'WhatsApp'}</span>
+                {!p.isActive && <span className="rounded bg-[#f3e6ec] px-1.5 py-0.5 text-[9px] font-semibold text-[#9a7d88]">Pasif</span>}
+              </div>
             </div>
             <div className="mt-2 text-[22px] font-bold text-[#c2436a]">{credits(p.grantsCredits)} kredi</div>
             <div className="text-[11px] text-[#6c5661]">Fiyat: <b>{money(p.priceTry)}</b>{p.grantsCredits > 0 && <span className="text-[#9a7d88]"> · kredi başı {money(p.priceTry / p.grantsCredits)}</span>}</div>
@@ -693,13 +701,14 @@ function PackageModal({ pkg, onClose, onSaved }: { pkg: ApiCreditPackage | null;
   const [grants, setGrants] = useState(String(pkg?.grantsCredits ?? 1000))
   const [order, setOrder] = useState(String(pkg?.displayOrder ?? 0))
   const [active, setActive] = useState(pkg?.isActive ?? true)
+  const [channel, setChannel] = useState<'WhatsApp' | 'Sms'>(pkg?.channel ?? 'WhatsApp')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   const save = async () => {
     setBusy(true); setErr(null)
     try {
-      const body = { name: name.trim(), description: description.trim() || null, priceTry: Number(price) || 0, grantsCredits: Number(grants) || 0, displayOrder: Number(order) || 0, isActive: active }
+      const body = { name: name.trim(), description: description.trim() || null, priceTry: Number(price) || 0, grantsCredits: Number(grants) || 0, displayOrder: Number(order) || 0, isActive: active, channel }
       if (pkg) await platformApi.updateWaCreditPackage(pkg.id, body)
       else await platformApi.createWaCreditPackage(body)
       onSaved()
@@ -709,6 +718,17 @@ function PackageModal({ pkg, onClose, onSaved }: { pkg: ApiCreditPackage | null;
   return (
     <Modal title={pkg ? 'Paketi düzenle' : 'Yeni kredi paketi'} onClose={onClose}>
       <div className="space-y-3">
+        <div>
+          <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#9a7d88]">Kredi türü</label>
+          <div className="flex gap-1 rounded-lg border border-[#ecd9e1] bg-[#F7F6F6] p-1">
+            {(['WhatsApp', 'Sms'] as const).map((c) => (
+              <button key={c} type="button" onClick={() => setChannel(c)}
+                className={`flex-1 rounded-md px-2.5 py-1.5 text-[11.5px] font-semibold transition ${channel === c ? 'bg-[#8e3f5b] text-white' : 'text-[#6c5661]'}`}>
+                {c === 'Sms' ? 'SMS kredisi' : 'WhatsApp kredisi'}
+              </button>
+            ))}
+          </div>
+        </div>
         <Field label="Paket adı" value={name} onChange={setName} placeholder="örn. Başlangıç Kredi" />
         <Field label="Açıklama" value={description} onChange={setDescription} placeholder="≈1.000 WhatsApp hatırlatma ya da 500 SMS" />
         <div className="grid grid-cols-3 gap-3">

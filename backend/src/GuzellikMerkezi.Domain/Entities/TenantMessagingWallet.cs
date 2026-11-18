@@ -1,18 +1,22 @@
+using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Domain.Exceptions;
 
 namespace GuzellikMerkezi.Domain.Entities;
 
 /// <summary>
-/// Kuruma ait ön ödemeli MESAJ KREDİSİ cüzdanı (tek satır / tenant). WhatsApp ve SMS aynı bakiyeden
-/// harcar. Gönderim anında mesajın kredi maliyeti REZERVE edilir (Balance→Reserved), teslim/kabul
-/// onayında KESİNLEŞİR (Reserved düşülür), başarısızlıkta İADE edilir (Reserved→Balance). Böylece
-/// bakiye 0'ken taşma olmaz ve başarısız mesaja kredi harcanmaz.
-/// AvailableCredits = BalanceCredits - ReservedCredits: yeni gönderim için gerçekten kullanılabilir kredi.
+/// Kuruma ait ön ödemeli MESAJ KREDİSİ cüzdanı (tek satır / tenant). Gönderim anında mesajın kredi maliyeti
+/// REZERVE edilir (Balance→Reserved), teslim/kabul onayında KESİNLEŞİR (Reserved düşülür), başarısızlıkta İADE
+/// edilir (Reserved→Balance). Böylece bakiye 0'ken taşma olmaz ve başarısız mesaja kredi harcanmaz.
 ///
 /// <para>
+/// İKİ KANAL (18 Kas 2026): WhatsApp ve SMS kredisi AYRI bakiyelerdir — biri diğerinden harcamaz. Her işlem
+/// kanalı ZORUNLU parametre olarak alır: SMS'ten ayrılan kredi WhatsApp'a iade edilseydi sessiz bir para
+/// sızıntısı olurdu. WhatsApp alanları ayrımdan önceki ortak bakiyenin devamıdır (<c>BalanceCredits</c> …);
+/// SMS alanları yenidir (<c>SmsBalanceCredits</c> …).
+/// </para>
+/// <para>
 /// BİRİM GEÇİŞİ (12 Kas 2026): cüzdan eskiden ₺ "kontör" tutuyordu. <c>*Try</c> alanları dönüşüm
-/// ÖNCESİ değerlerin donmuş kopyasıdır (denetim izi) — hiçbir yol onları artık değiştirmez. Bakiye
-/// yalnız <c>*Credits</c> alanlarından okunur ve yazılır.
+/// ÖNCESİ değerlerin donmuş kopyasıdır (denetim izi) — hiçbir yol onları artık değiştirmez.
 /// </para>
 /// </summary>
 public sealed class TenantMessagingWallet : Entity
@@ -26,20 +30,29 @@ public sealed class TenantMessagingWallet : Entity
 
     public Guid TenantId { get; private set; }
 
-    /// <summary>Toplam kredi (rezerve dahil — AvailableCredits = BalanceCredits - ReservedCredits).</summary>
+    // ---- WHATSAPP KREDİSİ (ayrımdan önceki ortak bakiyenin devamı) ----
+
+    /// <summary>WhatsApp: toplam kredi (rezerve dahil).</summary>
     public decimal BalanceCredits { get; private set; }
 
-    /// <summary>Gönderilmiş ama teslim/kabul onayı beklenen mesajlar için ayrılan (kilitli) kredi.</summary>
+    /// <summary>WhatsApp: teslim onayı beklenen mesajlar için ayrılan kredi.</summary>
     public decimal ReservedCredits { get; private set; }
 
-    /// <summary>Bugüne dek yüklenen toplam kredi (rapor).</summary>
+    /// <summary>WhatsApp: bugüne dek yüklenen toplam kredi (ayrımdan önceki ortak yüklemeler dahil).</summary>
     public decimal LifetimeTopUpCredits { get; private set; }
 
-    /// <summary>Bugüne dek harcanan (kesinleşen) toplam kredi (rapor).</summary>
+    /// <summary>WhatsApp: bugüne dek harcanan kredi (ayrımdan önceki SMS harcamaları dahil).</summary>
     public decimal LifetimeSpentCredits { get; private set; }
 
-    /// <summary>Yeni gönderim için gerçekten kullanılabilir kredi.</summary>
-    public decimal AvailableCredits => decimal.Round(BalanceCredits - ReservedCredits, 4);
+    // ---- SMS KREDİSİ (18 Kas 2026) ----
+
+    public decimal SmsBalanceCredits { get; private set; }
+
+    public decimal SmsReservedCredits { get; private set; }
+
+    public decimal SmsLifetimeTopUpCredits { get; private set; }
+
+    public decimal SmsLifetimeSpentCredits { get; private set; }
 
     // ---- ESKİ ₺ KONTÖR ALANLARI (dönüşüm öncesi değer, salt-okunur denetim izi) ----
 
@@ -55,49 +68,82 @@ public sealed class TenantMessagingWallet : Entity
     /// <summary>Dönüşüm öncesi toplam ₺ harcama. Yeni kod OKUMAZ ve YAZMAZ.</summary>
     public decimal LifetimeSpentTry { get; private set; }
 
+    public decimal BalanceFor(CreditChannel channel) => channel == CreditChannel.Sms ? SmsBalanceCredits : BalanceCredits;
+
+    public decimal ReservedFor(CreditChannel channel) => channel == CreditChannel.Sms ? SmsReservedCredits : ReservedCredits;
+
+    public decimal LifetimeTopUpFor(CreditChannel channel) => channel == CreditChannel.Sms ? SmsLifetimeTopUpCredits : LifetimeTopUpCredits;
+
+    public decimal LifetimeSpentFor(CreditChannel channel) => channel == CreditChannel.Sms ? SmsLifetimeSpentCredits : LifetimeSpentCredits;
+
+    /// <summary>Kanalın yeni gönderim için gerçekten kullanılabilir kredisi.</summary>
+    public decimal AvailableFor(CreditChannel channel) => decimal.Round(BalanceFor(channel) - ReservedFor(channel), 4);
+
     /// <summary>Kredi ekle (satın alma onayı veya platform manuel artırımı).</summary>
-    public void TopUp(decimal credits)
+    public void TopUp(CreditChannel channel, decimal credits)
     {
         if (credits <= 0) throw new DomainException("Yüklenecek kredi pozitif olmalı.");
-        BalanceCredits = decimal.Round(BalanceCredits + credits, 4);
-        LifetimeTopUpCredits = decimal.Round(LifetimeTopUpCredits + credits, 4);
-        Touch();
+        Set(channel, BalanceFor(channel) + credits, ReservedFor(channel), LifetimeTopUpFor(channel) + credits, LifetimeSpentFor(channel));
     }
 
     /// <summary>Gönderim için krediyi rezerve et. Kullanılabilir kredi yetmezse false döner (mesaj gönderilmez).</summary>
-    public bool TryReserve(decimal credits)
+    public bool TryReserve(CreditChannel channel, decimal credits)
     {
         if (credits <= 0) return true; // ücretsiz kategori
-        if (AvailableCredits + 0.0001m < credits) return false;
-        ReservedCredits = decimal.Round(ReservedCredits + credits, 4);
-        Touch();
+        if (AvailableFor(channel) + 0.0001m < credits) return false;
+        Set(channel, BalanceFor(channel), ReservedFor(channel) + credits, LifetimeTopUpFor(channel), LifetimeSpentFor(channel));
         return true;
     }
 
     /// <summary>Teslim/kabul onayı: rezervasyonu kesinleştir (Balance ve Reserved birlikte düşer — kredi harcandı).</summary>
-    public void Capture(decimal credits)
+    public void Capture(CreditChannel channel, decimal credits)
     {
         if (credits <= 0) return;
         var amt = decimal.Round(credits, 4);
-        ReservedCredits = decimal.Round(Math.Max(0, ReservedCredits - amt), 4);
-        BalanceCredits = decimal.Round(Math.Max(0, BalanceCredits - amt), 4);
-        LifetimeSpentCredits = decimal.Round(LifetimeSpentCredits + amt, 4);
-        Touch();
+        Set(channel,
+            Math.Max(0, BalanceFor(channel) - amt),
+            Math.Max(0, ReservedFor(channel) - amt),
+            LifetimeTopUpFor(channel),
+            LifetimeSpentFor(channel) + amt);
     }
 
     /// <summary>Başarısızlık/iptal: rezervasyonu geri ver (Reserved düşer, Balance korunur).</summary>
-    public void Refund(decimal credits)
+    public void Refund(CreditChannel channel, decimal credits)
     {
         if (credits <= 0) return;
-        ReservedCredits = decimal.Round(Math.Max(0, ReservedCredits - decimal.Round(credits, 4)), 4);
-        Touch();
+        Set(channel, BalanceFor(channel), Math.Max(0, ReservedFor(channel) - decimal.Round(credits, 4)), LifetimeTopUpFor(channel), LifetimeSpentFor(channel));
     }
 
     /// <summary>Platform manuel düzeltme (+/-). Bakiye eksiye düşürülmez.</summary>
-    public void Adjust(decimal deltaCredits)
+    public void Adjust(CreditChannel channel, decimal deltaCredits)
     {
-        BalanceCredits = decimal.Round(Math.Max(0, BalanceCredits + deltaCredits), 4);
-        if (deltaCredits > 0) LifetimeTopUpCredits = decimal.Round(LifetimeTopUpCredits + deltaCredits, 4);
+        Set(channel,
+            Math.Max(0, BalanceFor(channel) + deltaCredits),
+            ReservedFor(channel),
+            LifetimeTopUpFor(channel) + (deltaCredits > 0 ? deltaCredits : 0),
+            LifetimeSpentFor(channel));
+    }
+
+    private void Set(CreditChannel channel, decimal balance, decimal reserved, decimal lifetimeTopUp, decimal lifetimeSpent)
+    {
+        balance = decimal.Round(balance, 4);
+        reserved = decimal.Round(reserved, 4);
+        lifetimeTopUp = decimal.Round(lifetimeTopUp, 4);
+        lifetimeSpent = decimal.Round(lifetimeSpent, 4);
+        if (channel == CreditChannel.Sms)
+        {
+            SmsBalanceCredits = balance;
+            SmsReservedCredits = reserved;
+            SmsLifetimeTopUpCredits = lifetimeTopUp;
+            SmsLifetimeSpentCredits = lifetimeSpent;
+        }
+        else
+        {
+            BalanceCredits = balance;
+            ReservedCredits = reserved;
+            LifetimeTopUpCredits = lifetimeTopUp;
+            LifetimeSpentCredits = lifetimeSpent;
+        }
         Touch();
     }
 }

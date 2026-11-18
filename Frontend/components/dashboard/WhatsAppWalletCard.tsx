@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { adminApi } from '@/lib/apiClient'
-import type { ApiCreditPackage, ApiCreditPurchase, ApiMessagingWallet, ApiWalletTransaction } from '@/lib/types'
+import type { ApiCreditPackage, ApiCreditPurchase, ApiMessagingWallet, ApiWalletTransaction, CreditChannel } from '@/lib/types'
 
 const money = (n?: number) => `₺${(n ?? 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 /** Kredi tam sayıysa ondalıksız gösterilir (1.000 kredi); kesirliyse iki hane. */
@@ -38,11 +38,10 @@ const txLabels: Record<string, string> = {
 }
 
 /**
- * MESAJ KREDİSİ — WhatsApp ve SMS'in ORTAK cüzdanı.
- *
- * 1 kredi = 1 WhatsApp hatırlatma. Plan kotası bitince (kurum izin verdiyse) mesajlar krediden
- * düşer; maliyetler platformdan gelir, kodda sabit değildir. Bileşen adı geriye uyumluluk için
- * korunur (ayarlar sayfası bu adla içe aktarır).
+ * MESAJ KREDİSİ — WhatsApp ve SMS kredisi AYRI bakiyeler (kullanıcı kararı 18 Kas 2026: "SMS ayrı, WhatsApp ayrı
+ * kredi al kısmı olsun; fiyatları farklı olabilir"). Üstteki sekme kanalı seçer: bakiye, paketler, özel miktar ve
+ * kullanım o kanalındır. Plan kotası bitince (kurum izin verdiyse) mesajlar kendi kanalının kredisinden düşer;
+ * maliyetler ve birim fiyatlar platformdan gelir. Bileşen adı geriye uyumluluk için korunur.
  */
 export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) {
   const { data: wallet, loading, reload } = useApiQuery<ApiMessagingWallet | null>(
@@ -62,6 +61,8 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
     { initialData: [] },
   )
 
+  /** Hangi kredinin bakiyesi / paketleri gösterilir ve satın alınır. */
+  const [channel, setChannel] = useState<CreditChannel>('WhatsApp')
   const [buyingId, setBuyingId] = useState<string | null>(null)
   const [customCredits, setCustomCredits] = useState('')
   const [customOpen, setCustomOpen] = useState(false)
@@ -79,20 +80,31 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
    */
   const onMaydanoz = Boolean(w?.payOnMaydanoz)
   const payByCard = onMaydanoz || payByCardChoice
+  const isSms = channel === 'Sms'
+  const channelAvailable = (isSms ? w?.smsAvailableCredits : w?.availableCredits) ?? 0
+  const channelReserved = (isSms ? w?.smsReservedCredits : w?.reservedCredits) ?? 0
+  const channelLow = isSms ? Boolean(w?.smsIsLowBalance) : Boolean(w?.isLowBalance)
+  const channelSpent = (isSms ? w?.smsMonthlySpentCredits : w?.monthlySpentCredits) ?? 0
+  const unitPrice = (isSms ? w?.smsCreditUnitPriceTry ?? w?.creditUnitPriceTry : w?.creditUnitPriceTry) ?? 0
+  const channelPackages = useMemo(
+    () => (w?.creditPackages ?? []).filter((p) => (p.channel ?? 'WhatsApp') === channel),
+    [w?.creditPackages, channel],
+  )
   const customAmount = Math.floor(Number(customCredits) || 0)
-  // Ödenecek tutar yalnız GÖSTERİMDİR: sunucu fiyatı kendi birim fiyatından yeniden hesaplar.
-  const customPrice = customAmount * (w?.creditUnitPriceTry ?? 0)
+  // Ödenecek tutar yalnız GÖSTERİMDİR: sunucu fiyatı kanalın birim fiyatından yeniden hesaplar.
+  const customPrice = customAmount * unitPrice
 
-  /** Kredi başı ₺ — en avantajlı paketi işaretlemek için. */
+  /** Kredi başı ₺ — en avantajlı paketi işaretlemek için (seçili kanalda). */
   const bestValueId = useMemo(() => {
-    const pkgs = (w?.creditPackages ?? []).filter((p) => p.grantsCredits > 0 && p.priceTry > 0)
+    const pkgs = channelPackages.filter((p) => p.grantsCredits > 0 && p.priceTry > 0)
     if (pkgs.length < 2) return null
     return pkgs.reduce((best, p) => (p.priceTry / p.grantsCredits < best.priceTry / best.grantsCredits ? p : best)).id
-  }, [w?.creditPackages])
+  }, [channelPackages])
 
   const buy = async (pkg?: ApiCreditPackage) => {
     if (!pkg && customAmount <= 0) return
-    const body = pkg ? { creditPackageId: pkg.id } : { credits: customAmount }
+    // Kanal her istekte gider: paket başka kanala aitse sunucu reddeder; özel miktar bu kanalın fiyatıyla hesaplanır.
+    const body = pkg ? { creditPackageId: pkg.id, channel } : { credits: customAmount, channel }
     setBuyingId(pkg?.id ?? 'custom')
     setPayError('')
     try {
@@ -115,7 +127,7 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
     } finally { setBuyingId(null) }
   }
 
-  const pendingList = (purchases ?? []).filter((p) => p.status === 'Pending')
+  const pendingList = (purchases ?? []).filter((p) => p.status === 'Pending' && (p.channel ?? 'WhatsApp') === channel)
 
   if (loading && !wallet) {
     return <div className="rounded-[20px] border border-[#EAD8DF] bg-white/85 p-5 text-center text-[11px] text-[#74616A] shadow-[0_18px_50px_-40px_rgba(142,63,91,0.5)]">Mesaj kredisi yükleniyor…</div>
@@ -130,14 +142,29 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
           <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#A5556E]/12 text-[#8C4460]"><Coins className="h-4.5 w-4.5" /></span>
           <div>
             <div className="text-[13px] font-semibold text-[#2A2027]">Mesaj Kredisi</div>
-            <div className="text-[10.5px] text-[#74616A]">WhatsApp + SMS ortak bakiye · aylık kullanım</div>
+            <div className="text-[10.5px] text-[#74616A]">WhatsApp ve SMS kredisi ayrı bakiyeler · aylık kullanım</div>
           </div>
         </div>
-        {w?.isLowBalance && (
+        {channelLow && (
           <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
             <AlertTriangle className="h-3 w-3" /> Düşük bakiye
           </span>
         )}
+      </div>
+
+      {/* Kredi türü: her kanalın kendi bakiyesi, paketleri ve fiyatı. */}
+      <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl border border-[#EAD8DF] bg-[#F7F6F6] p-1" role="tablist" aria-label="Kredi türü">
+        {(['WhatsApp', 'Sms'] as const).map((c) => (
+          <button key={c} type="button" role="tab" aria-selected={channel === c}
+            onClick={() => { setChannel(c); setPayError(''); setCustomCredits('') }}
+            className={`flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[11.5px] font-semibold transition ${
+              channel === c ? (c === 'Sms' ? 'bg-[#1E4E8C] text-white' : 'bg-[#1E8C60] text-white') : 'text-[#5A4B53] hover:text-[#2A2027]'
+            }`}>
+            {c === 'Sms' ? <Phone className="h-3.5 w-3.5" /> : <MessageCircle className="h-3.5 w-3.5" />}
+            {c === 'Sms' ? 'SMS kredisi' : 'WhatsApp kredisi'}
+            <span className="font-mono text-[10.5px] opacity-80">{credits((c === 'Sms' ? w?.smsAvailableCredits : w?.availableCredits) ?? 0)}</span>
+          </button>
+        ))}
       </div>
 
       {/* Bakiye */}
@@ -146,23 +173,31 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
           <div>
             <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Kullanılabilir kredi</div>
             <div className="text-[26px] font-bold leading-tight text-[#8e3f5b]">
-              {credits(w?.availableCredits)} <span className="text-[14px] font-semibold">kredi</span>
+              {credits(channelAvailable)} <span className="text-[14px] font-semibold">{isSms ? 'SMS kredisi' : 'WhatsApp kredisi'}</span>
             </div>
-            {(w?.reservedCredits ?? 0) > 0 && (
-              <div className="mt-0.5 text-[10px] text-[#74616A]">{credits(w?.reservedCredits)} kredi gönderim onayı bekliyor</div>
+            {channelReserved > 0 && (
+              <div className="mt-0.5 text-[10px] text-[#74616A]">{credits(channelReserved)} kredi gönderim onayı bekliyor</div>
             )}
           </div>
           <div className="space-y-0.5 text-right text-[11px] font-semibold text-[#8C4460]">
-            <div className="inline-flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5" /> ≈ {(w?.estimatedUtilityMessages ?? 0).toLocaleString('tr-TR')} WhatsApp hatırlatma</div>
-            <div className="flex items-center justify-end gap-1"><Phone className="h-3.5 w-3.5" /> ya da ≈ {(w?.estimatedSmsMessages ?? 0).toLocaleString('tr-TR')} kısa SMS</div>
+            {isSms ? (
+              <div className="flex items-center justify-end gap-1"><Phone className="h-3.5 w-3.5" /> ≈ {(w?.estimatedSmsMessages ?? 0).toLocaleString('tr-TR')} kısa SMS</div>
+            ) : (
+              <div className="inline-flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5" /> ≈ {(w?.estimatedUtilityMessages ?? 0).toLocaleString('tr-TR')} WhatsApp hatırlatma</div>
+            )}
           </div>
         </div>
 
         {/* Kim kaç kredi harcar — kurum maliyeti burada görür (platform panelinden gelir). */}
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <CostChip label="WhatsApp hatırlatma" value={w?.utilityCreditCost} />
-          <CostChip label="WhatsApp kampanya" value={w?.marketingCreditCost} />
-          <CostChip label="SMS (70 karaktere kadar)" value={w?.smsCreditsPerPart} suffix=" / parça" />
+          {isSms ? (
+            <CostChip label="SMS (70 karaktere kadar)" value={w?.smsCreditsPerPart} suffix=" / parça" />
+          ) : (
+            <>
+              <CostChip label="WhatsApp hatırlatma" value={w?.utilityCreditCost} />
+              <CostChip label="WhatsApp kampanya" value={w?.marketingCreditCost} />
+            </>
+          )}
         </div>
 
         {!w?.billingEnabled && (
@@ -174,18 +209,20 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
 
       {/* Aylık kullanım — önce plan kotası harcanır, kredi ancak kota bitince */}
       <div className="mb-3 space-y-2.5">
-        <UsageBar label="WhatsApp hatırlatma (pakete dahil)" used={w?.utilityUsed ?? 0} limit={w?.utilityLimit ?? 0} pct={pct(w?.utilityUsed ?? 0, w?.utilityLimit ?? 0)} color="#1da851" />
-        {w && w.marketingLimit !== 0 && (
+        {!isSms && (
+          <UsageBar label="WhatsApp hatırlatma (pakete dahil)" used={w?.utilityUsed ?? 0} limit={w?.utilityLimit ?? 0} pct={pct(w?.utilityUsed ?? 0, w?.utilityLimit ?? 0)} color="#1da851" />
+        )}
+        {!isSms && w && w.marketingLimit !== 0 && (
           <UsageBar label="WhatsApp kampanya (pakete dahil)" used={w.marketingUsed} limit={w.marketingLimit} pct={pct(w.marketingUsed, w.marketingLimit)} color="#A5556E" />
         )}
-        {w && (w.smsLimit !== 0 || w.smsUsed > 0) && (
+        {isSms && w && (w.smsLimit !== 0 || w.smsUsed > 0) && (
           <UsageBar label="SMS (pakete dahil)" used={w.smsUsed} limit={w.smsLimit} pct={pct(w.smsUsed, w.smsLimit)} color="#2f7dd1" />
         )}
-        {w && (w.monthlySpentCredits > 0 || w.monthlySpendCapCredits != null) && (
+        {w && (channelSpent > 0 || w.monthlySpendCapCredits != null) && (
           <div className="flex items-center justify-between rounded-lg border border-[#EAD8DF] bg-[#F7F6F6] px-2.5 py-1.5 text-[10.5px]">
             <span className="inline-flex items-center gap-1 text-[#5A4B53]"><TrendingUp className="h-3 w-3" /> Bu ay krediden harcanan</span>
             <span className="font-semibold text-[#2A2027]">
-              {credits(w.monthlySpentCredits)} kredi
+              {credits(channelSpent)} kredi
               {w.monthlySpendCapCredits != null && <span className="text-[#74616A]"> / {credits(w.monthlySpendCapCredits)} tavan</span>}
             </span>
           </div>
@@ -224,7 +261,7 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
       {/* Satın alınabilir paketler */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">Kredi yükle</div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-[#74616A]">{isSms ? 'SMS kredisi al' : 'WhatsApp kredisi al'}</div>
           <button type="button" onClick={() => setCustomOpen((v) => !v)} className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-[#8C4460] hover:underline">
             {customOpen ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />} Özel miktar
           </button>
@@ -272,14 +309,19 @@ export default function WhatsAppWalletCard({ tenantId }: { tenantId?: string }) 
             </div>
             {customAmount > 0 && (
               <div className="mt-1.5 text-[10.5px] text-[#5A4B53]">
-                {credits(customAmount)} kredi = <b>{money(customPrice)}</b> <span className="text-[#74616A]">(kredi başı {money(w?.creditUnitPriceTry)})</span>
+                {credits(customAmount)} {isSms ? 'SMS' : 'WhatsApp'} kredisi = <b>{money(customPrice)}</b> <span className="text-[#74616A]">(kredi başı {money(unitPrice)})</span>
               </div>
             )}
           </div>
         )}
 
+        {channelPackages.length === 0 && (
+          <button type="button" onClick={() => setCustomOpen(true)} className="w-full rounded-xl border border-dashed border-[#EAD8DF] bg-white px-3 py-2.5 text-left text-[11px] text-[#5A4B53] hover:border-[#8C4460]">
+            Henüz {isSms ? 'SMS' : 'WhatsApp'} kredisi paketi yok — <b className="text-[#8C4460]">Özel miktar</b> ile istediğiniz kadar kredi alabilirsiniz.
+          </button>
+        )}
         <div className="grid gap-2 sm:grid-cols-3">
-          {(w?.creditPackages ?? []).map((pkg) => (
+          {channelPackages.map((pkg) => (
             <button
               key={pkg.id}
               type="button"

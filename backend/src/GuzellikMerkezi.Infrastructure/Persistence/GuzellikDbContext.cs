@@ -1253,6 +1253,8 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         cp.Property(x => x.PriceTry).HasPrecision(18, 2);
         cp.Property(x => x.GrantsTry).HasPrecision(18, 2); // eski ₺ (donmuş)
         cp.Property(x => x.GrantsCredits).HasPrecision(18, 2);
+        // Kanal metin olarak; eski paketler WhatsApp (ortak kredi WhatsApp kanalında kaldı).
+        cp.Property(x => x.Channel).HasConversion<string>().HasMaxLength(16).IsRequired().HasDefaultValue(CreditChannel.WhatsApp);
         cp.HasQueryFilter(x => !x.IsDeleted); // platform geneli
 
         var bs = modelBuilder.Entity<WhatsAppBillingSettings>();
@@ -1265,6 +1267,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         bs.Property(x => x.DefaultMonthlySpendCapCredits).HasPrecision(18, 2);
         bs.Property(x => x.SmsCreditsPerPart).HasPrecision(18, 2);
         bs.Property(x => x.CreditUnitPriceTry).HasPrecision(18, 4);
+        bs.Property(x => x.SmsCreditUnitPriceTry).HasPrecision(18, 4);
         // Singleton, platform geneli — query filter yok.
 
         var w = modelBuilder.Entity<TenantMessagingWallet>();
@@ -1280,6 +1283,11 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         w.Property(x => x.ReservedCredits).HasPrecision(18, 4);
         w.Property(x => x.LifetimeTopUpCredits).HasPrecision(18, 4);
         w.Property(x => x.LifetimeSpentCredits).HasPrecision(18, 4);
+        // SMS kredisi (18 Kas 2026) — WhatsApp'tan ayrı bakiye.
+        w.Property(x => x.SmsBalanceCredits).HasPrecision(18, 4);
+        w.Property(x => x.SmsReservedCredits).HasPrecision(18, 4);
+        w.Property(x => x.SmsLifetimeTopUpCredits).HasPrecision(18, 4);
+        w.Property(x => x.SmsLifetimeSpentCredits).HasPrecision(18, 4);
         w.HasIndex(x => x.TenantId).IsUnique();
         w.HasQueryFilter(x => !x.IsDeleted && (TenantFilterDisabled || x.TenantId == TenantFilterId));
 
@@ -1307,6 +1315,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         cpu.Property(x => x.PriceTry).HasPrecision(18, 2);
         cpu.Property(x => x.GrantsTry).HasPrecision(18, 2); // eski ₺ (donmuş)
         cpu.Property(x => x.GrantsCredits).HasPrecision(18, 2);
+        cpu.Property(x => x.Channel).HasConversion<string>().HasMaxLength(16).IsRequired().HasDefaultValue(CreditChannel.WhatsApp);
         cpu.Property(x => x.Note).HasMaxLength(256);
         cpu.Property(x => x.Provider).HasMaxLength(32);
         cpu.Property(x => x.ConversationId).HasMaxLength(64);

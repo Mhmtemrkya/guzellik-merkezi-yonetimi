@@ -21,9 +21,10 @@ public sealed class WhatsAppCreditPurchase : Entity
     /// <param name="provider">Kart ödemesinde sağlayıcı adı ("Iyzico"/"Simulation"); havalede null.</param>
     /// <param name="conversationId">Kart ödemesinde sağlayıcı işlem anahtarı; havalede null.</param>
     public WhatsAppCreditPurchase(Guid tenantId, Guid? creditPackageId, string packageName, decimal priceTry, decimal grantsCredits, Guid? requestedByUserId,
-        string? provider = null, string? conversationId = null)
+        CreditChannel channel, string? provider = null, string? conversationId = null)
     {
         TenantId = tenantId;
+        Channel = channel;
         CreditPackageId = creditPackageId;
         PackageName = string.IsNullOrWhiteSpace(packageName) ? "Mesaj kredisi" : packageName.Trim();
         if (priceTry < 0) throw new DomainException("Fiyat negatif olamaz.");
@@ -37,6 +38,9 @@ public sealed class WhatsAppCreditPurchase : Entity
     }
 
     public Guid TenantId { get; private set; }
+
+    /// <summary>Yüklenecek kredinin kanalı (18 Kas 2026; eski talepler WhatsApp). Onayda bu kanala yüklenir.</summary>
+    public CreditChannel Channel { get; private set; } = CreditChannel.WhatsApp;
     public Guid? CreditPackageId { get; private set; }
     public string PackageName { get; private set; } = string.Empty;
     /// <summary>Kurumun ödediği / ödeyeceği tutar (₺). Kart dönüşü bu tutarla doğrulanır.</summary>

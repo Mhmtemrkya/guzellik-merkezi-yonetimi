@@ -42,6 +42,16 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
   /// yönlendirilir (kullanıcı kararı 18 Kas 2026). iOS'ta satın alma yüzeyi zaten yok (App Store 3.1.1).
   bool _payOnMaydanoz = false;
 
+  /// SMS ve WhatsApp kredisi AYRI bakiyeler (18 Kas 2026): sekme hangi kanalın bakiyesini, paketlerini ve alımını
+  /// gösterdiğini seçer ('WhatsApp' | 'Sms').
+  String _creditChannel = 'WhatsApp';
+
+  bool get _isSms => _creditChannel == 'Sms';
+
+  /// Satın alma isteği: paket ya da özel miktar + seçili kanal (paket başka kanala aitse sunucu reddeder).
+  Map<String, dynamic> _purchaseBody({Map<String, dynamic>? pkg, int? credits}) =>
+      pkg != null ? {'creditPackageId': pkg['id'], 'channel': _creditChannel} : {'credits': credits, 'channel': _creditChannel};
+
   Future<_WaData> _load() async {
     final results = await Future.wait([
       widget.api.get('/api/admin/whatsapp/settings').catchError((_) => <String, dynamic>{}),
@@ -108,9 +118,9 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
   /// KARTLA KREDİ ALMA — abonelikteki paket satın almanın birebir aynı mekanizması:
   /// ödeme sayfası HARİCİ tarayıcıda açılır (bkz. paket_screen). Kredi burada yüklenmez;
   /// sunucudaki callback ucu tahsilatı doğruladığında artar.
-  Future<void> _buyCreditByCard(Map<String, dynamic> pkg) async {
+  Future<void> _buyCreditByCard(Map<String, dynamic> body) async {
     try {
-      final started = await widget.api.post('/api/admin/whatsapp/wallet/checkout', {'creditPackageId': pkg['id']});
+      final started = await widget.api.post('/api/admin/whatsapp/wallet/checkout', body);
       final url = started is Map ? '${started['redirectUrl'] ?? ''}' : '';
       if (url.isEmpty || !await launchUrlString(url, mode: LaunchMode.externalApplication)) {
         if (mounted) {
@@ -129,9 +139,9 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
   }
 
   /// Havale yolu: bakiye platform onayından sonra eklenir (kaldırılmadı, bilinçli tercih).
-  Future<void> _requestCredit(Map<String, dynamic> pkg) async {
+  Future<void> _requestCredit(Map<String, dynamic> body) async {
     try {
-      await widget.api.post('/api/admin/whatsapp/wallet/topup', {'creditPackageId': pkg['id']});
+      await widget.api.post('/api/admin/whatsapp/wallet/topup', body);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Kredi talebiniz alındı. Onaylandığında bakiyenize eklenecek.')));
@@ -143,10 +153,10 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
   }
 
   /// Paket kartına dokununca ödeme yolunu sorar — web'deki Kartla öde / Havale seçiminin karşılığı.
-  Future<void> _buyCredit(Map<String, dynamic> pkg) async {
+  Future<void> _buyCredit(Map<String, dynamic> body) async {
     // Ödeme Maydanoz'daysa yöntem orada seçilir (kart / havale-EFT): doğrudan ödeme sayfası tarayıcıda açılır.
     if (_payOnMaydanoz) {
-      await _buyCreditByCard(pkg);
+      await _buyCreditByCard(body);
       return;
     }
     final byCard = await showModalBottomSheet<bool>(
@@ -178,7 +188,7 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
       ),
     );
     if (byCard == null) return;
-    await (byCard ? _buyCreditByCard(pkg) : _requestCredit(pkg));
+    await (byCard ? _buyCreditByCard(body) : _requestCredit(body));
   }
 
   @override
@@ -366,11 +376,69 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
     );
   }
 
+  /// Özel miktar: kredi sayısı girilir, fiyatı sunucu kanalın birim fiyatından hesaplar.
+  Future<void> _buyCustom(Map<String, dynamic> w) async {
+    final controller = TextEditingController();
+    final unit = _num(_isSms ? (w['smsCreditUnitPriceTry'] ?? w['creditUnitPriceTry']) : w['creditUnitPriceTry']);
+    final amount = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_isSms ? 'SMS kredisi al' : 'WhatsApp kredisi al'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          TextField(controller: controller, keyboardType: TextInputType.number, autofocus: true, decoration: const InputDecoration(labelText: 'Kredi miktarı')),
+          const SizedBox(height: 8),
+          Text('Kredi başı ${_money(unit)} — tutar ödeme sayfasında gösterilir.', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, int.tryParse(controller.text.trim())), child: const Text('Devam')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (amount == null || amount <= 0) return;
+    await _buyCredit(_purchaseBody(credits: amount));
+  }
+
+  Widget _channelSwitch(Map<String, dynamic> w) {
+    Widget tab(String channel, String label, IconData icon, Object? available, Color color) {
+      final on = _creditChannel == channel;
+      return Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => setState(() => _creditChannel = channel),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(color: on ? color : Colors.transparent, borderRadius: BorderRadius.circular(10)),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(icon, size: 16, color: on ? Colors.white : AppColors.muted),
+              const SizedBox(width: 6),
+              Flexible(child: Text('$label · ${_credits(available)}', overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: on ? Colors.white : AppColors.ink))),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(color: AppColors.surfaceSoft, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
+      child: Row(children: [
+        tab('WhatsApp', 'WhatsApp', Icons.chat_rounded, w['availableCredits'], AppColors.success),
+        const SizedBox(width: 4),
+        tab('Sms', 'SMS', Icons.sms_rounded, w['smsAvailableCredits'], AppColors.mint),
+      ]),
+    );
+  }
+
   // ---------- MESAJ KREDİSİ ----------
   Widget _walletTab(_WaData d) {
     final w = d.wallet;
-    final packages = apiItems(w['creditPackages']);
-    final pending = d.purchases.where((p) => '${p['status']}' == 'Pending').toList();
+    final packages = apiItems(w['creditPackages']).where((p) => '${p['channel'] ?? 'WhatsApp'}' == _creditChannel).toList();
+    final pending = d.purchases
+        .where((p) => '${p['status']}' == 'Pending' && '${p['channel'] ?? 'WhatsApp'}' == _creditChannel)
+        .toList();
     return RefreshIndicator(
       color: AppColors.primary,
       onRefresh: () async => _reload(),
@@ -378,6 +446,8 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
         children: [
+          _channelSwitch(w),
+          const SizedBox(height: 12),
           _balanceCard(w),
           const SizedBox(height: 12),
           _usageCard(w),
@@ -388,11 +458,20 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
           // iOS: kredi satın alma yok (StorePolicy — App Store 3.1.1); bakiye/kullanım görünür.
           if (!StorePolicy.hidesPurchaseFlows) ...[
             const SizedBox(height: 12),
-            const Padding(
-              padding: EdgeInsets.only(left: 4, bottom: 6),
-              child: Text('Kredi yükle', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 6),
+              child: Row(children: [
+                Expanded(child: Text(_isSms ? 'SMS kredisi al' : 'WhatsApp kredisi al', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                TextButton.icon(onPressed: () => _buyCustom(w), icon: const Icon(Icons.add_rounded, size: 18), label: const Text('Özel miktar')),
+              ]),
             ),
             for (final pkg in packages) _packageCard(pkg),
+            if (packages.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Text('Henüz ${_isSms ? 'SMS' : 'WhatsApp'} kredisi paketi yok — "Özel miktar" ile istediğiniz kadar alabilirsiniz.',
+                    style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+              ),
             Padding(
               padding: const EdgeInsets.all(6),
               child: Text(
@@ -410,11 +489,11 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
   }
 
   Widget _balanceCard(Map<String, dynamic> w) {
-    final available = '${_credits(w['availableCredits'])} kredi';
+    final available = '${_credits(_isSms ? w['smsAvailableCredits'] : w['availableCredits'])} kredi';
     final est = _thousands(_int(w['estimatedUtilityMessages']));
     final estSms = _thousands(_int(w['estimatedSmsMessages']));
-    final lowBalance = w['isLowBalance'] == true;
-    final reserved = _num(w['reservedCredits']);
+    final lowBalance = (_isSms ? w['smsIsLowBalance'] : w['isLowBalance']) == true;
+    final reserved = _num(_isSms ? w['smsReservedCredits'] : w['reservedCredits']);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -432,7 +511,7 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('MESAJ KREDİSİ', style: TextStyle(fontSize: 10, letterSpacing: 1, color: AppColors.muted, fontWeight: FontWeight.w700)),
+                  Text(_isSms ? 'SMS KREDİSİ' : 'WHATSAPP KREDİSİ', style: const TextStyle(fontSize: 10, letterSpacing: 1, color: AppColors.muted, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 2),
                   Text(available, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Color(0xFF8C4460))),
                 ],
@@ -441,8 +520,7 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('≈ $est WhatsApp', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFB14D6C))),
-                    Text('ya da ≈ $estSms SMS', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFFB14D6C))),
+                    Text(_isSms ? '≈ $estSms SMS' : '≈ $est WhatsApp', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFB14D6C))),
                     if (reserved > 0) Padding(padding: const EdgeInsets.only(top: 2), child: Text('${_credits(reserved)} kredi onay bekliyor', style: const TextStyle(fontSize: 10.5, color: AppColors.muted))),
                   ],
                 ),
@@ -455,9 +533,9 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
             spacing: 6,
             runSpacing: 6,
             children: [
-              _costChip('WhatsApp hatırlatma', '${_credits(w['utilityCreditCost'])} kredi'),
-              _costChip('WhatsApp kampanya', '${_credits(w['marketingCreditCost'])} kredi'),
-              _costChip('SMS (70 karakter)', '${_credits(w['smsCreditsPerPart'])} kredi / parça'),
+              if (!_isSms) _costChip('WhatsApp hatırlatma', '${_credits(w['utilityCreditCost'])} kredi'),
+              if (!_isSms) _costChip('WhatsApp kampanya', '${_credits(w['marketingCreditCost'])} kredi'),
+              if (_isSms) _costChip('SMS (70 karakter)', '${_credits(w['smsCreditsPerPart'])} kredi / parça'),
             ],
           ),
           if (lowBalance)
@@ -488,23 +566,22 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
     return _card(
       child: Column(
         children: [
-          _usageBar('WhatsApp hatırlatma (pakete dahil)', _int(w['utilityUsed']), _int(w['utilityLimit']), const Color(0xFF1DA851)),
-          if (_int(w['marketingLimit']) != 0) ...[
+          if (!_isSms) _usageBar('WhatsApp hatırlatma (pakete dahil)', _int(w['utilityUsed']), _int(w['utilityLimit']), const Color(0xFF1DA851)),
+          if (!_isSms && _int(w['marketingLimit']) != 0) ...[
             const SizedBox(height: 10),
             _usageBar('WhatsApp kampanya (pakete dahil)', _int(w['marketingUsed']), _int(w['marketingLimit']), const Color(0xFFA5556E)),
           ],
-          if (_int(w['smsLimit']) != 0 || _int(w['smsUsed']) > 0) ...[
-            const SizedBox(height: 10),
+          if (_isSms && (_int(w['smsLimit']) != 0 || _int(w['smsUsed']) > 0)) ...[
             _usageBar('SMS (pakete dahil)', _int(w['smsUsed']), _int(w['smsLimit']), const Color(0xFF2F7DD1)),
           ],
-          if (_num(w['monthlySpentCredits']) > 0 || w['monthlySpendCapCredits'] != null) ...[
+          if (_num(_isSms ? w['smsMonthlySpentCredits'] : w['monthlySpentCredits']) > 0 || w['monthlySpendCapCredits'] != null) ...[
             const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Flexible(child: Text('Bu ay krediden harcanan', style: TextStyle(fontSize: 12, color: AppColors.muted))),
                 Text(
-                  '${_credits(w['monthlySpentCredits'])}${w['monthlySpendCapCredits'] != null ? ' / ${_credits(w['monthlySpendCapCredits'])}' : ''} kredi',
+                  '${_credits(_isSms ? w['smsMonthlySpentCredits'] : w['monthlySpentCredits'])}${w['monthlySpendCapCredits'] != null ? ' / ${_credits(w['monthlySpendCapCredits'])}' : ''} kredi',
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                 ),
               ],
@@ -591,7 +668,7 @@ class _WhatsAppScreenState extends State<WhatsAppScreen> {
                 backgroundColor: const Color(0xFF8C4460),
                 minimumSize: const Size(0, 44),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10)),
-            onPressed: () => _buyCredit(pkg),
+            onPressed: () => _buyCredit(_purchaseBody(pkg: pkg)),
             child: const Text('Al', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
           ),
         ],

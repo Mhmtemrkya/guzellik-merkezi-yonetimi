@@ -68,7 +68,7 @@ public sealed class TenantSmsConnectionTests
         if (walletCredits > 0)
         {
             var wallet = new TenantMessagingWallet(tenant.Id);
-            wallet.TopUp(walletCredits);
+            wallet.TopUp(CreditChannel.Sms, walletCredits);
             db.TenantMessagingWallets.Add(wallet);
         }
         if (platformLive)
@@ -143,8 +143,8 @@ public sealed class TenantSmsConnectionTests
             Assert.Equal(NotificationLogStatus.Sent, l.Status);
         });
         var wallet = await WalletAsync(options, seed.TenantId);
-        Assert.Equal(100m, wallet!.BalanceCredits);
-        Assert.Equal(0m, wallet.ReservedCredits);
+        Assert.Equal(100m, wallet!.SmsBalanceCredits);
+        Assert.Equal(0m, wallet.SmsReservedCredits);
 
         await messaging.DidNotReceive().SendSmsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         await messaging.Received(3).SendSmsWithAccountAsync(
@@ -228,7 +228,7 @@ public sealed class TenantSmsConnectionTests
         Assert.Equal(NotificationService.OwnSmsAccountGoneError, log.ErrorMessage);
         await messaging.DidNotReceive().SendSmsAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         var wallet = await WalletAsync(options, seed.TenantId);
-        Assert.Equal(100m, wallet!.BalanceCredits);
+        Assert.Equal(100m, wallet!.SmsBalanceCredits);
     }
 
     /// <summary>
