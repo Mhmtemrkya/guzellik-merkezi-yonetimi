@@ -801,6 +801,7 @@ deposuna göredir.
 | 15 — Otomatik ödeme hazırlığı | Aktarılmadı | — |
 | 16 — Şube silme | Aktarılmadı | — |
 | 17 — Kalıcı kurum silme bağlayıcısı | Aktarılmadı | — |
+| 18 — Maydanoz'a oturumlu geçiş + kredi yalnız yetkili | Aktarılmadı | — |
 
 Bir paket aktarılınca bu tabloyu tarih ve commit ile güncelleyin.
 
@@ -808,6 +809,7 @@ Bir paket aktarılınca bu tabloyu tarih ve commit ile güncelleyin.
 
 - **14 Kas 2026:** ilk sürüm; paket 1–6 (12–14 Kasım işleri).
 - **18 Kas 2026:** paket 7–17 (Maydanoz entegrasyonu, §12) eklendi; reçetenin Maydanoz tarafı `ASIST_ENTEGRASYONU.md` §0.
+- **18 Kas 2026 (akşam):** paket 18 (panelden Maydanoz'a oturumlu geçiş; Maydanoz'da mesaj kredisi yalnız kurum yetkilisi).
 - BeautyAsist'te yeni bir iş bitince buraya yeni bir paket olarak ekleyin. Her pakete kural, şema, dosyalar, testler,
   tuzaklar ve canlı notlarını yazın.
 
@@ -902,8 +904,8 @@ Ayrıntısı için `git show <commit>` kullanın.
 > kod değişmeden çalışır. Bu bölüm yalnız **Asist (BeautyAsist) tarafını** paket paket anlatır; türetilen ürüne
 > (DentistAsist, DoctorAsist) aynen aktarılacak olan budur.
 >
-> Durum (18 Kas 2026): paket 7–17 BeautyAsist'te bitti ve test edildi; 7–10 canlıda, 11–17 bu belgeyle birlikte
-> yayına alınıyor. Hiçbiri türetilen ürüne aktarılmadı (§10).
+> Durum (18 Kas 2026): paket 7–17 BeautyAsist'te bitti, test edildi ve canlıda. Paket 18 bitti ve test edildi; yayını
+> kullanıcı onayı bekliyor (migration elle). Hiçbiri türetilen ürüne aktarılmadı (§10).
 
 ### Kullanıcının kararları (sözleriyle)
 
@@ -921,6 +923,8 @@ Ayrıntısı için `git show <commit>` kullanın.
 - "Mobilde de web'e yönlendirebilirsin, webten alır" (18 Kas) — iOS mağaza kuralı (3.1.1) gereği iOS'ta fiyat yok.
 - "Şube silme kısmı yok, onu da ekle; silerse fiyat ona göre güncellenecek" (18 Kas).
 - "Platform kısmında hem Maydanoz'da hem BeautyAsist'te kalıcı kurum silme olsun ki DB şişmesin" (18 Kas).
+- "BeautyAsist'te kredi kısmında satın al dediğinde Maydanoz'un satın alma kısmına gittiğinde form boş oluyor çünkü
+  Maydanoz'da giriş yapmamış olabiliyor; boşa satın alma olur, buna dikkat etmek lazım" (18 Kas) → paket 18.
 
 ### Paketler bir bakışta
 
@@ -937,9 +941,10 @@ Ayrıntısı için `git show <commit>` kullanın.
 | 15 | Otomatik ödeme hazırlığı | `7e1d1ac` | — | Ödeme kaydı dönemini söyler; Maydanoz'dayken kartlı yenileme hiçbir şey çekmez |
 | 16 | Şube silme | `1179279` | — | Kayıtlar seçilen şubeye aktarılır, şube kaldırılır; fiyat sonraki ödemede düşer |
 | 17 | Kalıcı kurum silme (bağlayıcı) | `dcae6a2` | — | `tenants.delete` + kurum adı aynen |
+| 18 | Maydanoz'a oturumlu geçiş + kredi yalnız yetkili | `777b04e` | `20261118201808_MaydanozHandoffs` | Yönlendirmede tek kullanımlık `#giris=` jetonu, `POST /accounts/handoff`; Maydanoz yolunda kredi yalnız kurum yetkilisi |
 
 **Bağımlılık:** 7 → 8 → (9, 12, 14, 15); 10 ve 17 yalnız 7'ye bağlı; 13 → 14; 11 ve 16 bağımsız (3'ün fiyat motorunu
-kullanır). Maydanoz tarafı Asist'ten SONRA yayına alınır (Maydanoz'un yeni kodu Asist'in yeni uçlarını çağırır).
+kullanır); 18 → 8 + 9 (ödeme yönlendirmesi ve Maydanoz Hesabım oturumu). Maydanoz tarafı Asist'ten SONRA yayına alınır (Maydanoz'un yeni kodu Asist'in yeni uçlarını çağırır).
 
 ### Paket 7 — İmzalı bağlayıcı (17 Kas)
 
@@ -1070,6 +1075,52 @@ kullanır). Maydanoz tarafı Asist'ten SONRA yayına alınır (Maydanoz'un yeni 
 - **Dosyalar:** `Api/Services/ConnectorTenantPurge.cs`, `TenantPurge.cs` (InMemory yolu sayım döner ve
   `HardDeleteEnabled` ile gerçekten siler). **Test:** `ConnectorTenantPurgeTests`.
 - **Bilinçli karar:** ayar köprüsüne (`platform.manage`) kurum listesi/silme EKLENMEDİ; yıkıcı yetki ayrı kapsamla verilir.
+
+### Paket 18 — Maydanoz'a oturumlu geçiş + kredi yalnız kurum yetkilisi (18 Kas)
+
+- **Sorun:** panelde "Satın al" Maydanoz ödeme sayfasını açıyordu; tarayıcıda Maydanoz oturumu yoksa form BOŞ geliyordu
+  ve ödeme kimin hesabına yapıldığı belirsizdi.
+- **Kural (iki taraf):**
+  - Maydanoz ödemeyi YALNIZ kaydın kurumuna ait Hesabım oturumuyla açar (kart, havale, havale iptali; Maydanoz sunucusu
+    zorlar). Oturum yoksa giriş kapısı (girişten sonra ödemeye dönülür); başka kurumun oturumunda uyarı + çıkış.
+  - Panel, Maydanoz'a yönlendirirken **kurum yetkilisine** tek kullanımlık geçiş jetonu ekler:
+    `https://maydanozasist.com/odeme/asist/beauty/<ref>#giris=<jeton>`. Jeton adresin PARÇA kısmında (sunucu günlüklerine
+    ve Referer'a girmez); 32 rastgele bayt base64url (43 karakter); DB'de YALNIZ SHA-256 hex; kurum + kullanıcı + ödeme
+    kaydına bağlı; ömür 10 dk; tek kullanımlık. Personel, şube müdürü ve platform yöneticisi jeton ALMAZ.
+  - Maydanoz jetonu `POST /api/connector/v1/accounts/handoff` (checkouts.write) `{ token }` ile bozdurur → `{ tenantId,
+    userId, email, fullName, tenantName, tenantCode, reference }`; `reference` sayfadaki kayıtla aynı olmalı; Maydanoz 2
+    saatlik oturum açar. Bozdururken Asist kimliği DB'den YENİDEN doğrular: kullanıcı hâlâ etkin kurum yetkilisi, aynı
+    kurum, kurum iptal / askıda değil.
+  - Maydanoz ödeme yolundayken mesaj kredisi alımı YALNIZ kurum yetkilisine (öteki rollere 403 "Mesaj kredisi kurum
+    yetkilisinin hesabıyla maydanozasist.com'dan alınır…"; web ve mobilde satın alma yerine bu not). Diğer sağlayıcılarda
+    (iyzico doğrudan, simülasyon) eski davranış sürer.
+- **Şema:** `maydanoz_handoffs` (Id, TokenHash varchar(64) UNIQUE, TenantId, UserId, CheckoutRef varchar(32),
+  CreatedAtUtc, ExpiresAtUtc INDEX, ConsumedAtUtc). Migration `20261118201808_MaydanozHandoffs`. Bir günden eski satırlar
+  her yeni jetonda ham SQL `DELETE … LIMIT 200` ile silinir (kurum silmede de model türetimli listeyle gider).
+- **Dosyalar:**
+  - `Domain/Entities/MaydanozHandoff.cs` (`Lifetime` 10 dk, `TryConsume`); `GuzellikDbContext` (DbSet + yapılandırma).
+  - `Api/Services/MaydanozHandoffService.cs`: `AttachAsync(started, user, tenantId)` ödeme başlatan ucun sonucuna jeton
+    ekler — yalnız başarı + yönlendirme adresi + adres `Payments:Maydanoz:SiteUrl` köküyle aynı şema/köken ve sorgusuz /
+    parçasız `/odeme/asist/<asist>/<32 hex>` (`ReferenceOf`) + kayıt bu kurumun + kullanıcı etkin kurum yetkilisi (Id ya da
+    e-postayla; çoklu kurum yetkilisi e-postayla eşlenir, `TenantTextHelper.NormalizeEmail`).
+  - Sarılan uçlar: `BillingEndpoints` (`POST /checkout`, `POST /invoices/{id}/pay`), `WhatsAppEndpoints`
+    (`POST /wallet/checkout`) → `(await handoffs.AttachAsync(await svc.X(...), cu, t, ct)).ToHttpResult(http)`;
+    `Program.cs` `AddScoped<MaydanozHandoffService>()`.
+  - `Api/Services/ConnectorAccountService.cs` `HandoffAsync` + `ConnectorEndpoints` (`accounts/handoff`, checkouts.write).
+  - `WhatsAppBillingService.StartCreditCheckoutAsync`: ağ geçidi `MaydanozPaymentGateway` ise yetkili kontrolü.
+  - Web `components/dashboard/WhatsAppWalletCard.tsx` (yetkili değilse not; dipnot "sayfa giriş yapılmış açılır");
+    mobil `features/whatsapp/whatsapp_screen.dart` (`_canBuy`).
+- **Tek kullanım:** MySQL'de koşullu ham SQL `UPDATE maydanoz_handoffs SET ConsumedAtUtc=@now WHERE Id=@id AND
+  ConsumedAtUtc IS NULL AND ExpiresAtUtc > @now` (etkilenen satır 1 değilse "süresi doldu"); InMemory'de `TryConsume`.
+  Eşzamanlı iki bozdurmadan yalnız biri kazanır (MySQL testiyle kanıtlı).
+- **Testler:** `MaydanozHandoffTests` (yetkiliye jeton + tek kullanım; öteki roller / siteler / kurumlar / başarısız
+  sonuçta jeton yok + `ReferenceOf`; çoklu kurum yetkilisi; bozdurmada bozuk / bilinmeyen / süresi dolmuş / yetkili olmayan
+  / askıdaki kurum reddi), `MaydanozHandoffMySqlTests` (gerçek MySQL: eşzamanlı tek kazanan, süresi geçmiş tüketilmez, eski
+  satır temizliği), `MaydanozCheckoutTests.CreditCheckout_OnMaydanoz_IsForTheInstitutionOwnerOnly`.
+- **Tuzaklar:** jeton SORGU dizgisine konmaz; jeton yalnız kurum yetkilisine (Maydanoz Hesabım'ı yalnız yetkilinin
+  hesabıdır); yeni bir ödeme başlatan uç eklenirse o da `AttachAsync` ile sarılmalı (yoksa form yine boş gelir).
+- **Canlı:** migration elle (`--migrate-only`); env değişikliği yok (`checkouts.write` zaten var). Önce Asist, sonra
+  Maydanoz: eski Maydanoz `#giris` parçasını yok sayar; ters sırada yeni Maydanoz, panelden gelen kurumdan elle giriş ister.
 
 ### Ürüne göre değişenler (aktarmadan önce)
 
