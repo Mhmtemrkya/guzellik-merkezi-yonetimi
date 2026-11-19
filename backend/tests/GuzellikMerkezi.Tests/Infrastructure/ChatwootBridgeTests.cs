@@ -165,6 +165,39 @@ public sealed class ChatwootBridgeTests
         Assert.Null(ChatwootWebhook.Parse(payload));
     }
 
+    /// <summary>
+    /// Yok sayılan olay günlüğe NEDENİYLE yazılır (Chatwoot yeniden denemez; canlıda "geldi ama reddedildi"
+    /// görülebilmeli). Neden yalnız yapısal bilgidir: metin ve telefon asla girmez; değer arındırılıp kırpılır.
+    /// </summary>
+    [Fact]
+    public void IgnoredEvents_CarryAStructuralReason()
+    {
+        var outgoing = ChatwootWebhook.Read(Event(messageType: "\"outgoing\""));
+        Assert.Null(outgoing.Inbound);
+        Assert.Equal("message_type=outgoing", outgoing.IgnoredReason);
+        Assert.True(outgoing.Routine); // temsilci yanıtı beklenen gürültü → Debug
+
+        var unknownType = ChatwootWebhook.Read(Event(messageType: "\"incoming_v2\""));
+        Assert.Equal("message_type=incoming_v2", unknownType.IgnoredReason);
+        Assert.False(unknownType.Routine); // tanınmayan değer = biçim değişikliği → Information
+
+        Assert.Equal("content_type=input_select", ChatwootWebhook.Read(Event(contentType: "input_select")).IgnoredReason);
+        Assert.Equal("kanal=Channel::WebWidget", ChatwootWebhook.Read(Event(channel: "Channel::WebWidget")).IgnoredReason);
+        Assert.True(ChatwootWebhook.Read(Event(isPrivate: true)).Routine);
+
+        var noPhone = ChatwootWebhook.Read(Event(text: "GIZLI METIN", contactSource: null, senderPhone: null));
+        Assert.Equal("telefon yok", noPhone.IgnoredReason);
+        Assert.DoesNotContain("GIZLI", noPhone.IgnoredReason);
+
+        // Denetim karakteri atılır, değer 40 karaktere kırpılır (günlüğe sahte satır eklenemez).
+        var injected = ChatwootWebhook.Read(Event(@event: "x\\nSAHTE SATIR " + new string('a', 80)));
+        Assert.True(injected.Routine);
+        Assert.DoesNotContain('\n', injected.IgnoredReason!);
+        Assert.Equal("olay=".Length + 40, injected.IgnoredReason!.Length);
+
+        Assert.Null(ChatwootWebhook.Read(Event()).IgnoredReason);
+    }
+
     [Fact]
     public void NonObjectPayload_IsIgnored_AndBrokenJsonThrows()
     {
@@ -326,8 +359,61 @@ public sealed class ChatwootBridgeTests
         await using var database = await MySqlTestDatabase.CreateAsync();
         var seed = await SeedAsync(database);
         await using (var db = database.NewContext())
+            Assert.True((await NewService(db).SendAutomaticReminderAsync(seed.TenantId, seed.AppointmentId)).IsSuccess);
+        await using (var db = database.NewContext())
             Assert.True(await NewService(db).HandleChatwootInboundAsync(Event(sourceId: "wamid.CW-PATH"), Secret, null, null));
         Assert.Single(await InboundAsync(database, seed.TenantId));
+    }
+
+    /// <summary>
+    /// PAYLAŞILAN GELEN KUTUSU: Chatwoot kutusu canlı destek hattı da olabilir. BeautyAsist'in mesaj göndermediği
+    /// bir numaranın yazdıkları (destek, fiyat sorusu) kurumun mesaj kaydına YAZILMAZ — konuşma Chatwoot'ta kalır.
+    /// </summary>
+    [MySqlFact]
+    public async Task MessageFromNumberWithoutBeautyAsistMessage_IsNotRecorded()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedAsync(database);
+        var (body, signature, ts) = Signed(Event(text: "Merhaba, fiyat bilgisi alabilir miyim?", sourceId: "wamid.CW-SUPPORT"));
+        await using (var db = database.NewContext())
+            Assert.True(await NewService(db).HandleChatwootInboundAsync(body, null, signature, ts));
+        Assert.Empty(await InboundAsync(database, seed.TenantId));
+    }
+
+    /// <summary>
+    /// SOMUT HATA (Meta yolunda da vardı): yanıt yalnız kurumun SON 25 giden mesajında aranıyordu. Toplu
+    /// hatırlatmadan sonra müşterinin EVET'i eşleşmiyor, randevu onaylanmıyordu. Artık 3 günlük penceredeki
+    /// TÜM giden mesajlara bakılır.
+    /// </summary>
+    [MySqlFact]
+    public async Task Reply_IsMatched_EvenAfterManyLaterOutboundMessages()
+    {
+        await using var database = await MySqlTestDatabase.CreateAsync();
+        var seed = await SeedAsync(database);
+        await using (var db = database.NewContext())
+            Assert.True((await NewService(db).SendAutomaticReminderAsync(seed.TenantId, seed.AppointmentId)).IsSuccess);
+
+        // Müşterinin hatırlatması bir saat önce gitmiş olsun; ardından başka 30 müşteriye mesaj gitti.
+        await using (var db = database.NewContext())
+        {
+            await db.WhatsAppMessages.IgnoreQueryFilters()
+                .Where(m => m.TenantId == seed.TenantId && m.Direction == WhatsAppMessageDirection.Outbound)
+                .ExecuteUpdateAsync(s => s.SetProperty(m => m.CreatedAtUtc, DateTime.UtcNow.AddHours(-1)));
+            for (var i = 0; i < 30; i++)
+            {
+                db.WhatsAppMessages.Add(new WhatsAppMessage(seed.TenantId, null, null, null, WhatsAppMessageDirection.Outbound,
+                    $"90532000{i:D4}", "Toplu hatırlatma", WhatsAppMessageStatus.Sent, templateName: "reminder"));
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var (body, signature, ts) = Signed(Event(text: "EVET", sourceId: "wamid.CW-BULK"));
+        await using (var db = database.NewContext())
+            Assert.True(await NewService(db).HandleChatwootInboundAsync(body, null, signature, ts));
+
+        await using var check = database.NewContext();
+        var appointment = await check.Appointments.IgnoreQueryFilters().AsNoTracking().FirstAsync(a => a.Id == seed.AppointmentId);
+        Assert.Equal(WhatsAppConfirmationStatus.Confirmed, appointment.CustomerConfirmation);
     }
 
     /// <summary>Geçersiz imza, yanlış adres anahtarı ve tanımsız anahtar HİÇBİR satır yazmaz ve 401 döner (false).</summary>

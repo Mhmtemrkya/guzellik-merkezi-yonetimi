@@ -1096,10 +1096,22 @@ public sealed class WhatsAppService : IWhatsAppService
             return false;
         }
 
-        ChatwootInbound? inbound;
-        try { inbound = ChatwootWebhook.Parse(payloadJson); }
-        catch (JsonException) { return true; } // biçimsiz gövde: Chatwoot yeniden denemesin, işlenecek bir şey yok
-        if (inbound is null) return true;       // giden mesaj, not, ek, başka olay: yok say
+        // Kimliği doğrulanmış her olay 200 alır: Chatwoot hesap webhook'unu YENİDEN DENEMEZ, hata kodu bir şey
+        // kazandırmaz. Bunun yerine yok sayma NEDENİ günlüğe yazılır (metin ve telefon ASLA) — canlıda "hiç
+        // gelmedi" ile "geldi ama reddedildi" ayrılabilsin.
+        ChatwootParseResult parsed;
+        try { parsed = ChatwootWebhook.Read(payloadJson); }
+        catch (JsonException)
+        {
+            _logger.LogWarning("[Chatwoot] Biçimsiz gövde ({Length} karakter) — olay yok sayıldı.", payloadJson.Length);
+            return true;
+        }
+        if (parsed.Inbound is not { } inbound)
+        {
+            if (parsed.Routine) _logger.LogDebug("[Chatwoot] Olay yok sayıldı: {Reason}.", parsed.IgnoredReason);
+            else _logger.LogInformation("[Chatwoot] Olay yok sayıldı: {Reason}.", parsed.IgnoredReason);
+            return true;
+        }
 
         var settings = await _db.WhatsAppSettings.IgnoreQueryFilters().AsNoTracking()
             .FirstOrDefaultAsync(s => !s.IsDeleted && s.ChatwootInboxId == inbound.InboxId, ct);
@@ -1110,9 +1122,21 @@ public sealed class WhatsAppService : IWhatsAppService
         }
 
         // Meta'dan gelmiş gibi AYNI yol: kayıt (tekilleştirme + 24 saat penceresi) → niyet → yan etkiler.
-        await ProcessInboundMessageAsync(settings.TenantId, settings.PhoneNumberId!, inbound.MessageId, inbound.FromPhone, inbound.Text, ct);
-        _logger.LogInformation("[Chatwoot] Gelen kutusu {Inbox} → kurum {Tenant}: müşteri yanıtı işlendi (anahtar türü {Kind}).",
-            inbound.InboxId, settings.TenantId, inbound.MessageId.StartsWith("cw:", StringComparison.Ordinal) ? "chatwoot" : "wamid");
+        // YALNIZ YANITLAR: Chatwoot gelen kutusu aynı zamanda canlı destek hattıdır. BeautyAsist'in yakın zamanda
+        // mesaj göndermediği numaranın yazdıkları Chatwoot'ta kalır, kurumun mesaj kaydına YAZILMAZ.
+        var outcome = await ProcessInboundMessageAsync(
+            settings.TenantId, settings.PhoneNumberId!, inbound.MessageId, inbound.FromPhone, inbound.Text, ct, repliesOnly: true);
+        switch (outcome)
+        {
+            case InboundOutcome.Recorded:
+                _logger.LogInformation("[Chatwoot] Gelen kutusu {Inbox} → kurum {Tenant}: müşteri yanıtı işlendi (anahtar türü {Kind}).",
+                    inbound.InboxId, settings.TenantId, inbound.MessageId.StartsWith("cw:", StringComparison.Ordinal) ? "chatwoot" : "wamid");
+                break;
+            case InboundOutcome.NotAReply:
+                _logger.LogInformation("[Chatwoot] Gelen kutusu {Inbox} → kurum {Tenant}: numaraya son {Days} günde BeautyAsist mesajı yok — konuşma Chatwoot'ta kaldı.",
+                    inbound.InboxId, settings.TenantId, (int)ReplyMatchWindow.TotalDays);
+                break;
+        }
         return true;
     }
 
@@ -1184,13 +1208,44 @@ public sealed class WhatsAppService : IWhatsAppService
         return CryptographicOperations.FixedTimeEquals(provided, expected);
     }
 
-    private async Task ProcessInboundMessageAsync(Guid tenantId, string providerChannelId, string? providerMessageId, string fromPhone, string text, CancellationToken ct)
+    /// <summary>Gelen mesajın işlenme sonucu (köprü günlüğü için; Meta yolu kullanmaz).</summary>
+    private enum InboundOutcome { Recorded, Duplicate, NotAReply }
+
+    /// <summary>Bir yanıtın, kuruma giden hangi mesaja verildiğini aradığımız geriye dönük pencere.</summary>
+    private static readonly TimeSpan ReplyMatchWindow = TimeSpan.FromDays(3);
+
+    /// <summary>
+    /// Bu numaraya <see cref="ReplyMatchWindow"/> içinde giden EN YENİ mesaj: yanıtın neye (hatırlatma, KVKK,
+    /// bekleme teklifi) verildiği. Yoksa null.
+    /// <para>
+    /// SOMUT HATA (20 Kas 2026): eskiden yalnız kurumun son 25 giden mesajına bakılıyordu. Toplu hatırlatma
+    /// gönderen bir salonda müşterinin EVET'i bu 25'in dışında kalınca eşleşmiyor, randevu onaylanmıyordu.
+    /// Artık penceredeki TÜM giden mesajların yalnız kimliği ve telefonu okunur (telefon bellekte karşılaştırılır,
+    /// biçim farkları için <see cref="PhonesMatch"/>); eşleşen TEK satır sonra yüklenir.
+    /// </para>
+    /// </summary>
+    private async Task<WhatsAppMessage?> FindReplyTargetAsync(Guid tenantId, string fromPhone, CancellationToken ct)
     {
-        var since = DateTime.UtcNow.AddDays(-3);
-        var recentOutbound = await _db.WhatsAppMessages.IgnoreQueryFilters()
+        var since = DateTime.UtcNow - ReplyMatchWindow;
+        var candidates = await _db.WhatsAppMessages.IgnoreQueryFilters().AsNoTracking()
             .Where(m => m.TenantId == tenantId && m.Direction == WhatsAppMessageDirection.Outbound && m.CreatedAtUtc >= since)
-            .OrderByDescending(m => m.CreatedAtUtc).Take(25).ToListAsync(ct);
-        var match = recentOutbound.FirstOrDefault(m => PhonesMatch(m.Phone, fromPhone));
+            .OrderByDescending(m => m.CreatedAtUtc)
+            .Select(m => new { m.Id, m.Phone })
+            .ToListAsync(ct);
+        var hit = candidates.FirstOrDefault(c => PhonesMatch(c.Phone, fromPhone));
+        if (hit is null) return null;
+        return await _db.WhatsAppMessages.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(m => m.Id == hit.Id, ct);
+    }
+
+    /// <param name="repliesOnly">
+    /// true = yalnız BeautyAsist'in yakın zamanda mesaj gönderdiği numaranın YANITI kaydedilir (Chatwoot köprüsü:
+    /// gelen kutusu canlı destek hattı da olabilir; başka kişilerin konuşması kurumun mesaj kaydına KARIŞMAZ).
+    /// false = her gelen mesaj kaydedilir (kurumun kendi numarası; 24 saat penceresi bu kayda dayanır).
+    /// </param>
+    private async Task<InboundOutcome> ProcessInboundMessageAsync(Guid tenantId, string providerChannelId, string? providerMessageId, string fromPhone, string text, CancellationToken ct, bool repliesOnly = false)
+    {
+        var match = await FindReplyTargetAsync(tenantId, fromPhone, ct);
+        if (match is null && repliesOnly) return InboundOutcome.NotAReply;
 
         var intent = Interpret(text);
         var inbound = new WhatsAppMessage(
@@ -1225,10 +1280,10 @@ public sealed class WhatsAppService : IWhatsAppService
             _logger.LogInformation(
                 "[WhatsApp] Webhook zaten işlenmiş, tekrar teslim yok sayıldı ({Channel}/{Wamid}).",
                 providerChannelId, providerMessageId);
-            return;
+            return InboundOutcome.Duplicate;
         }
 
-        if (match is null || intent == WhatsAppReplyIntent.Unknown) return;
+        if (match is null || intent == WhatsAppReplyIntent.Unknown) return InboundOutcome.Recorded;
 
         // 0) KVKK açık rıza isteğine yanıt: son giden mesaj KVKK şablonuysa ve müşteri onayladıysa
         //    kayıt otomatik onaylanır (yönetici elle işaretlemek zorunda kalmaz).
@@ -1259,7 +1314,7 @@ public sealed class WhatsAppService : IWhatsAppService
                         ct: ct);
                 }
             }
-            return;
+            return InboundOutcome.Recorded;
         }
 
         // 1) Bekleme listesi teklifine yanıt.
@@ -1275,7 +1330,7 @@ public sealed class WhatsAppService : IWhatsAppService
                 var next = await _waitlist.DeclineOfferAsync(tenantId, waitlistId, ct);
                 if (next.IsSuccess && next.Value is { } nextId) await SendWaitlistOfferAsync(tenantId, nextId, ct);
             }
-            return;
+            return InboundOutcome.Recorded;
         }
 
         // 2) Randevu hatırlatmasına yanıt.
@@ -1283,7 +1338,7 @@ public sealed class WhatsAppService : IWhatsAppService
         {
             var appt = await _db.Appointments.IgnoreQueryFilters()
                 .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == apptId, ct);
-            if (appt is null) return;
+            if (appt is null) return InboundOutcome.Recorded;
 
             appt.SetCustomerConfirmation(intent switch
             {
@@ -1335,6 +1390,8 @@ public sealed class WhatsAppService : IWhatsAppService
                     ct: ct);
             }
         }
+
+        return InboundOutcome.Recorded;
     }
 
     /// <summary>

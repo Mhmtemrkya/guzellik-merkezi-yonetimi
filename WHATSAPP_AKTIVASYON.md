@@ -321,6 +321,28 @@ webhook'uyla ulaşır. Yanıt, Meta'dan gelmiş gibi aynı yoldan işlenir (`Pro
 yanıtları, özel notlar, ekler ve başka kanallar 200 alır ama yok sayılır. Tekilleştirme anahtarı Meta mesaj kimliğidir
 (wamid). Bu sayede Meta webhook'u ileride BeautyAsist'e de gelse aynı yanıt iki kez işlenmez.
 
+**Yalnız yanıtlar kaydedilir:** gelen kutusu 82 aynı zamanda Maydanoz'un canlı destek hattıdır. Köprü yalnız BeautyAsist'in
+son 3 günde mesaj gönderdiği numaraların yanıtlarını alır. Diğer konuşmalar (destek, fiyat sorusu) Chatwoot'ta kalır ve
+kurumun mesaj kaydına **yazılmaz**. Günlükte `numaraya son 3 günde BeautyAsist mesajı yok — konuşma Chatwoot'ta kaldı` görünür.
+
+**Günlük:** Chatwoot hesap webhook'unu **yeniden denemez**; kaçan ya da reddedilen yanıt kaybolur. Bu yüzden yok sayılan her
+olay nedeniyle loglanır. Neden yalnız yapısal bilgidir (olay, mesaj türü, kanal; metin ve telefon asla). Örnekler:
+`[Chatwoot] Olay yok sayıldı: telefon yok.` ve `… content_type=input_select.` Temsilci yanıtı ve özel not gibi beklenen
+gürültü Debug seviyesinde kalır.
+
+**İlk kurulumda adres anahtarı yolu:** imza biçimi Chatwoot kaynağıyla doğrulandı (`lib/webhooks/trigger.rb`:
+`sha256=` + hex HMAC-SHA256, `"{ts}.{gövde}"`, saniye cinsinden damga). Yine de sürüm farkı riskine karşı ilk kurulum
+`/api/whatsapp/chatwoot/<anahtar>` ile yapılır. İmzalı yola geçiş, imzalı bir olayın doğrulandığı görüldükten sonra yapılır.
+
+**Doğrulama kaydı (20 Kas, yerel):** yerel API'de gerçek HTTP istekleriyle denendi.
+- Doğru anahtar ve imza 200, yanlışlar 401.
+- Hatırlatmaya bağlı "Evet" randevuyu Onaylandı yaptı; aynı olay iki kez teslim edildi, bir kez yazıldı.
+- Destek mesajı kayda yazılmadı.
+- Başka kuruma aynı kutu bağlanınca 409 ve sahibinin adı döndü.
+
+**Eşleşme düzeltmesi (Meta yolu da):** yanıt eskiden kurumun yalnız son 25 giden mesajında aranıyordu. Toplu hatırlatmadan
+sonra müşterinin EVET'i eşleşmiyordu. Artık 3 günlük penceredeki tüm giden mesajlara bakılıyor (`FindReplyTargetAsync`).
+
 ### 8.2 Bilinen sınır — teslim durumu ve kontör (KARAR BEKLİYOR)
 
 BeautyAsist'in gönderdiği mesajların `delivered/read/failed` bildirimleri Chatwoot'a gider. Chatwoot bunları kendi

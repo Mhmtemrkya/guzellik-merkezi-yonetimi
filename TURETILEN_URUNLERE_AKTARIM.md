@@ -1173,7 +1173,14 @@ kullanır); 18 → 8 + 9 (ödeme yönlendirmesi ve Maydanoz Hesabım oturumu); 1
   - Tekilleştirme anahtarı `source_id` (wamid), yoksa `cw:{id}`. Meta webhook'u ileride BeautyAsist'e de gelirse aynı
     yanıt iki kez işlenmez.
   - Yalnız `message_created` + gelen (`incoming`/0) + özel değil + metin + `Channel::Whatsapp` işlenir. Gerisi 200 alır,
-    yok sayılır.
+    yok sayılır ve NEDENİYLE loglanır (`ChatwootWebhook.Read` → `ChatwootParseResult`). Neden yalnız yapısal bilgidir,
+    metin ve telefon girmez. Chatwoot yeniden denemediği için bu günlük tek teşhis kaynağıdır.
+  - **Yalnız yanıtlar:** `ProcessInboundMessageAsync(..., repliesOnly: true)`. BeautyAsist'in son 3 günde mesaj
+    göndermediği numaranın yazdıkları kurum kaydına girmez, çünkü gelen kutusu canlı destek hattı da olabilir. Meta yolu
+    `repliesOnly: false` ile her gelen mesajı yazmaya devam eder; 24 saat penceresi buna dayanır.
+  - **Eşleşme düzeltmesi (Meta yolu da):** `FindReplyTargetAsync` penceredeki TÜM giden mesajların kimlik+telefonunu okur.
+    Eskiden yalnız son 25 mesaja bakılıyordu ve toplu hatırlatmada EVET eşleşmiyordu.
+  - İmza biçimi Chatwoot kaynağıyla doğrulandı (`lib/webhooks/trigger.rb`). İlk kurulum yine de adres anahtarı yoluyla.
 - **Kimlik (iki yol, aynı platform anahtarı):** `POST /api/whatsapp/chatwoot` için `X-Chatwoot-Signature` =
   `sha256=` + HMAC-SHA256(anahtar, `"{X-Chatwoot-Timestamp}.{ham gövde}"`), damga en çok 5 dk. İmzasız Chatwoot
   sürümü için `POST /api/whatsapp/chatwoot/{anahtar}` (sabit zamanlı karşılaştırma). Anahtar yoksa fail-closed.
@@ -1194,12 +1201,14 @@ kullanır); 18 → 8 + 9 (ödeme yönlendirmesi ve Maydanoz Hesabım oturumu); 1
   - Web: `app/platform/whatsapp/page.tsx` (bağlama penceresi), `components/platform/PlatformMessagingSettings.tsx`,
     `lib/types.ts`
   - Mobil: değişiklik yok. Platform anahtarları ve bağlantı bağlama mobilde zaten yok (App Secret gibi).
-- **Testler:** `ChatwootBridgeTests` (24).
-  - İmza, damga ve adres anahtarı; ayrıştırma çeşitleri.
+- **Testler:** `ChatwootBridgeTests` (27).
+  - İmza, damga ve adres anahtarı; ayrıştırma çeşitleri; yok sayma nedenleri (arındırma ve kırpma dahil).
   - GERÇEK MySQL: EVET randevuyu onaylar; tekrar teslim bir kez işlenir; KVKK ONAYLIYORUM; adres anahtarı yolu;
     kimliksiz istek ve anahtarsız kurulum hiçbir satır yazmaz; bilinmeyen gelen kutusu yok sayılır; bağlama
     koru/kaldır/çakışma.
+  - Destek mesajı (BeautyAsist mesajı olmayan numara) yazılmaz; 30 sonraki giden mesaja rağmen EVET eşleşir.
   - Anahtar yalnız yazılır.
+  - Ayrıca yerel API'de gerçek HTTP ile denendi (ara katmanlar ve gövde okuma dahil).
 - **Tuzak — teslim durumu gelmez:** BeautyAsist'in gönderdiği mesajların `delivered/read/failed` bildirimleri Chatwoot'ta
   kalır. Kontörden düşülen mesajlar `SweepStaleReservationsAsync` ile 48 saatte iade edilir, yani kurum fiilen ödemez.
   Karar bekliyor (`WHATSAPP_AKTIVASYON.md` §8.2): (A) numaraya Meta webhook override + BeautyAsist'ten Chatwoot'a ham
