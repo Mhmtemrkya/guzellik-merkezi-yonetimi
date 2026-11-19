@@ -1213,8 +1213,10 @@ kullanır); 18 → 8 + 9 (ödeme yönlendirmesi ve Maydanoz Hesabım oturumu); 1
   kalır. Kontörden düşülen mesajlar `SweepStaleReservationsAsync` ile 48 saatte iade edilir, yani kurum fiilen ödemez.
   Karar bekliyor (`WHATSAPP_AKTIVASYON.md` §8.2): (A) numaraya Meta webhook override + BeautyAsist'ten Chatwoot'a ham
   iletim, ya da (B) Chatwoot modunda Meta'nın kabul ettiği mesaj kesin ücretlenir.
-- **Canlı:** backend + web, migration elle (önce yedek). Sonra Chatwoot webhook'u açılır, anahtar BeautyAsist'e girilir
-  ve gelen kutusu kuruma bağlanır.
+- **Canlı:** 20 Kas, `01bc520`. Backend + web yayınlandı, migration yedekten provadan sonra elle uygulandı, env değişmedi.
+  Chatwoot adresi API tabanından kurulur (`WhatsApp__PublicBaseUrl`, BeautyAsist'te
+  `https://maydanozasist.beautyasist.com/api/whatsapp/chatwoot/<anahtar>`). Sonra Chatwoot webhook'u açılır, anahtar
+  BeautyAsist'e girilir ve gelen kutusu kuruma bağlanır. Yayından sonra iki adres de sahte anahtarla 401 verdi.
 
 ### Ürüne göre değişenler (aktarmadan önce)
 
