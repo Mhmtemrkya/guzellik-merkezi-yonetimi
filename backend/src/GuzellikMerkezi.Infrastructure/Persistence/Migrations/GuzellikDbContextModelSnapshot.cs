@@ -2775,6 +2775,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("ChatwootWebhookSecretEncrypted")
+                        .HasColumnType("longtext");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -5651,6 +5654,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<string>("BusinessAccountId")
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
+
+                    b.Property<int?>("ChatwootInboxId")
+                        .HasColumnType("int");
 
                     b.Property<string>("ConnectionStatus")
                         .IsRequired()

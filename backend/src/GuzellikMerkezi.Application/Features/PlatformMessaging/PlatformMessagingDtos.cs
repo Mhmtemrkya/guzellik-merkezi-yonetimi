@@ -33,7 +33,9 @@ public sealed record PlatformIntegrationSettingsDto(
     bool HasIyzicoSecretKey = false,
     string? IyzicoBaseUrl = null,
     string? PaymentsReturnUrl = null,
-    bool PaymentsConfigured = false);
+    bool PaymentsConfigured = false,
+    // --- Chatwoot köprüsü --- anahtarın kendisi dönmez.
+    bool HasChatwootWebhookSecret = false);
 
 public sealed record SavePlatformMessagingRequest(
     bool SmsEnabled,
@@ -64,7 +66,10 @@ public sealed record SavePlatformMessagingRequest(
     string? IyzicoApiKey = null,
     string? IyzicoSecretKey = null,
     string? IyzicoBaseUrl = null,
-    string? PaymentsReturnUrl = null);
+    string? PaymentsReturnUrl = null,
+    // --- Chatwoot köprüsü --- boş = mevcut anahtar KORUNUR (bu alanı bilmeyen istemcinin tam
+    // değiştirmeli kaydı, ör. Maydanoz köprüsü, anahtarı silemez).
+    string? ChatwootWebhookSecret = null);
 
 public sealed record MessagingTestRequest(string Target);
 

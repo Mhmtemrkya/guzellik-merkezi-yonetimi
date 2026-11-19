@@ -141,6 +141,8 @@ function BindModal({ conn, onClose, onSaved }: { conn: ApiWhatsAppConnection; on
   const [waitlistActivatedTemplateName, setWaitlistActivatedTemplateName] = useState(conn.waitlistActivatedTemplateName ?? '')
   const [ratingTemplateName, setRatingTemplateName] = useState(conn.ratingTemplateName ?? '')
   const [templateLanguage, setTemplateLanguage] = useState(conn.templateLanguageCode || 'tr')
+  // Chatwoot köprüsü: boş = bağ yok (kaydederken 0 gider → sunucu bağı kaldırır).
+  const [chatwootInboxId, setChatwootInboxId] = useState(conn.chatwootInboxId ? String(conn.chatwootInboxId) : '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [testPhone, setTestPhone] = useState('')
@@ -148,6 +150,8 @@ function BindModal({ conn, onClose, onSaved }: { conn: ApiWhatsAppConnection; on
   const [testing, setTesting] = useState(false)
 
   const save = async () => {
+    const inboxText = chatwootInboxId.trim()
+    if (inboxText && !/^\d{1,9}$/.test(inboxText)) { setErr('Chatwoot gelen kutusu kimliği yalnız rakam olmalı.'); return }
     setBusy(true); setErr(null)
     try {
       await platformApi.bindWaConnection(conn.tenantId, {
@@ -164,6 +168,8 @@ function BindModal({ conn, onClose, onSaved }: { conn: ApiWhatsAppConnection; on
         waitlistActivatedTemplateName: waitlistActivatedTemplateName.trim(),
         ratingTemplateName: ratingTemplateName.trim(),
         templateLanguageCode: templateLanguage.trim() || 'tr',
+        // HER ZAMAN gönderilir: 0 = bağı kaldır (null gönderilseydi sunucu mevcut bağı korurdu).
+        chatwootInboxId: inboxText ? Number(inboxText) : 0,
       })
       onSaved()
     } catch (e) { setErr(e instanceof Error ? e.message : 'Kaydedilemedi.') } finally { setBusy(false) }
@@ -223,6 +229,21 @@ function BindModal({ conn, onClose, onSaved }: { conn: ApiWhatsAppConnection; on
             <Field label="Değerlendirme linki" value={ratingTemplateName} onChange={setRatingTemplateName} placeholder="degerlendirme" mono />
             <Field label="Dil kodu" value={templateLanguage} onChange={setTemplateLanguage} placeholder="tr" mono />
           </div>
+        </div>
+
+        {/* Chatwoot köprüsü — Meta webhook'u Chatwoot'tayken müşteri yanıtları buradan kuruma bağlanır. */}
+        <div className="space-y-1.5 rounded-lg border border-[#ecd9e1] bg-[#fbf7f9] p-2.5">
+          <Field label="Chatwoot gelen kutusu kimliği" value={chatwootInboxId} onChange={setChatwootInboxId} placeholder="opsiyonel, ör. 82" mono />
+          <p className="text-[10.5px] leading-relaxed text-[#6c5661]">
+            Meta webhook'u Chatwoot'a gidiyorsa müşteri yanıtları (EVET/HAYIR, ONAYLIYORUM) Chatwoot'tan okunur ve bu kuruma bağlanır.
+            Kimlik, Chatwoot'ta gelen kutusu ayarları adresindeki sayıdır (…/settings/inboxes/<b>82</b>). Boş bırakılırsa bağ kaldırılır.
+          </p>
+          {conn.webhookUrl && (
+            <p className="text-[10.5px] leading-relaxed text-[#6c5661]">
+              Chatwoot webhook adresi: <span className="break-all font-mono text-[#3f2d36]">{conn.webhookUrl.replace(/\/webhook$/, '/chatwoot')}</span>
+              {' '}— Chatwoot webhook'u imzalamıyorsa sonuna <span className="font-mono">/&lt;köprü anahtarı&gt;</span> eklenir (anahtar: Sistem Ayarları › WhatsApp).
+            </p>
+          )}
         </div>
 
         <div className="rounded-lg border border-[#ecd9e1] bg-[#fbf7f9] p-2.5">

@@ -802,6 +802,8 @@ deposuna göredir.
 | 16 — Şube silme | Aktarılmadı | — |
 | 17 — Kalıcı kurum silme bağlayıcısı | Aktarılmadı | — |
 | 18 — Maydanoz'a oturumlu geçiş + kredi yalnız yetkili | Aktarılmadı | — |
+| 19 — Köprü 2. dilim (destek, kurum profili, veritabanı, aylık değer) | Aktarılmadı | — |
+| 20 — WhatsApp yanıtları Chatwoot köprüsüyle | Aktarılmadı (ürünün numarası Chatwoot'taysa gerekir) | — |
 
 Bir paket aktarılınca bu tabloyu tarih ve commit ile güncelleyin.
 
@@ -811,6 +813,7 @@ Bir paket aktarılınca bu tabloyu tarih ve commit ile güncelleyin.
 - **18 Kas 2026:** paket 7–17 (Maydanoz entegrasyonu, §12) eklendi; reçetenin Maydanoz tarafı `ASIST_ENTEGRASYONU.md` §0.
 - **18 Kas 2026 (akşam):** paket 18 (panelden Maydanoz'a oturumlu geçiş; Maydanoz'da mesaj kredisi yalnız kurum yetkilisi).
 - **19 Kas 2026:** paket 19 (Maydanoz admin paneli Asist verisini okur: destek, kurum profili, veritabanı izleme, aylık değer).
+- **20 Kas 2026:** paket 20 (WhatsApp müşteri yanıtları Chatwoot webhook'undan; teslim durumu/kontör kararı açık).
 - BeautyAsist'te yeni bir iş bitince buraya yeni bir paket olarak ekleyin. Her pakete kural, şema, dosyalar, testler,
   tuzaklar ve canlı notlarını yazın.
 
@@ -1157,6 +1160,52 @@ kullanır); 18 → 8 + 9 (ödeme yönlendirmesi ve Maydanoz Hesabım oturumu); 1
 - **Tuzaklar:** yeni bağlayıcı alanı eklerken `ConnectorQueriesTests`'teki alan listesi bilerek kırılır (kişisel veri
   sızmasın); yedek klasörü root'a aitse (700) uygulama listeleyemez → ekran "okunamıyor" der, uydurmaz.
 - **Canlı:** yalnız backend (`9322454`, migration ve env değişikliği yok; `platform.manage` kapsamı yeterli).
+
+### Paket 20 — WhatsApp yanıtları Chatwoot köprüsüyle (20 Kas)
+
+- **Kullanıcının kararı:** müşteri yanıtları "chatwoot tan okuyacak şekilde yapalım". Meta webhook'u canlı destek için
+  Chatwoot'ta kalır; BeautyAsist yanıtları Chatwoot'un hesap webhook'undan (`message_created`) okur.
+- **Kural:** Chatwoot olayı, Meta'dan gelmiş gibi AYNI yoldan işlenir (`WhatsAppService.ProcessInboundMessageAsync`):
+  tekilleştirme, 24 saat penceresi ve niyet (EVET/HAYIR/ERTELE, KVKK ONAYLIYORUM, bekleme EVET) aynıdır.
+  - Kurum, gelen kutusu kimliğinden bulunur. Sıra: `inbox.id` → `conversation.inbox_id` → `inbox_id`, eşleşme
+    `WhatsAppSettings.ChatwootInboxId` ile yapılır.
+  - Telefon önce `conversation.contact_inbox.source_id` alanından (wa_id) okunur, yoksa `sender.phone_number` alanından.
+  - Tekilleştirme anahtarı `source_id` (wamid), yoksa `cw:{id}`. Meta webhook'u ileride BeautyAsist'e de gelirse aynı
+    yanıt iki kez işlenmez.
+  - Yalnız `message_created` + gelen (`incoming`/0) + özel değil + metin + `Channel::Whatsapp` işlenir. Gerisi 200 alır,
+    yok sayılır.
+- **Kimlik (iki yol, aynı platform anahtarı):** `POST /api/whatsapp/chatwoot` için `X-Chatwoot-Signature` =
+  `sha256=` + HMAC-SHA256(anahtar, `"{X-Chatwoot-Timestamp}.{ham gövde}"`), damga en çok 5 dk. İmzasız Chatwoot
+  sürümü için `POST /api/whatsapp/chatwoot/{anahtar}` (sabit zamanlı karşılaştırma). Anahtar yoksa fail-closed.
+  Yanıt kodları: 401 kimlik yok; 200 işlendi ya da yok sayıldı; 413 gövde 256 KB üstü.
+- **Şema:** migration `20261119212259_ChatwootBridge`. `whatsapp_settings.ChatwootInboxId` (int null) ve
+  `platform_integration_settings.ChatwootWebhookSecretEncrypted` (longtext, AES-GCM şifreli).
+- **Ayar kuralları:**
+  - Anahtar yalnız yazılır; DTO yalnız `HasChatwootWebhookSecret` döner. Boş kayıt mevcut anahtarı KORUR, böylece
+    Maydanoz köprüsünün tam değiştirmeli kaydı anahtarı silemez.
+  - Bağlama isteğinde `ChatwootInboxId`: null = koru, 0 = kaldır. Başka kurumdaki gelen kutusu 409 Conflict döner.
+  - Web'deki "Üret" düğmesi `crypto.getRandomValues` ile 32 bayt base64url anahtar üretir.
+- **Dosyalar:**
+  - `Infrastructure/Services/ChatwootWebhook.cs` (saf `IsAuthorized` + `Parse`)
+  - `WhatsAppService.HandleChatwootInboundAsync`, `IWhatsAppService`
+  - `WhatsAppEndpoints.cs` (`ReadLimitedBodyAsync` Meta ucuyla ortak)
+  - `WhatsAppSettings.SetChatwootInbox`, `PlatformIntegrationSettings.UpdateChatwootBridge`
+  - DTO'lar, `PlatformMessagingService`
+  - Web: `app/platform/whatsapp/page.tsx` (bağlama penceresi), `components/platform/PlatformMessagingSettings.tsx`,
+    `lib/types.ts`
+  - Mobil: değişiklik yok. Platform anahtarları ve bağlantı bağlama mobilde zaten yok (App Secret gibi).
+- **Testler:** `ChatwootBridgeTests` (24).
+  - İmza, damga ve adres anahtarı; ayrıştırma çeşitleri.
+  - GERÇEK MySQL: EVET randevuyu onaylar; tekrar teslim bir kez işlenir; KVKK ONAYLIYORUM; adres anahtarı yolu;
+    kimliksiz istek ve anahtarsız kurulum hiçbir satır yazmaz; bilinmeyen gelen kutusu yok sayılır; bağlama
+    koru/kaldır/çakışma.
+  - Anahtar yalnız yazılır.
+- **Tuzak — teslim durumu gelmez:** BeautyAsist'in gönderdiği mesajların `delivered/read/failed` bildirimleri Chatwoot'ta
+  kalır. Kontörden düşülen mesajlar `SweepStaleReservationsAsync` ile 48 saatte iade edilir, yani kurum fiilen ödemez.
+  Karar bekliyor (`WHATSAPP_AKTIVASYON.md` §8.2): (A) numaraya Meta webhook override + BeautyAsist'ten Chatwoot'a ham
+  iletim, ya da (B) Chatwoot modunda Meta'nın kabul ettiği mesaj kesin ücretlenir.
+- **Canlı:** backend + web, migration elle (önce yedek). Sonra Chatwoot webhook'u açılır, anahtar BeautyAsist'e girilir
+  ve gelen kutusu kuruma bağlanır.
 
 ### Ürüne göre değişenler (aktarmadan önce)
 

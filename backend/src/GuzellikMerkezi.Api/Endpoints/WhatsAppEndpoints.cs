@@ -111,25 +111,57 @@ public static class WhatsAppEndpoints
 
         hook.MapPost("/webhook", async (HttpContext http, IWhatsAppService service, CancellationToken ct) =>
         {
-            // Content-Length beyanı varsa erken reddet; yoksa okurken kes.
-            if (http.Request.ContentLength is > MaxWebhookBodyBytes) return Results.StatusCode(413);
-
-            using var limited = new MemoryStream();
-            var buffer = new byte[8 * 1024];
-            int read;
-            while ((read = await http.Request.Body.ReadAsync(buffer, ct)) > 0)
-            {
-                if (limited.Length + read > MaxWebhookBodyBytes) return Results.StatusCode(413);
-                limited.Write(buffer, 0, read);
-            }
-
-            var body = System.Text.Encoding.UTF8.GetString(limited.ToArray());
+            var body = await ReadLimitedBodyAsync(http, MaxWebhookBodyBytes, ct);
+            if (body is null) return Results.StatusCode(413);
             // GÜVENLİK: imza servis içinde app secret ile doğrulanır (fail-closed); geçersizse gövde işlenmez.
             var signature = http.Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
             await service.HandleInboundAsync(body, signature, ct);
             return Results.Ok(); // Meta'ya her zaman 200 dönmeli (yoksa yeniden dener)
         }).AllowAnonymous();
 
+        // --- Chatwoot köprüsü (anonim; Chatwoot çağırır) ---
+        // Meta webhook'u Chatwoot'a gittiği için müşteri yanıtları buradan gelir. İki adres, AYNI platform anahtarı:
+        //   /api/whatsapp/chatwoot          → Chatwoot webhook'u imzalıyorsa (X-Chatwoot-Signature + X-Chatwoot-Timestamp)
+        //   /api/whatsapp/chatwoot/{anahtar} → imzalamıyorsa (eski sürüm); anahtar adresin içinde
+        // Kimlik doğrulanamazsa 401; doğrulanan her istek (işlenmese de) 200 — Chatwoot boşuna yeniden denemesin.
+        static async Task<IResult> ChatwootAsync(HttpContext http, IWhatsAppService service, string? pathToken, CancellationToken ct)
+        {
+            var body = await ReadLimitedBodyAsync(http, MaxWebhookBodyBytes, ct);
+            if (body is null) return Results.StatusCode(413);
+            var accepted = await service.HandleChatwootInboundAsync(
+                body,
+                pathToken,
+                http.Request.Headers["X-Chatwoot-Signature"].FirstOrDefault(),
+                http.Request.Headers["X-Chatwoot-Timestamp"].FirstOrDefault(),
+                ct);
+            return accepted ? Results.Ok() : Results.StatusCode(401);
+        }
+
+        hook.MapPost("/chatwoot", (HttpContext http, IWhatsAppService service, CancellationToken ct) =>
+            ChatwootAsync(http, service, null, ct)).AllowAnonymous();
+        hook.MapPost("/chatwoot/{token}", (string token, HttpContext http, IWhatsAppService service, CancellationToken ct) =>
+            ChatwootAsync(http, service, token, ct)).AllowAnonymous();
+
         return app;
+    }
+
+    /// <summary>
+    /// Anonim uç gövdesini en çok <paramref name="maxBytes"/> okur; aşarsa <c>null</c> (413). Content-Length beyanı
+    /// varsa erken reddedilir, yoksa okurken kesilir — tek istekle bellek tüketilemez.
+    /// </summary>
+    private static async Task<string?> ReadLimitedBodyAsync(HttpContext http, int maxBytes, CancellationToken ct)
+    {
+        if (http.Request.ContentLength is { } declared && declared > maxBytes) return null;
+
+        using var limited = new MemoryStream();
+        var buffer = new byte[8 * 1024];
+        int read;
+        while ((read = await http.Request.Body.ReadAsync(buffer, ct)) > 0)
+        {
+            if (limited.Length + read > maxBytes) return null;
+            limited.Write(buffer, 0, read);
+        }
+
+        return System.Text.Encoding.UTF8.GetString(limited.ToArray());
     }
 }

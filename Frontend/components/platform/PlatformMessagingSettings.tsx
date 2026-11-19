@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MessageSquare, MessageCircle, Mail, Loader2, Check, Send, ShieldCheck, Info, CreditCard } from 'lucide-react'
+import { MessageSquare, MessageCircle, Mail, Loader2, Check, Send, ShieldCheck, Info, CreditCard, Copy } from 'lucide-react'
 import { useApiQuery } from '@/hooks/useApiQuery'
 import { platformApi } from '@/lib/apiClient'
 import type { ApiPlatformMessagingSettings, ApiMessagingTestResult } from '@/lib/types'
@@ -10,6 +10,16 @@ const card = 'border border-[#fff4f8]/15 bg-[#fff4f8]/[0.025]'
 const inputCls =
   'w-full border border-[#fff4f8]/15 bg-[#fff4f8]/[0.03] px-3 py-2 text-[13px] text-[#fff4f8] outline-none transition focus:border-[#fff4f8]/40 placeholder:text-[#fff4f8]/25'
 const labelCls = 'mb-1 block text-[10px] font-mono uppercase tracking-widest text-[#fff4f8]/40'
+
+/**
+ * Chatwoot köprüsü için 32 baytlık rastgele anahtar (base64url — webhook adresinin yolunda kaçış gerektirmez).
+ * Tarayıcının kriptografik üreticisi kullanılır; Math.random tahmin edilebilir.
+ */
+function randomBridgeKey(): string {
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
 
 function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
   return (
@@ -43,7 +53,7 @@ export default function PlatformMessagingSettings() {
 
   const [sms, setSms] = useState({ enabled: false, provider: 'Verimor', apiKey: '', apiSecret: '', sender: '', apiUrl: '' })
   const [email, setEmail] = useState({ enabled: false, fromAddress: '', fromName: '', host: '', port: 587, username: '', password: '', useSsl: true })
-  const [whatsApp, setWhatsApp] = useState({ enabled: false, phoneNumberId: '', accessToken: '', businessAccountId: '', appSecret: '', verifyToken: '' })
+  const [whatsApp, setWhatsApp] = useState({ enabled: false, phoneNumberId: '', accessToken: '', businessAccountId: '', appSecret: '', verifyToken: '', chatwootSecret: '' })
   const [payments, setPayments] = useState({ enabled: false, provider: 'Simulation', apiKey: '', secretKey: '', baseUrl: '', returnUrl: '' })
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -56,6 +66,18 @@ export default function PlatformMessagingSettings() {
   const [testingSms, setTestingSms] = useState(false)
   const [testingEmail, setTestingEmail] = useState(false)
   const [testingWhatsApp, setTestingWhatsApp] = useState(false)
+  // Üretilen köprü anahtarı Chatwoot adresine eklenecek: kaydedilene kadar GÖRÜNÜR ve kopyalanabilir
+  // (kayıttan sonra sunucu yalnız "kayıtlı" der, anahtar bir daha gösterilmez).
+  const [chatwootKeyVisible, setChatwootKeyVisible] = useState(false)
+  const [chatwootCopied, setChatwootCopied] = useState(false)
+
+  const copyChatwootKey = async () => {
+    try {
+      await navigator.clipboard.writeText(whatsApp.chatwootSecret)
+      setChatwootCopied(true)
+      setTimeout(() => setChatwootCopied(false), 2000)
+    } catch { /* pano izni yoksa alan zaten görünür: elle seçilip kopyalanır */ }
+  }
 
   useEffect(() => {
     if (!data) return
@@ -73,11 +95,14 @@ export default function PlatformMessagingSettings() {
         emailEnabled: email.enabled, emailFromAddress: email.fromAddress || null, emailFromName: email.fromName || null, smtpHost: email.host || null, smtpPort: Number(email.port) || 587, smtpUsername: email.username || null, smtpPassword: email.password || null, smtpUseSsl: email.useSsl,
         whatsAppEnabled: whatsApp.enabled, whatsAppProvider: 'Meta', whatsAppPhoneNumberId: whatsApp.phoneNumberId || null, whatsAppAccessToken: whatsApp.accessToken || null, whatsAppBusinessAccountId: whatsApp.businessAccountId || null,
         whatsAppAppSecret: whatsApp.appSecret || null, whatsAppVerifyToken: whatsApp.verifyToken || null,
+        // Chatwoot köprüsü anahtarı: boş = mevcut KORUNUR (yalnız yazılır, hiç geri okunmaz).
+        chatwootWebhookSecret: whatsApp.chatwootSecret.trim() || null,
         paymentsEnabled: payments.enabled, paymentProvider: payments.provider,
         iyzicoApiKey: payments.apiKey || null, iyzicoSecretKey: payments.secretKey || null,
         iyzicoBaseUrl: payments.baseUrl || null, paymentsReturnUrl: payments.returnUrl || null,
       })
-      setSms((s) => ({ ...s, apiKey: '', apiSecret: '' })); setEmail((e) => ({ ...e, password: '' })); setWhatsApp((w) => ({ ...w, accessToken: '', appSecret: '' }))
+      setSms((s) => ({ ...s, apiKey: '', apiSecret: '' })); setEmail((e) => ({ ...e, password: '' })); setWhatsApp((w) => ({ ...w, accessToken: '', appSecret: '', chatwootSecret: '' }))
+      setChatwootKeyVisible(false)
       setPayments((p) => ({ ...p, apiKey: '', secretKey: '' }))
       setSaved(true); await reload(); setTimeout(() => setSaved(false), 2500)
     } finally { setBusy(false) }
@@ -249,6 +274,27 @@ export default function PlatformMessagingSettings() {
             <p className="text-[10.5px] leading-snug text-[#fff4f8]/40">
               Tek Business Manager modeli: buradaki token tüm kurumların numaralarına gönderim yapar. Kurum başına numara bağlama <b>WhatsApp Yönetimi</b> sayfasındadır.
             </p>
+            {/* CHATWOOT KÖPRÜSÜ — Meta webhook'u Chatwoot'tayken müşteri yanıtları Chatwoot'un webhook'uyla gelir. */}
+            <div className="space-y-1.5 border-t border-[#fff4f8]/10 pt-3">
+              <label className={labelCls}>Chatwoot köprüsü anahtarı {data?.hasChatwootWebhookSecret && <span className="text-emerald-300/80">· kayıtlı</span>}</label>
+              <div className="flex gap-2">
+                <input type={chatwootKeyVisible ? 'text' : 'password'} value={whatsApp.chatwootSecret} onChange={(e) => setWhatsApp((w) => ({ ...w, chatwootSecret: e.target.value }))}
+                  placeholder={data?.hasChatwootWebhookSecret ? 'değiştirmek için yaz' : "Chatwoot webhook secret'ı ya da Üret"} className={`${inputCls} font-mono`} autoComplete="off" spellCheck={false} />
+                <button type="button" onClick={() => { setWhatsApp((w) => ({ ...w, chatwootSecret: randomBridgeKey() })); setChatwootKeyVisible(true); setChatwootCopied(false) }}
+                  className="shrink-0 border border-[#fff4f8]/20 bg-[#fff4f8]/[0.05] px-3 text-[12px] text-[#fff4f8] transition hover:bg-[#fff4f8]/10">Üret</button>
+                {chatwootKeyVisible && whatsApp.chatwootSecret && (
+                  <button type="button" onClick={copyChatwootKey}
+                    className="flex shrink-0 items-center gap-1 border border-[#fff4f8]/20 bg-[#fff4f8]/[0.05] px-3 text-[12px] text-[#fff4f8] transition hover:bg-[#fff4f8]/10">
+                    {chatwootCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {chatwootCopied ? 'Kopyalandı' : 'Kopyala'}
+                  </button>
+                )}
+              </div>
+              <p className="text-[10.5px] leading-snug text-[#fff4f8]/40">
+                Müşteri yanıtları (EVET/HAYIR, ONAYLIYORUM) Chatwoot'tan okunur. Chatwoot'ta yalnız <b>Mesaj Oluşturuldu</b> olayına abone bir webhook açın.
+                Webhook imzalıysa buraya Chatwoot'un secret'ını yazın; imzasızsa <b>Üret</b> ile anahtar oluşturup kopyalayın ve adresin sonuna ekleyin.
+                Tam adres <b>WhatsApp Yönetimi › Bağlantılar</b> penceresinde görünür. Anahtar kaydedildikten sonra bir daha gösterilmez; anahtar yoksa köprü hiçbir isteği işlemez.
+              </p>
+            </div>
             <div className="border-t border-[#fff4f8]/10 pt-3">
               <label className={labelCls}>Test WhatsApp mesajı</label>
               <div className="flex gap-2">

@@ -65,6 +65,8 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         s.UpdateSms(r.SmsEnabled, r.SmsProvider, smsKeyEnc, smsSecretEnc, r.SmsSender, r.SmsApiUrl);
         s.UpdateEmail(r.EmailEnabled, r.EmailFromAddress, r.EmailFromName, r.SmtpHost, r.SmtpPort, r.SmtpUsername, smtpPwEnc, r.SmtpUseSsl);
         s.UpdateWhatsApp(r.WhatsAppEnabled, r.WhatsAppProvider, r.WhatsAppPhoneNumberId, waTokenEnc, r.WhatsAppBusinessAccountId, waSecretEnc, r.WhatsAppVerifyToken);
+        // Chatwoot köprüsü anahtarı: boş = KORU (alanı bilmeyen tam değiştirmeli kayıt anahtarı silemez).
+        s.UpdateChatwootBridge(string.IsNullOrWhiteSpace(r.ChatwootWebhookSecret) ? null : _encryption.Encrypt(r.ChatwootWebhookSecret!.Trim()));
         var iyzKeyEnc = string.IsNullOrWhiteSpace(r.IyzicoApiKey) ? null : _encryption.Encrypt(r.IyzicoApiKey!.Trim());
         var iyzSecretEnc = string.IsNullOrWhiteSpace(r.IyzicoSecretKey) ? null : _encryption.Encrypt(r.IyzicoSecretKey!.Trim());
         s.UpdatePayments(r.PaymentsEnabled, r.PaymentProvider, iyzKeyEnc, iyzSecretEnc, r.IyzicoBaseUrl, r.PaymentsReturnUrl);
@@ -392,7 +394,8 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
             !string.IsNullOrWhiteSpace(s.WhatsAppAppSecretEncrypted), s.WhatsAppVerifyToken,
             s.PaymentsEnabled, s.PaymentProvider,
             !string.IsNullOrWhiteSpace(s.IyzicoApiKeyEncrypted), !string.IsNullOrWhiteSpace(s.IyzicoSecretKeyEncrypted),
-            s.IyzicoBaseUrl, s.PaymentsReturnUrl, s.PaymentsConfigured);
+            s.IyzicoBaseUrl, s.PaymentsReturnUrl, s.PaymentsConfigured,
+            HasChatwootWebhookSecret: !string.IsNullOrWhiteSpace(s.ChatwootWebhookSecretEncrypted));
     }
 
     private static string NormalizePhone(string? p) => new string((p ?? string.Empty).Where(char.IsDigit).ToArray());

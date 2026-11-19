@@ -32,6 +32,12 @@ public sealed class WhatsAppSettings : Entity
     public string? AccessTokenEncrypted { get; private set; }
     public string? VerifyToken { get; private set; }
     public string Provider { get; private set; } = "Meta";
+    /// <summary>
+    /// Chatwoot köprüsü: bu numaranın Chatwoot'taki gelen kutusu kimliği. Meta webhook'u Chatwoot'a
+    /// gittiğinde müşteri yanıtları (EVET/HAYIR/ONAYLIYORUM) Chatwoot'un webhook'uyla gelir; olaydaki
+    /// gelen kutusu kimliği kurumu bulmanın TEK yoludur (Chatwoot yükü işletme numarasını taşımaz).
+    /// </summary>
+    public int? ChatwootInboxId { get; private set; }
 
     // --- İçerik (KURUM yönetir) ---
     public string? ReminderTemplate { get; private set; }
@@ -108,6 +114,13 @@ public sealed class WhatsAppSettings : Entity
     public void SetAccessTokenOverride(string? accessTokenEncrypted)
     {
         if (accessTokenEncrypted is not null) AccessTokenEncrypted = accessTokenEncrypted;
+        Touch();
+    }
+
+    /// <summary>PLATFORM: Chatwoot gelen kutusu kimliği; 0 ya da negatif = bağı kaldır.</summary>
+    public void SetChatwootInbox(int inboxId)
+    {
+        ChatwootInboxId = inboxId > 0 ? inboxId : null;
         Touch();
     }
 

@@ -94,7 +94,9 @@ public sealed record WhatsAppConnectionDto(
     string TemplateLanguageCode = "tr",
     string? WaitlistOfferTemplateName = null,
     string? WaitlistActivatedTemplateName = null,
-    string? RatingTemplateName = null);
+    string? RatingTemplateName = null,
+    // Chatwoot köprüsü: müşteri yanıtları Chatwoot'tan okunurken kurumu bulan gelen kutusu kimliği.
+    int? ChatwootInboxId = null);
 
 /// <summary>
 /// Platform: kurum numarasını bağlar. Şablon adlarında <c>null</c> = MEVCUT korunur (alanları bilmeyen
@@ -112,7 +114,9 @@ public sealed record BindWhatsAppConnectionRequest(
     string? TemplateLanguageCode = null,
     string? WaitlistOfferTemplateName = null,
     string? WaitlistActivatedTemplateName = null,
-    string? RatingTemplateName = null);
+    string? RatingTemplateName = null,
+    // Chatwoot gelen kutusu kimliği: null = MEVCUT korunur, 0 = bağı kaldır.
+    int? ChatwootInboxId = null);
 
 /// <summary>
 /// Hediye kartı gönderimi. <paramref name="PdfBase64"/> istemcide üretilen kartın PDF'idir

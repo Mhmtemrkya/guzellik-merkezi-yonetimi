@@ -1706,6 +1706,8 @@ export interface ApiPlatformMessagingSettings {
   whatsAppConfigured?: boolean
   hasWhatsAppAppSecret?: boolean
   whatsAppVerifyToken?: string | null
+  /** Chatwoot köprüsü anahtarı tanımlı mı (anahtarın kendisi hiç dönmez). */
+  hasChatwootWebhookSecret?: boolean
   // Ödeme (iyzico) — anahtarların KENDİSİ dönmez, yalnız "tanımlı mı" bilgisi döner.
   paymentsEnabled?: boolean
   paymentProvider?: string
@@ -1972,6 +1974,8 @@ export interface ApiWhatsAppConnection {
   waitlistOfferTemplateName?: string | null
   waitlistActivatedTemplateName?: string | null
   ratingTemplateName?: string | null
+  /** Chatwoot köprüsü: müşteri yanıtlarını bu kuruma bağlayan Chatwoot gelen kutusu kimliği. */
+  chatwootInboxId?: number | null
 }
 
 /** Platform listesindeki satır: kurum + paketi + kendi SMS hesabı bağlantısı. */

@@ -286,3 +286,53 @@ tipi eklenir.
 - Kalıcı iş kuyruğu (`background_jobs`) dead-letter satırları Platform → Sistem sayfasında görünür.
 - Meta fatura kategorileri: Utility ≈ ₺0,04 · Marketing ≈ ₺0,52 (fiyatlar `WhatsAppPricingRule` tablosunda,
   koda gömülü değil — 1 Eki 2026 zammı için ileri tarihli satır eklenebilir).
+
+---
+
+## 8. Chatwoot köprüsü — webhook Chatwoot'tayken müşteri yanıtları (20 Kas 2026)
+
+**Neden:** platform numarası (+90 850 242 84 25) canlı destek için Chatwoot'a (`chatdash.sophy.co`, gelen kutusu 82)
+bağlı ve Meta webhook'u Chatwoot'a gidiyor. Meta bir numaranın olaylarını **tek** adrese yollar. Bu yüzden müşteri
+yanıtları (randevu EVET/HAYIR/ERTELE, KVKK ONAYLIYORUM, bekleme listesi EVET) BeautyAsist'e Chatwoot'un hesap
+webhook'uyla ulaşır. Yanıt, Meta'dan gelmiş gibi aynı yoldan işlenir (`ProcessInboundMessageAsync`): tekilleştirme,
+24 saat penceresi ve niyet aynıdır.
+
+### 8.1 Kurulum (sırayla)
+
+1. **Yayın:** BeautyAsist backend + web. Migration `ChatwootBridge` elle uygulanır (önce DB yedeği).
+2. **Anahtar:** Platform › Sistem Ayarları › WhatsApp Altyapısı › **Chatwoot köprüsü anahtarı**. Chatwoot sürümüne göre:
+   - **İmzalı webhook:** Chatwoot webhook formu bir gizli anahtar (secret) gösteriyorsa onu buraya yapıştırın.
+     Chatwoot'taki adres `https://<API>/api/whatsapp/chatwoot` olur. Doğrulama `X-Chatwoot-Signature` ile yapılır:
+     `sha256=` + HMAC-SHA256(anahtar, `"{X-Chatwoot-Timestamp}.{ham gövde}"`). Zaman damgası 5 dakikadan eskiyse reddedilir.
+   - **İmzasız webhook (eski sürüm):** **Üret** → Kaydet. Chatwoot'taki adres `https://<API>/api/whatsapp/chatwoot/<anahtar>`
+     olur. Anahtar adresin içindedir, Chatwoot ayarlarını görebilen herkes görebilir: adresi paylaşmayın.
+   - Anahtar yoksa köprü **hiçbir** isteği işlemez (fail-closed, 401).
+3. **Chatwoot webhook'u:** Ayarlar › Entegrasyonlar › Webhook'lar › yeni webhook. Yalnız **Mesaj oluşturuldu**
+   (`message_created`) seçilir.
+4. **Kurum bağı:** Platform › WhatsApp › Bağlantılar › kurum › **Chatwoot gelen kutusu kimliği** = 82 → Kaydet. Kimlik,
+   Chatwoot'taki gelen kutusu ayar adresindeki sayıdır (`…/settings/inboxes/82`). Bir gelen kutusu yalnız bir kuruma
+   bağlanabilir; alan boş kaydedilirse bağ kaldırılır.
+5. **Doğrulama:** randevuya "Hatırlat" → test telefonundan "EVET" → randevu **Onaylandı** olmalı. Ayrıca Kurum › WhatsApp
+   › Mesajlar'da **Inbound** satırı görünmeli. Sunucu logunda `[Chatwoot] Gelen kutusu 82 → kurum …: müşteri yanıtı işlendi`
+   satırı çıkar. 401 görünüyorsa anahtar ya da adres uyuşmuyordur.
+   - KVKK: ONAYLIYORUM yalnız o müşteriye giden **son** mesaj KVKK isteğiyse rıza sayılır (mevcut kural).
+
+**İşlenenler ve yok sayılanlar:** yalnız WhatsApp kanalından **gelen**, herkese açık **metin** mesajları işlenir. Temsilci
+yanıtları, özel notlar, ekler ve başka kanallar 200 alır ama yok sayılır. Tekilleştirme anahtarı Meta mesaj kimliğidir
+(wamid). Bu sayede Meta webhook'u ileride BeautyAsist'e de gelse aynı yanıt iki kez işlenmez.
+
+### 8.2 Bilinen sınır — teslim durumu ve kontör (KARAR BEKLİYOR)
+
+BeautyAsist'in gönderdiği mesajların `delivered/read/failed` bildirimleri Chatwoot'a gider. Chatwoot bunları kendi
+mesajı olmadığı için yok sayar; köprü bunları taşıyamaz. Sonuçları:
+
+- Mesajlar BeautyAsist'te `Sent` kalır; "Teslim edildi/Okundu" görünmez. Meta'nın sonradan gelen hata bildirimi
+  (ör. numara WhatsApp'ta yok) görülmez.
+- **Kontörden (Wallet) düşülen mesajlar 48 saat sonra iade edilir.** Kural `WhatsAppBillingService.SweepStaleReservationsAsync`
+  içindedir: `DeliveredAtUtc == null` olan mesaj iade edilir. Paket kotasından gidenler etkilenmez. Bu kurulumda kurumlar
+  kontörlü WhatsApp'ı fiilen ücretsiz kullanır, Meta ücretini platform öder.
+- Çözüm seçenekleri:
+  - **(A)** Numaraya Meta **webhook override** tanımlanır ve adres BeautyAsist olur. BeautyAsist ham olayı imza başlığıyla
+    birlikte Chatwoot'a iletir; bütün durumlar gelir.
+  - **(B)** Webhook Chatwoot'ta kalır, ama "Chatwoot modunda" Meta'nın kabul ettiği (wamid alınmış) mesaj kesin
+    ücretlenir. Teslim edilemeyen az sayıda mesaj da ücretlenir.

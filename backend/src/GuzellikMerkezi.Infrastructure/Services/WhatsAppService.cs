@@ -179,7 +179,27 @@ public sealed class WhatsAppService : IWhatsAppService
             if (clash) return Result<WhatsAppConnectionDto>.Failure(Error.Conflict("Bu numara (phone_number_id) başka bir kuruma bağlı."));
         }
 
+        // Chatwoot gelen kutusu da tekildir: köprü kurumu YALNIZ bu kimlikle bulur.
+        if (request.ChatwootInboxId is > 0 and var inboxId)
+        {
+            var inboxOwner = await _db.WhatsAppSettings.IgnoreQueryFilters().AsNoTracking()
+                .Where(x => x.TenantId != tenantId && !x.IsDeleted && x.ChatwootInboxId == inboxId)
+                .Select(x => (Guid?)x.TenantId)
+                .FirstOrDefaultAsync(ct);
+            if (inboxOwner is { } ownerId)
+            {
+                // Yalnız platform yöneticisi bağlar ve tüm kurumları zaten görür: adı yazmak bağın nerede
+                // kaldırılacağını gösterir (silinmekte olan kurum listede görünmeyebilir).
+                var ownerName = await _db.Tenants.IgnoreQueryFilters().AsNoTracking()
+                    .Where(t => t.Id == ownerId).Select(t => t.Name).FirstOrDefaultAsync(ct);
+                return Result<WhatsAppConnectionDto>.Failure(Error.Conflict(
+                    $"Bu Chatwoot gelen kutusu başka bir kuruma bağlı ({ownerName ?? "bilinmeyen kurum"}). Önce oradaki bağı kaldırın."));
+            }
+        }
+
         s.BindConnection(request.PhoneNumberId, request.BusinessAccountId, request.DisplayPhoneNumber, status, request.VerifyToken);
+        // null = MEVCUT korunur (alanı bilmeyen istemci bağı silmesin); 0 = kaldır.
+        if (request.ChatwootInboxId is { } chatwootInbox) s.SetChatwootInbox(chatwootInbox);
         if (request.AccessTokenOverride is not null)
         {
             var enc = string.IsNullOrWhiteSpace(request.AccessTokenOverride) ? null : _encryption.Encrypt(request.AccessTokenOverride.Trim());
@@ -217,7 +237,8 @@ public sealed class WhatsAppService : IWhatsAppService
             s?.TemplateLanguageCode ?? "tr",
             s?.WaitlistOfferTemplateName,
             s?.WaitlistActivatedTemplateName,
-            s?.RatingTemplateName);
+            s?.RatingTemplateName,
+            s?.ChatwootInboxId);
 
     public async Task<Result<ReminderResultDto>> SendTestMessageAsync(Guid tenantId, SendTestMessageRequest request, CancellationToken ct = default)
     {
@@ -1055,6 +1076,44 @@ public sealed class WhatsAppService : IWhatsAppService
                 }
             }
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> HandleChatwootInboundAsync(string payloadJson, string? pathToken, string? signatureHeader, string? timestampHeader, CancellationToken ct = default)
+    {
+        // FAIL-CLOSED: anahtar yoksa hiçbir istek işlenmez (yanıt randevu iptal edebilir, KVKK onaylayabilir).
+        var secretEnc = await _db.PlatformIntegrationSettings.AsNoTracking().Select(p => p.ChatwootWebhookSecretEncrypted).FirstOrDefaultAsync(ct);
+        var secret = string.IsNullOrWhiteSpace(secretEnc) ? null : _encryption.Decrypt(secretEnc);
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            _logger.LogWarning("[Chatwoot] Köprü anahtarı tanımlı değil — istek reddedildi (Platform › Sistem Ayarları › WhatsApp).");
+            return false;
+        }
+
+        if (!ChatwootWebhook.IsAuthorized(secret, payloadJson, pathToken, signatureHeader, timestampHeader, DateTimeOffset.UtcNow))
+        {
+            _logger.LogWarning("[Chatwoot] Webhook kimliği doğrulanamadı — istek işlenmeden reddedildi.");
+            return false;
+        }
+
+        ChatwootInbound? inbound;
+        try { inbound = ChatwootWebhook.Parse(payloadJson); }
+        catch (JsonException) { return true; } // biçimsiz gövde: Chatwoot yeniden denemesin, işlenecek bir şey yok
+        if (inbound is null) return true;       // giden mesaj, not, ek, başka olay: yok say
+
+        var settings = await _db.WhatsAppSettings.IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(s => !s.IsDeleted && s.ChatwootInboxId == inbound.InboxId, ct);
+        if (settings is null || string.IsNullOrWhiteSpace(settings.PhoneNumberId))
+        {
+            _logger.LogInformation("[Chatwoot] Gelen kutusu {Inbox} hiçbir kuruma bağlı değil — olay yok sayıldı.", inbound.InboxId);
+            return true;
+        }
+
+        // Meta'dan gelmiş gibi AYNI yol: kayıt (tekilleştirme + 24 saat penceresi) → niyet → yan etkiler.
+        await ProcessInboundMessageAsync(settings.TenantId, settings.PhoneNumberId!, inbound.MessageId, inbound.FromPhone, inbound.Text, ct);
+        _logger.LogInformation("[Chatwoot] Gelen kutusu {Inbox} → kurum {Tenant}: müşteri yanıtı işlendi (anahtar türü {Kind}).",
+            inbound.InboxId, settings.TenantId, inbound.MessageId.StartsWith("cw:", StringComparison.Ordinal) ? "chatwoot" : "wamid");
+        return true;
     }
 
     /// <summary>Meta teslim durumu (delivered/read/failed) → mesajı işaretle + kontörü kesinleştir/iade et.</summary>

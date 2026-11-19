@@ -122,4 +122,15 @@ public interface IWhatsAppService
     /// </summary>
     /// <param name="signatureHeader">İstekteki <c>X-Hub-Signature-256</c> başlığı (ör. "sha256=abc...").</param>
     Task HandleInboundAsync(string payloadJson, string? signatureHeader, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// CHATWOOT KÖPRÜSÜ: Meta webhook'u Chatwoot'a gittiğinde müşteri yanıtları Chatwoot'un "message_created"
+    /// webhook'uyla gelir; gelen kutusu kimliğiyle kurum bulunur ve yanıt Meta'dan gelmiş gibi işlenir.
+    /// GÜVENLİK: platformdaki Chatwoot anahtarıyla doğrulanmadan HİÇBİR gövde işlenmez (fail-closed).
+    /// </summary>
+    /// <param name="pathToken">Adreste anahtar yolu kullanılıyorsa (imzasız Chatwoot sürümü) adresteki anahtar; yoksa null.</param>
+    /// <param name="signatureHeader"><c>X-Chatwoot-Signature</c> (ör. "sha256=abc...").</param>
+    /// <param name="timestampHeader"><c>X-Chatwoot-Timestamp</c> (unix saniye).</param>
+    /// <returns><c>false</c> = kimlik doğrulanamadı (401); <c>true</c> = işlendi ya da bilerek yok sayıldı (200).</returns>
+    Task<bool> HandleChatwootInboundAsync(string payloadJson, string? pathToken, string? signatureHeader, string? timestampHeader, CancellationToken cancellationToken = default);
 }

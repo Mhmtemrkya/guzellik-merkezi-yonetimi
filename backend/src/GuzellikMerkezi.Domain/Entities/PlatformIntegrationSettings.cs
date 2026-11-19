@@ -40,6 +40,11 @@ public sealed class PlatformIntegrationSettings : Entity
     public string? WhatsAppAppSecretEncrypted { get; private set; }
     /// <summary>Webhook doğrulama token'ı (Meta panelinde girilen hub.verify_token).</summary>
     public string? WhatsAppVerifyToken { get; private set; }
+    /// <summary>
+    /// Chatwoot köprüsü gizli anahtarı (şifreli). Chatwoot webhook'u imzalıyorsa HMAC anahtarı, imzalamıyorsa
+    /// webhook adresinin sonundaki uzun rastgele anahtar olarak kullanılır. Yoksa köprü HİÇBİR isteği işlemez.
+    /// </summary>
+    public string? ChatwootWebhookSecretEncrypted { get; private set; }
 
     // --- Ödeme (iyzico) — abonelik tahsilatı; yalnızca PlatformAdmin girer ---
     // Anahtarlar at-rest şifreli tutulur (ENC:v1:) ve HİÇBİR okuma ucunda düz metin dönmez;
@@ -111,6 +116,14 @@ public sealed class PlatformIntegrationSettings : Entity
         WhatsAppBusinessAccountId = Clean(businessAccountId);
         if (appSecretEnc is not null) WhatsAppAppSecretEncrypted = appSecretEnc;
         WhatsAppVerifyToken = Clean(verifyToken);
+        Touch();
+    }
+
+    /// <param name="webhookSecretEnc">null = mevcut korunur (yalnız yazılır; okuma uçları yalnız "tanımlı mı" döner).</param>
+    public void UpdateChatwootBridge(string? webhookSecretEnc)
+    {
+        if (webhookSecretEnc is null) return;
+        ChatwootWebhookSecretEncrypted = webhookSecretEnc;
         Touch();
     }
 
