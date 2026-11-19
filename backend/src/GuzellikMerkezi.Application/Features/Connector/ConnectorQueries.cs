@@ -8,6 +8,10 @@ namespace GuzellikMerkezi.Application.Features.Connector;
 /// (kişisel veri sunucudan çıkmadan elenir, Maydanoz'da süzülmez).
 /// <para>Durum ve dönem sabit küçük harfli metinlerdir (<c>trial|active|suspended|cancelled</c>,
 /// <c>monthly|yearly</c>); enum sayısı değişirse karşı taraf yanlış okumaz, tanımadığını atlar.</para>
+/// <para>AYLIK DEĞER (kullanıcı kararı 19 Kas 2026: "aylık değeri BeautyAsist göndersin"): kurumun bugünkü sayaçlarıyla
+/// fiyatlama motorunun (<c>SubscriptionPricing.MonthlyEquivalent</c>) hesabı — net (KDV hariç), brüt (KDV dahil) ve
+/// dönemin yenileme tutarı (brüt). Fiyatlı paketi olmayan kurumda null. Durumdan bağımsız gönderilir; MRR'a yalnız
+/// <c>active</c> kurumlar girer (BeautyAsist'in kendi platform MRR'ıyla aynı kural).</para>
 /// </summary>
 public sealed record ConnectorTenantDto(
     Guid Id,
@@ -20,7 +24,10 @@ public sealed record ConnectorTenantDto(
     DateTime? SubscriptionEndsAtUtc,
     int BranchCount,
     bool IsSelfSignup,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    decimal? MonthlyNetTRY = null,
+    decimal? MonthlyGrossTRY = null,
+    decimal? PeriodGrossTRY = null);
 
 /// <summary>Bağlayıcının okuma uçları: platform servislerinin DTO'ları yerine sözleşmeye özel, en az alanlı görünüm.</summary>
 public interface IConnectorQueries

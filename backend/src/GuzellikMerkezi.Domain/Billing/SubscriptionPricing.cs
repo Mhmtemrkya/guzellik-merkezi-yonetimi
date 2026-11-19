@@ -93,6 +93,9 @@ public sealed record SubscriptionQuote(
     }
 }
 
+/// <summary>Kurumun aylık değeri: net (KDV hariç), brüt (KDV dahil) ve dönemin yenileme tutarı (brüt).</summary>
+public sealed record MonthlyValue(decimal Net, decimal Gross, decimal PeriodGross);
+
 /// <summary>Teklifin dayandığı sayaçlar (kurum genelinde). İmzalı onam: imzalanmış HER evrak (silinmiş olsa da).</summary>
 public sealed record BillingCounts(int Branches, int Customers, int SignedConsentForms);
 
@@ -167,11 +170,21 @@ public static class SubscriptionPricing
     /// Aylık tekrarlayan gelir katkısı (KDV HARİÇ): dönem teklifinin ara toplamı; yıllıkta ÷ 12.
     /// Yıllık fiyatı tanımsız (0) pakette aylık fiyattan hesaplanır.
     /// </summary>
-    public static decimal MonthlyEquivalentNet(SubscriptionPlan plan, BillingPeriod? period, BillingCounts counts)
+    public static decimal MonthlyEquivalentNet(SubscriptionPlan plan, BillingPeriod? period, BillingCounts counts) =>
+        MonthlyEquivalent(plan, period, counts).Net;
+
+    /// <summary>
+    /// Aylık değer — net (KDV hariç) ve brüt (KDV dahil), ayrıca dönemin yenileme tutarı (brüt). Maydanoz
+    /// (ödemenin alındığı yer) gelir ekranlarını bununla kurar; vergiyi ve kademeyi kendisi HESAPLAMAZ.
+    /// Yıllıkta aylık değer = dönem tutarı ÷ 12. Yıllık fiyatı tanımsız (0) pakette aylık fiyattan hesaplanır.
+    /// </summary>
+    public static MonthlyValue MonthlyEquivalent(SubscriptionPlan plan, BillingPeriod? period, BillingCounts counts)
     {
         var p = period == BillingPeriod.Yearly && plan.YearlyPriceTRY > 0 ? BillingPeriod.Yearly : BillingPeriod.Monthly;
-        var subtotal = Quote(plan, p, counts).Subtotal;
-        return p == BillingPeriod.Yearly ? Round(subtotal / 12m) : subtotal;
+        var quote = Quote(plan, p, counts);
+        return p == BillingPeriod.Yearly
+            ? new MonthlyValue(Round(quote.Subtotal / 12m), Round(quote.Total / 12m), quote.Total)
+            : new MonthlyValue(quote.Subtotal, quote.Total, quote.Total);
     }
 
     public static SubscriptionQuote Quote(SubscriptionPlan plan, BillingPeriod period, BillingCounts counts, decimal vatRate = DefaultVatRate)

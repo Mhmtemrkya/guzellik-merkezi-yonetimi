@@ -152,7 +152,12 @@ public sealed class PlatformBridgeTests
     }
 
     [Theory]
-    [InlineData("GET", "/api/connector/v1/platform/tenants")]
+    [InlineData("DELETE", "/api/connector/v1/platform/tenants/0b8f1c1e-1111-4222-8333-944455556666")]
+    [InlineData("PUT", "/api/connector/v1/platform/tenants/0b8f1c1e-1111-4222-8333-944455556666")]
+    [InlineData("POST", "/api/connector/v1/platform/tenants")]
+    [InlineData("GET", "/api/connector/v1/platform/support/not-a-guid")]
+    [InlineData("DELETE", "/api/connector/v1/platform/support/0b8f1c1e-1111-4222-8333-944455556666")]
+    [InlineData("PUT", "/api/connector/v1/platform/system/database")]
     [InlineData("DELETE", "/api/connector/v1/platform/messaging/settings")]
     [InlineData("GET", "/api/connector/v1/platform/messaging/settings/extra")]
     [InlineData("GET", "/api/connector/v1/platform/Messaging/settings")]
@@ -199,6 +204,32 @@ public sealed class PlatformBridgeTests
         Assert.StartsWith("/api/platform/", rewritten);
         // Sorgu dizesi (imzanın parçası) aynen hedefe gider.
         Assert.Equal(path.Contains('?') ? "?includeInactive=true" : string.Empty, http.Request.QueryString.Value ?? string.Empty);
+    }
+
+    /// <summary>
+    /// 2. dilim (19 Kas 2026): destek kuyruğu, kurumlar (yalnız profil yazma) ve veritabanı izleme. Sorgu dizesi
+    /// (Türkçe harf ve boşluk kodlanmış) imzanın parçasıdır ve hedefe AYNEN gider.
+    /// </summary>
+    [Theory]
+    [InlineData("GET", "/api/connector/v1/platform/support?scope=open&search=%C5%9Fule%20han%C4%B1m&page=1&pageSize=25", "/api/platform/support")]
+    [InlineData("GET", "/api/connector/v1/platform/support/summary", "/api/platform/support/summary")]
+    [InlineData("GET", "/api/connector/v1/platform/support/0b8f1c1e-1111-4222-8333-944455556666", "/api/platform/support/0b8f1c1e-1111-4222-8333-944455556666")]
+    [InlineData("POST", "/api/connector/v1/platform/support/0b8f1c1e-1111-4222-8333-944455556666/reply", "/api/platform/support/0b8f1c1e-1111-4222-8333-944455556666/reply")]
+    [InlineData("PUT", "/api/connector/v1/platform/support/0b8f1c1e-1111-4222-8333-944455556666", "/api/platform/support/0b8f1c1e-1111-4222-8333-944455556666")]
+    [InlineData("GET", "/api/connector/v1/platform/tenants?page=1&pageSize=200&search=", "/api/platform/tenants")]
+    [InlineData("GET", "/api/connector/v1/platform/tenants/0b8f1c1e-1111-4222-8333-944455556666", "/api/platform/tenants/0b8f1c1e-1111-4222-8333-944455556666")]
+    [InlineData("PUT", "/api/connector/v1/platform/tenants/0b8f1c1e-1111-4222-8333-944455556666/profile", "/api/platform/tenants/0b8f1c1e-1111-4222-8333-944455556666/profile")]
+    [InlineData("GET", "/api/connector/v1/platform/system/database", "/api/platform/system/database")]
+    [InlineData("GET", "/api/connector/v1/platform/system/database/schema", "/api/platform/system/database/schema")]
+    public async Task SupportTenantAndDatabaseRoutes_PassThrough(string method, string path, string target)
+    {
+        await using var db = Db();
+        var (http, reached, rewritten, _) = await RunAsync(Signed(method, path, method == "GET" ? "" : "{}"), db);
+
+        Assert.True(reached);
+        Assert.Equal(target, rewritten);
+        var q = path.IndexOf('?');
+        Assert.Equal(q < 0 ? string.Empty : path[q..], http.Request.QueryString.Value ?? string.Empty);
     }
 
     [Fact]
@@ -254,6 +285,10 @@ public sealed class PlatformBridgeTests
         Assert.False(PlatformBridgeMiddleware.IsAllowed("GET", string.Empty));
         Assert.False(PlatformBridgeMiddleware.IsAllowed("GET", "/" + new string('a', 200)));
         Assert.False(PlatformBridgeMiddleware.IsAllowed("GET", "/invoices"));
-        Assert.False(PlatformBridgeMiddleware.IsAllowed("GET", "/tenants/0b8f1c1e-1111-4222-8333-944455556666"));
+        Assert.True(PlatformBridgeMiddleware.IsAllowed("GET", "/tenants/0b8f1c1e-1111-4222-8333-944455556666"));
+        Assert.False(PlatformBridgeMiddleware.IsAllowed("PUT", "/tenants/0b8f1c1e-1111-4222-8333-944455556666"));
+        Assert.False(PlatformBridgeMiddleware.IsAllowed("DELETE", "/tenants/0b8f1c1e-1111-4222-8333-944455556666"));
+        Assert.False(PlatformBridgeMiddleware.IsAllowed("GET", "/tenants/0b8f1c1e-1111-4222-8333-944455556666/access"));
+        Assert.False(PlatformBridgeMiddleware.IsAllowed("POST", "/support"));
     }
 }

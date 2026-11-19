@@ -22,6 +22,13 @@ public static class PlatformOpsEndpoints
         system.MapPost("/queue/{id:guid}/requeue", async (Guid id, IPlatformOpsService svc, HttpContext http, CancellationToken ct) =>
             (await svc.RequeueJobAsync(id, ct)).ToHttpResult(http));
 
+        // VERİTABANI İZLEME (salt okunur, satır verisiz): ölçümler + yedek dosyaları; şema ayrı (büyük, istenince okunur).
+        system.MapGet("/database", async (IDatabaseMonitor monitor, HttpContext http, CancellationToken ct) =>
+            Results.Json(GuzellikMerkezi.Application.Common.ApiResponse<DatabaseSnapshotDto>.Ok(await monitor.SnapshotAsync(ct), http.TraceIdentifier)));
+
+        system.MapGet("/database/schema", async (IDatabaseMonitor monitor, HttpContext http, CancellationToken ct) =>
+            Results.Json(GuzellikMerkezi.Application.Common.ApiResponse<DatabaseSchemaDto>.Ok(await monitor.SchemaAsync(ct), http.TraceIdentifier)));
+
         var invoices = app.MapGroup("/api/platform/invoices").WithTags("Platform Invoices").RequireAuthorization("PlatformAdmin");
 
         invoices.MapGet("/", async (string? status, string? search, IPlatformOpsService svc, HttpContext http, CancellationToken ct) =>

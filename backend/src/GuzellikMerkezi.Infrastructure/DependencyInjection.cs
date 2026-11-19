@@ -187,6 +187,7 @@ public static class DependencyInjection
         services.AddScoped<Application.Features.Devices.IDeviceService, DeviceService>();
         services.AddScoped<Application.Features.Security.ISecurityService, SecurityService>();
         services.AddScoped<Application.Features.PlatformOps.IPlatformOpsService, PlatformOpsService>();
+        services.AddScoped<Application.Features.PlatformOps.IDatabaseMonitor, DatabaseMonitor>();
 
         // Kalıcı (DB-outbox) iş kuyruğu: kayıp toleransı olmayan arka plan işleri buradan akar.
         // RabbitMQ açıksa iş sinyali broker'a da gider (anında işleme); kapalıysa no-op → salt poller.

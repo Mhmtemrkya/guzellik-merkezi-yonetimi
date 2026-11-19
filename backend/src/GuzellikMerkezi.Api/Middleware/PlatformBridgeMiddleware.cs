@@ -37,11 +37,24 @@ public sealed partial class PlatformBridgeMiddleware(RequestDelegate next, ILogg
 
     /// <summary>
     /// Köprüden geçebilen uçlar — 1. dilim: platform AYARLARI (mesajlaşma ve ödeme, sistem bölümleri ve kuyruk,
-    /// WhatsApp kontör ayarları / fiyat kuralları / kredi paketleri, abonelik paketleri). Kurumlar, faturalar, destek,
-    /// aktarım ve cüzdanlar sonraki dilimde açılır.
+    /// WhatsApp kontör ayarları / fiyat kuralları / kredi paketleri, abonelik paketleri).
+    /// 2. dilim (kullanıcı isteği 19 Kas 2026: "BeautyAsist'in destek mesajlarını Maydanoz'un destek kısmına çek; müşteriler
+    /// sayfasında kurum adına tıklayınca düzenleme yapılabilsin; veritabanları dinamik olsun"): DESTEK kuyruğu (liste,
+    /// özet, ayrıntı, yanıt, durum/öncelik), KURUMLAR (liste, ayrıntı, YALNIZ PROFİL güncellemesi — paket/dönem/durum
+    /// köprüden değişmez) ve VERİTABANI izleme (ölçümler + şema; satır verisi YOK).
     /// </summary>
     internal static readonly IReadOnlyList<(string Method, Regex Path)> Allowed =
     [
+        ("GET", Rule("^/support$")),
+        ("GET", Rule("^/support/summary$")),
+        ("GET", Rule($"^/support/{Id}$")),
+        ("POST", Rule($"^/support/{Id}/reply$")),
+        ("PUT", Rule($"^/support/{Id}$")),
+        ("GET", Rule("^/tenants$")),
+        ("GET", Rule($"^/tenants/{Id}$")),
+        ("PUT", Rule($"^/tenants/{Id}/profile$")),
+        ("GET", Rule("^/system/database$")),
+        ("GET", Rule("^/system/database/schema$")),
         ("GET", Rule("^/messaging/settings$")),
         ("PUT", Rule("^/messaging/settings$")),
         ("POST", Rule("^/messaging/test-(sms|email|whatsapp)$")),

@@ -69,7 +69,12 @@ public sealed class ConnectorQueriesTests
         // Sözleşmede kişisel alan YOK: yeni bir alan eklenirse bu test bilerek kırılır.
         var json = JsonSerializer.Serialize(all.Items.First(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var fields = JsonDocument.Parse(json).RootElement.EnumerateObject().Select(p => p.Name).ToArray();
-        Assert.Equal(["id", "code", "name", "status", "planKey", "period", "trialEndsAtUtc", "subscriptionEndsAtUtc", "branchCount", "isSelfSignup", "createdAtUtc"], fields);
+        Assert.Equal(["id", "code", "name", "status", "planKey", "period", "trialEndsAtUtc", "subscriptionEndsAtUtc", "branchCount", "isSelfSignup", "createdAtUtc", "monthlyNetTRY", "monthlyGrossTRY", "periodGrossTRY"], fields);
+
+        // AYLIK DEĞER fiyatlama motorundan: yıllık 10.000 ₺ + KDV → aylık 833,33 net / 1.000 brüt, yenileme 12.000.
+        Assert.Equal((833.33m, 1_000m, 12_000m), (first.MonthlyNetTRY, first.MonthlyGrossTRY, first.PeriodGrossTRY));
+        // Paketsiz deneme ve paketsiz iptal: aylık değer yok (uydurulmaz).
+        Assert.All(all.Items.Skip(1), item => Assert.Equal(((decimal?)null, (decimal?)null, (decimal?)null), (item.MonthlyNetTRY, item.MonthlyGrossTRY, item.PeriodGrossTRY)));
         Assert.DoesNotContain("0555", JsonSerializer.Serialize(all.Items));
         Assert.DoesNotContain("ayse@", JsonSerializer.Serialize(all.Items));
         Assert.DoesNotContain("1234567890", JsonSerializer.Serialize(all.Items));
@@ -88,8 +93,24 @@ public sealed class ConnectorQueriesTests
         Assert.Equal(ConnectorQueries.MaxPageSize, (await sut.ListTenantsAsync(0, 10_000)).PageSize);
         Assert.Equal(1, (await sut.ListTenantsAsync(1, 0)).PageSize);
 
-        Assert.Equal("BA-01", (await sut.GetTenantAsync(paid.Id))?.Code);
+        var one = await sut.GetTenantAsync(paid.Id);
+        Assert.Equal(("BA-01", 1_000m), (one?.Code, one?.MonthlyGrossTRY));
         Assert.Null(await sut.GetTenantAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public void MonthlyValue_FollowsThePricingEngine_AndIsNullWithoutAPricedPlan()
+    {
+        var plan = new SubscriptionPlan("BeautyAsist", "BeautyAsist", 1_000m, -1, -1, -1, -1, 0, yearlyPriceTRY: 10_000m);
+        var counts = new GuzellikMerkezi.Domain.Billing.BillingCounts(2, 0, 0);
+
+        Assert.Equal(new GuzellikMerkezi.Domain.Billing.MonthlyValue(1_000m, 1_200m, 1_200m), ConnectorQueries.MonthlyValueOf(plan, BillingPeriod.Monthly, counts));
+        Assert.Equal(new GuzellikMerkezi.Domain.Billing.MonthlyValue(1_000m, 1_200m, 1_200m), ConnectorQueries.MonthlyValueOf(plan, null, counts));
+        Assert.Equal(new GuzellikMerkezi.Domain.Billing.MonthlyValue(833.33m, 1_000m, 12_000m), ConnectorQueries.MonthlyValueOf(plan, BillingPeriod.Yearly, counts));
+        Assert.Null(ConnectorQueries.MonthlyValueOf(null, BillingPeriod.Monthly, counts));
+        Assert.Null(ConnectorQueries.MonthlyValueOf(new SubscriptionPlan("Bedava", "Bedava", 0m, -1, -1, -1, -1, 0), BillingPeriod.Monthly, counts));
+        // Platform MRR'ı ile aynı motor: net değer MonthlyEquivalentNet'e eşit.
+        Assert.Equal(GuzellikMerkezi.Domain.Billing.SubscriptionPricing.MonthlyEquivalentNet(plan, BillingPeriod.Yearly, counts), ConnectorQueries.MonthlyValueOf(plan, BillingPeriod.Yearly, counts)!.Net);
     }
 
     [Theory]

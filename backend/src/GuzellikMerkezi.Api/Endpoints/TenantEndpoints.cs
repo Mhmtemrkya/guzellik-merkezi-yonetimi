@@ -26,6 +26,12 @@ public static class TenantEndpoints
             (await service.CreateAsync(request, ct)).ToHttpResult(http))
             .ValidatesRequest<CreateTenantRequest>();
 
+        // YALNIZ PROFİL (ad, unvan, vergi, iletişim, yetkili adı): paket/dönem/durum alanı TAŞIMAZ. Maydanoz panelinin kurum
+        // düzenlemesi bunu kullanır (köprü izin listesi) — tam güncellemenin dönemsiz isteği denemeyi sıfırlayabildiği için.
+        group.MapPut("/{id:guid}/profile", async (Guid id, UpdateTenantProfileRequest request, ITenantService service, HttpContext http, CancellationToken ct) =>
+            (await service.UpdateProfileAsync(id, request, ct)).ToHttpResult(http))
+            .ValidatesRequest<UpdateTenantProfileRequest>();
+
         group.MapPut("/{id:guid}", async (Guid id, UpdateTenantRequest request, ITenantService service, HttpContext http, CancellationToken ct) =>
             (await service.UpdateAsync(id, request, ct)).ToHttpResult(http))
             .ValidatesRequest<UpdateTenantRequest>();
