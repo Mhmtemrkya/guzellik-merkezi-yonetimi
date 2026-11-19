@@ -810,6 +810,7 @@ Bir paket aktarılınca bu tabloyu tarih ve commit ile güncelleyin.
 - **14 Kas 2026:** ilk sürüm; paket 1–6 (12–14 Kasım işleri).
 - **18 Kas 2026:** paket 7–17 (Maydanoz entegrasyonu, §12) eklendi; reçetenin Maydanoz tarafı `ASIST_ENTEGRASYONU.md` §0.
 - **18 Kas 2026 (akşam):** paket 18 (panelden Maydanoz'a oturumlu geçiş; Maydanoz'da mesaj kredisi yalnız kurum yetkilisi).
+- **19 Kas 2026:** paket 19 (Maydanoz admin paneli Asist verisini okur: destek, kurum profili, veritabanı izleme, aylık değer).
 - BeautyAsist'te yeni bir iş bitince buraya yeni bir paket olarak ekleyin. Her pakete kural, şema, dosyalar, testler,
   tuzaklar ve canlı notlarını yazın.
 
@@ -942,9 +943,10 @@ Ayrıntısı için `git show <commit>` kullanın.
 | 16 | Şube silme | `1179279` | — | Kayıtlar seçilen şubeye aktarılır, şube kaldırılır; fiyat sonraki ödemede düşer |
 | 17 | Kalıcı kurum silme (bağlayıcı) | `dcae6a2` | — | `tenants.delete` + kurum adı aynen |
 | 18 | Maydanoz'a oturumlu geçiş + kredi yalnız yetkili | `777b04e` | `20261118201808_MaydanozHandoffs` | Yönlendirmede tek kullanımlık `#giris=` jetonu, `POST /accounts/handoff`; Maydanoz yolunda kredi yalnız kurum yetkilisi |
+| 19 | Köprü 2. dilim: destek, kurum profili, veritabanı izleme, aylık değer | `9322454` | — | Destek kuyruğu + kurumlar (yalnız profil yazma) + `/system/database[/schema]` köprüde; bağlayıcı kurum satırında `monthlyNetTRY/monthlyGrossTRY/periodGrossTRY` |
 
 **Bağımlılık:** 7 → 8 → (9, 12, 14, 15); 10 ve 17 yalnız 7'ye bağlı; 13 → 14; 11 ve 16 bağımsız (3'ün fiyat motorunu
-kullanır); 18 → 8 + 9 (ödeme yönlendirmesi ve Maydanoz Hesabım oturumu). Maydanoz tarafı Asist'ten SONRA yayına alınır (Maydanoz'un yeni kodu Asist'in yeni uçlarını çağırır).
+kullanır); 18 → 8 + 9 (ödeme yönlendirmesi ve Maydanoz Hesabım oturumu); 19 → 7 + 10 (bağlayıcı ve platform köprüsü). Maydanoz tarafı Asist'ten SONRA yayına alınır (Maydanoz'un yeni kodu Asist'in yeni uçlarını çağırır).
 
 ### Paket 7 — İmzalı bağlayıcı (17 Kas)
 
@@ -1126,6 +1128,35 @@ kullanır); 18 → 8 + 9 (ödeme yönlendirmesi ve Maydanoz Hesabım oturumu). M
   servisleri taklit ettiği için böyle bir gerileme yalnız gerçek servisle yazılmış testte görünür.
 - **Canlı:** migration elle (`--migrate-only`); env değişikliği yok (`checkouts.write` zaten var). Önce Asist, sonra
   Maydanoz: eski Maydanoz `#giris` parçasını yok sayar; ters sırada yeni Maydanoz, panelden gelen kurumdan elle giriş ister.
+
+### Paket 19 — Köprü 2. dilim: destek, kurum profili, veritabanı izleme, aylık değer (19 Kas)
+
+- **Kullanıcının sözleri:** "BeautyAsist'in destek kısmına gelen mesajları Maydanoz'un admin panelinde destek kısmına çek
+  — çok önemli"; "müşteriler sayfasında ilgili Asist'e göre veri çek, kurum adını tıklayınca düzenleme yapılabilsin";
+  "veritabanları kısmı dinamik olsun — gerçek DB olacak, SQLite değil"; "aylık değeri BeautyAsist göndersin".
+- **Köprü izin listesi** (`PlatformBridgeMiddleware.Allowed`, Maydanoz `AsistPlatformService`'teki liste DEĞİL —
+  Maydanoz bu uçları kendi türlü istemcisiyle çağırır, `AsistBridge`):
+  - `GET /support` (sorgu: `scope`, `search`, `page`, `pageSize`), `GET /support/summary`, `GET /support/{id}`,
+    `POST /support/{id}/reply`, `PUT /support/{id}` (durum/öncelik; `assignedToUserId` null = dokunma).
+  - `GET /tenants` (`page`, `pageSize` ≤ 1000), `GET /tenants/{id}`, `PUT /tenants/{id}/profile` — YENİ uç,
+    `UpdateTenantProfileRequest` (paket/dönem/durum alanı YOK). Tam güncelleme (`PUT /tenants/{id}`) köprüde KAPALI:
+    dönemsiz istek denemeyi sıfırlayabiliyor.
+  - `GET /system/database` ve `GET /system/database/schema` — YENİ uçlar, `IDatabaseMonitor` (`DatabaseMonitor`).
+- **Veritabanı izleme (`Infrastructure/Services/DatabaseMonitor.cs`):** SALT OKUNUR, satır verisi YOK. Sürüm,
+  `SHOW GLOBAL STATUS` birikimli sayaçları (oranı okuyan taraf iki ölçümün farkından hesaplar), `@@max_connections`,
+  `information_schema` tablo boyutları (`UPDATE_TIME` sunucu yerel saatinden UTC'ye), performance_schema tablo G/Ç'si
+  (yetki yoksa null), şema (kolon/indeks/dış anahtar/`SHOW CREATE TABLE`), `/proc` sunucu yükü, yedek klasörlerinden
+  YALNIZ dosya adı/zamanı/boyutu (`DatabaseMonitor:BackupDirectories`, varsayılan gece yedeği + `../backups`).
+  MySQL 8'de `information_schema_stats_expiry` oturumda 0 yapılır (MariaDB'de değişken yok, hata yutulur).
+- **Aylık değer:** `ConnectorTenantDto` → `monthlyNetTRY`, `monthlyGrossTRY`, `periodGrossTRY` —
+  `SubscriptionPricing.MonthlyEquivalent(plan, period, counts)` (platform MRR'ıyla aynı motor; yıllıkta ÷ 12; fiyatlı
+  paketi olmayan kurumda null). Sayaçlar `BillingCountsQuery.CountManyAsync` ile tek turda.
+- **Testler:** `PlatformBridgeTests.SupportTenantAndDatabaseRoutes_PassThrough` (Türkçe harfli sorgu dizesi aynen),
+  izin listesi reddleri (tam güncelleme, silme, kurum erişimi), `ConnectorQueriesTests` (alan listesi + aylık değer),
+  `DatabaseMonitorMySqlTests` (GERÇEK MySQL: sayaçlar, tablolar, şema, yedek klasörü; bellek içi sağlayıcıda "ölçülmedi").
+- **Tuzaklar:** yeni bağlayıcı alanı eklerken `ConnectorQueriesTests`'teki alan listesi bilerek kırılır (kişisel veri
+  sızmasın); yedek klasörü root'a aitse (700) uygulama listeleyemez → ekran "okunamıyor" der, uydurmaz.
+- **Canlı:** yalnız backend (`9322454`, migration ve env değişikliği yok; `platform.manage` kapsamı yeterli).
 
 ### Ürüne göre değişenler (aktarmadan önce)
 
