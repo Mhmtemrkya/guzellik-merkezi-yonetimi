@@ -13,6 +13,14 @@ public interface IDurableJobQueue
 {
     /// <summary>İşi kalıcı kuyruğa yazar. Payload JSON'a serileştirilir; handler aynı tiple çözer.</summary>
     Task EnqueueAsync(string jobType, object payload, CancellationToken ct = default);
+
+    /// <summary>
+    /// Deneme hakkı belirtilmiş iş. Varsayılan (5 deneme ≈ 7,5 dk) kısa kalan, dış sistemin uzun kesintisine
+    /// dayanması gereken işler içindir (ör. Chatwoot iletimi). Varsayılan gövde hakkı yok sayar —
+    /// test kuyrukları bunu uygulamak zorunda değildir; gerçek kuyruk uygular.
+    /// </summary>
+    Task EnqueueAsync(string jobType, object payload, int maxAttempts, CancellationToken ct = default)
+        => EnqueueAsync(jobType, payload, ct);
 }
 
 /// <summary>Belirli bir iş tipini yürüten handler; DI'a kaydedilir, worker tip adına göre eşler.</summary>

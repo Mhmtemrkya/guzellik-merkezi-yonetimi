@@ -54,6 +54,9 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         }
         var paymentUrlError = OutboundEndpointGuard.ValidatePaymentApiUrl(r.IyzicoBaseUrl);
         if (paymentUrlError is not null) return Result<PlatformIntegrationSettingsDto>.Failure(Error.Validation(paymentUrlError));
+        // Chatwoot iletim adresi: müşteri mesajlarının tamamı buraya gider → yalnız HTTPS + global adres.
+        var relayUrlError = OutboundEndpointGuard.ValidateRelayUrl(r.ChatwootRelayUrl);
+        if (relayUrlError is not null) return Result<PlatformIntegrationSettingsDto>.Failure(Error.Validation(relayUrlError));
 
         var s = await _db.PlatformIntegrationSettings.FirstOrDefaultAsync(ct);
         if (s is null) { s = new PlatformIntegrationSettings(); _db.PlatformIntegrationSettings.Add(s); }
@@ -67,6 +70,7 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
         s.UpdateWhatsApp(r.WhatsAppEnabled, r.WhatsAppProvider, r.WhatsAppPhoneNumberId, waTokenEnc, r.WhatsAppBusinessAccountId, waSecretEnc, r.WhatsAppVerifyToken);
         // Chatwoot köprüsü anahtarı: boş = KORU (alanı bilmeyen tam değiştirmeli kayıt anahtarı silemez).
         s.UpdateChatwootBridge(string.IsNullOrWhiteSpace(r.ChatwootWebhookSecret) ? null : _encryption.Encrypt(r.ChatwootWebhookSecret!.Trim()));
+        s.UpdateChatwootRelay(r.ChatwootRelayUrl); // null = koru, boş = kapat
         var iyzKeyEnc = string.IsNullOrWhiteSpace(r.IyzicoApiKey) ? null : _encryption.Encrypt(r.IyzicoApiKey!.Trim());
         var iyzSecretEnc = string.IsNullOrWhiteSpace(r.IyzicoSecretKey) ? null : _encryption.Encrypt(r.IyzicoSecretKey!.Trim());
         s.UpdatePayments(r.PaymentsEnabled, r.PaymentProvider, iyzKeyEnc, iyzSecretEnc, r.IyzicoBaseUrl, r.PaymentsReturnUrl);
@@ -395,7 +399,8 @@ public sealed class PlatformMessagingService : IPlatformMessagingService
             s.PaymentsEnabled, s.PaymentProvider,
             !string.IsNullOrWhiteSpace(s.IyzicoApiKeyEncrypted), !string.IsNullOrWhiteSpace(s.IyzicoSecretKeyEncrypted),
             s.IyzicoBaseUrl, s.PaymentsReturnUrl, s.PaymentsConfigured,
-            HasChatwootWebhookSecret: !string.IsNullOrWhiteSpace(s.ChatwootWebhookSecretEncrypted));
+            HasChatwootWebhookSecret: !string.IsNullOrWhiteSpace(s.ChatwootWebhookSecretEncrypted),
+            ChatwootRelayUrl: s.ChatwootRelayUrl);
     }
 
     private static string NormalizePhone(string? p) => new string((p ?? string.Empty).Where(char.IsDigit).ToArray());

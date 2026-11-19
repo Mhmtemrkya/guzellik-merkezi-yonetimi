@@ -803,7 +803,8 @@ deposuna göredir.
 | 17 — Kalıcı kurum silme bağlayıcısı | Aktarılmadı | — |
 | 18 — Maydanoz'a oturumlu geçiş + kredi yalnız yetkili | Aktarılmadı | — |
 | 19 — Köprü 2. dilim (destek, kurum profili, veritabanı, aylık değer) | Aktarılmadı | — |
-| 20 — WhatsApp yanıtları Chatwoot köprüsüyle | Aktarılmadı (ürünün numarası Chatwoot'taysa gerekir) | — |
+| 20 — WhatsApp yanıtları Chatwoot köprüsüyle (yedek yol) | Aktarılmadı (ürünün numarası Chatwoot'taysa gerekir) | — |
+| 21 — Olaylar önce Asist'e + Chatwoot'a ham iletim | Aktarılmadı (ürün Chatwoot kullanıyorsa asıl yol budur) | — |
 
 Bir paket aktarılınca bu tabloyu tarih ve commit ile güncelleyin.
 
@@ -814,6 +815,7 @@ Bir paket aktarılınca bu tabloyu tarih ve commit ile güncelleyin.
 - **18 Kas 2026 (akşam):** paket 18 (panelden Maydanoz'a oturumlu geçiş; Maydanoz'da mesaj kredisi yalnız kurum yetkilisi).
 - **19 Kas 2026:** paket 19 (Maydanoz admin paneli Asist verisini okur: destek, kurum profili, veritabanı izleme, aylık değer).
 - **20 Kas 2026:** paket 20 (WhatsApp müşteri yanıtları Chatwoot webhook'undan; teslim durumu/kontör kararı açık).
+- **20 Kas 2026 (gece):** paket 21 (karar: olaylar önce BeautyAsist'e; Chatwoot'a ham iletim; paket 20 yedek yol oldu).
 - BeautyAsist'te yeni bir iş bitince buraya yeni bir paket olarak ekleyin. Her pakete kural, şema, dosyalar, testler,
   tuzaklar ve canlı notlarını yazın.
 
@@ -1217,6 +1219,49 @@ kullanır); 18 → 8 + 9 (ödeme yönlendirmesi ve Maydanoz Hesabım oturumu); 1
   Chatwoot adresi API tabanından kurulur (`WhatsApp__PublicBaseUrl`, BeautyAsist'te
   `https://maydanozasist.beautyasist.com/api/whatsapp/chatwoot/<anahtar>`). Sonra Chatwoot webhook'u açılır, anahtar
   BeautyAsist'e girilir ve gelen kutusu kuruma bağlanır. Yayından sonra iki adres de sahte anahtarla 401 verdi.
+
+### Paket 21 — Olaylar önce BeautyAsist'e: Meta olayının Chatwoot'a ham iletimi (20 Kas)
+
+- **Kullanıcının kararı:** "olaylar önce BeautyAsist'e gelsin"; "bir sürü kurum eklenecek, düzgün yol çiz; önemli olan
+  BeautyAsist'in EVET/HAYIR'ı okuması; Chatwoot'ta da bağlantı olacak, oradan görülecek".
+- **Kural:** Meta uygulamasının webhook'u BeautyAsist'tedir. İmzası doğrulanan HER olay (kuruma bağlı olmayan numara,
+  metin dışı mesaj, temsilci yanıtlarının durumları dahil) gövdesi bayt bayt aynı ve `X-Hub-Signature-256` değişmeden
+  `PlatformIntegrationSettings.ChatwootRelayUrl` adresine iletilir. Chatwoot olayı gövdedeki numaraya göre doğru kutuya
+  koyduğu için tüm salonlara tek adres yeter.
+  - **Sıra:** imza doğrulamasından HEMEN sonra, ayrıştırma ve kurum eşlemesinden ÖNCE (`WhatsAppService.HandleInboundAsync`).
+  - **Doğrudan iletim:** 3 sn denenir. Olmazsa kalıcı kuyruğa yazılır (`whatsapp.chatwoot-relay`, 10 deneme ≈ 4 saat).
+    Kuyruğa da yazılamazsa istisna yukarı çıkar, uç 500 döner ve Meta yeniden gönderir.
+  - Yalnız imzası doğrulanan olay iletilir. App Secret yoksa hiçbir şey iletilmez; ekran bu durumda uyarır.
+- **Paylaşımlı numara:** `WhatsAppSettings.RecordRepliesOnly`. Açıksa Meta yolunda da yalnız BeautyAsist mesajlarına
+  verilen yanıtlar kurum kaydına yazılır. Bağlamada null = koru.
+- **Şema:** migration `20261119224142_ChatwootRelay`. `platform_integration_settings.ChatwootRelayUrl` (longtext null) ve
+  `whatsapp_settings.RecordRepliesOnly` (tinyint(1), varsayılan 0).
+- **Ayar kuralları:** iletim adresi null = koru (Maydanoz köprüsünün tam değiştirmeli kaydı silemesin), boş = kapat.
+  `OutboundEndpointGuard.ValidateRelayUrl`: yalnız HTTPS + varsayılan port + kullanıcı bilgisi yok + global adres;
+  kayıtta ve HER gönderimde çağrılır. Host allowlist'i yok, çünkü Chatwoot her yerde barındırılabilir.
+- **Kuyruk:** `IDurableJobQueue.EnqueueAsync(type, payload, maxAttempts, ct)` aşırı yüklemesi eklendi. Varsayılan arayüz
+  gövdesi hakkı yok sayar, böylece test kuyrukları bozulmaz.
+- **Dosyalar:**
+  - `Application/Features/WhatsApp/IWhatsAppEventRelay.cs`
+  - `Infrastructure/Services/ChatwootEventRelay.cs`
+  - `Background/DurableJobHandlers.cs` (`ChatwootRelayJobHandler`)
+  - DI: `ChatwootRelay` istemcisi; dayanıklılık hattı yok, günlük susturuldu
+  - `WhatsAppService` (isteğe bağlı kurucu parametresi `relay`; testler null verir)
+  - Web: Sistem Ayarları'na "Chatwoot iletim adresi" ve App Secret uyarısı; köprü alanları "yedek yol" oldu; bağlama
+    penceresine "Paylaşımlı numara" eklendi
+  - Mobil: değişiklik yok (platform ekranları yalnız web)
+- **Testler:** `ChatwootRelayTests` (19).
+  - İletim: bayt eşliği (Türkçe harf) + imza başlığı; bağlı olmayan numara ve durum olayları da iletilir; sahte imza
+    ne işlenir ne iletilir; adres yoksa gönderim yok.
+  - Dayanıklılık: 503 ve bağlantı hatasında kuyruğa düşer (MaxAttempts 10); kuyruk işi aynı baytları gönderir, hatada
+    istisna fırlatır; adres kaldırılınca iş sessiz kapanır; kuyruk da çökerse istisna yukarı çıkar.
+  - Paylaşımlı numara ve bağlama koru/yaz; adres doğrulaması (9 durum); kayıt koru/kapat/doğrula.
+  - Yerel API'de gerçek HTTP: imzalı Türkçe olay işlendi, sahte imza işlenmedi, geçersiz iletim adresi 400 aldı.
+- **Tuzaklar:**
+  - Yeni salonda Chatwoot'un gösterdiği webhook değerleri Meta'ya girilirse webhook bütün salonlar için Chatwoot'a döner.
+  - Chatwoot'un "WhatsApp ile bağlan" akışı numarayı başka bir uygulamaya bağlar; yeni numara manuel kurulumla açılır.
+  - Numarada ya da WABA'da override varsa uygulama düzeyindeki webhook değişikliği etkisiz kalır.
+- **Canlı:** yayın ve Meta geçişi ayrı onaylarla yapılır (`WHATSAPP_AKTIVASYON.md` §9.1). Meta'dan inceleme gerekmez.
 
 ### Ürüne göre değişenler (aktarmadan önce)
 

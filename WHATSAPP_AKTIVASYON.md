@@ -289,7 +289,10 @@ tipi eklenir.
 
 ---
 
-## 8. Chatwoot köprüsü — webhook Chatwoot'tayken müşteri yanıtları (20 Kas 2026)
+## 8. Chatwoot köprüsü — YEDEK YOL: webhook Chatwoot'ta kalırsa müşteri yanıtları (20 Kas 2026)
+
+> **Asıl yol §9'dur** (olaylar önce BeautyAsist'e, kullanıcı kararı 20 Kas). Bu köprü yalnız bir numaranın Meta
+> webhook'u Chatwoot'ta kalmak zorundaysa kullanılır; §9 kuruluyken köprü anahtarı ve gelen kutusu kimliği GEREKMEZ.
 
 **Neden:** platform numarası (+90 850 242 84 25) canlı destek için Chatwoot'a (`chatdash.sophy.co`, gelen kutusu 82)
 bağlı ve Meta webhook'u Chatwoot'a gidiyor. Meta bir numaranın olaylarını **tek** adrese yollar. Bu yüzden müşteri
@@ -343,7 +346,7 @@ gürültü Debug seviyesinde kalır.
 **Eşleşme düzeltmesi (Meta yolu da):** yanıt eskiden kurumun yalnız son 25 giden mesajında aranıyordu. Toplu hatırlatmadan
 sonra müşterinin EVET'i eşleşmiyordu. Artık 3 günlük penceredeki tüm giden mesajlara bakılıyor (`FindReplyTargetAsync`).
 
-### 8.2 Bilinen sınır — teslim durumu ve kontör (KARAR BEKLİYOR)
+### 8.2 Bilinen sınır — teslim durumu ve kontör (KARAR VERİLDİ: A → §9)
 
 BeautyAsist'in gönderdiği mesajların `delivered/read/failed` bildirimleri Chatwoot'a gider. Chatwoot bunları kendi
 mesajı olmadığı için yok sayar; köprü bunları taşıyamaz. Sonuçları:
@@ -358,3 +361,84 @@ mesajı olmadığı için yok sayar; köprü bunları taşıyamaz. Sonuçları:
     birlikte Chatwoot'a iletir; bütün durumlar gelir.
   - **(B)** Webhook Chatwoot'ta kalır, ama "Chatwoot modunda" Meta'nın kabul ettiği (wamid alınmış) mesaj kesin
     ücretlenir. Teslim edilemeyen az sayıda mesaj da ücretlenir.
+- **Karar (20 Kas, kullanıcı):** (A) "olaylar önce BeautyAsist'e gelsin". Kullanıcının sorusu "mesajlar Chatwoot'ta
+  görünecek mi" idi; cevap evet, olaylar aynen iletilir. Uygulaması §9'dadır (override yerine uygulama düzeyinde webhook).
+
+---
+
+## 9. Olaylar önce BeautyAsist'e — çok salonlu düzgün yol (20 Kas 2026)
+
+**Kullanıcının ifadesi:** "bu sadece bir kurum, bir sürü kurum eklenecek, düzgün yol çiz. Önemli olan BeautyAsist'in
+EVET/HAYIR gibi mesajları okuması. Chatwoot'ta da bağlantı olacak, oradan görülecek."
+
+```
+Müşteri ⇄ WhatsApp (her salonun kendi numarası)
+             │  Meta (tek uygulama "Maydanoz Asist"; webhook = BeautyAsist)
+             ▼
+  BeautyAsist /api/whatsapp/webhook
+     ├─ imzayı App Secret ile doğrular (doğrulanamayan olay ne işlenir ne iletilir)
+     ├─ olayı AYNEN Chatwoot'a iletir: gövde bayt bayt + X-Hub-Signature-256 (önce doğrudan 3 sn, olmazsa
+     │   kalıcı kuyruk: 10 deneme ≈ 4 saat; kuyruk da yazılamazsa 500 → Meta yeniden gönderir)
+     └─ phone_number_id → salon: EVET/HAYIR/ERTELE, KVKK ONAYLIYORUM, bekleme EVET + teslim/okundu (kontör doğru)
+             ▼
+  Chatwoot /webhooks/whatsapp/<herhangi bir kayıtlı numara>
+     └─ olayı gövdedeki numaraya göre (display_phone_number + phone_number_id) o salonun gelen kutusuna koyar
+```
+
+**Neden tek iletim adresi yeter:** Chatwoot `object == whatsapp_business_account` olan olayda kanalı adresten değil
+gövdedeki numaradan bulur (`Webhooks::WhatsappEventsJob#get_channel_from_wb_payload`, kaynakla doğrulandı). İmzayı
+uygulama sırrıyla ham gövde üzerinde doğrular; BeautyAsist gövdeyi ve başlığı değiştirmediği için imza geçerli kalır.
+Chatwoot'ta kutusu olmayan numaranın olayını Chatwoot yok sayar.
+
+### 9.1 Bir kerelik geçiş (şimdiki numara için) — sırayla
+
+Ön koşullar (biri eksikse geçiş yapılmaz):
+1. BeautyAsist canlıda bu sürüm (migration `ChatwootRelay`).
+2. Platform › Sistem Ayarları › WhatsApp Altyapısı: **App Secret kayıtlı** (Meta › uygulama › Ayarlar › Temel › Uygulama
+   Sırrı; kullanıcı yapıştırır) ve **Webhook Verify Token** dolu. App Secret yoksa BeautyAsist hiçbir olayı doğrulayamaz
+   → işlemez ve Chatwoot'a da İLETMEZ (Chatwoot susar).
+3. Bugünkü Meta webhook adresi (Meta › uygulama › WhatsApp › Yapılandırma › Geri arama URL'si) okunur ve AYNEN
+   **Chatwoot iletim adresi** alanına yazılır. Chatwoot o zaman bugün aldığının aynısını alır.
+4. Geri dönüş için Chatwoot'un o gelen kutusundaki **webhook verify token**'ı not edilir (Chatwoot › gelen kutusu ayarları).
+5. Numarada ya da WABA'da **webhook override** olmadığı kontrol edilir (öncelik: numara > WABA > uygulama; varsa uygulama
+   düzeyindeki değişiklik sessizce etkisiz kalır).
+
+Geçiş:
+6. Meta › uygulama › WhatsApp › Yapılandırma: Geri arama URL'si = `https://maydanozasist.beautyasist.com/api/whatsapp/webhook`,
+   Doğrulama belirteci = BeautyAsist'teki verify token → **Doğrula ve kaydet** (Meta BeautyAsist'i yoklar). `messages`
+   aboneliği açık kalır.
+7. Doğrulama:
+   - Test telefonundan numaraya yazılır: mesaj Chatwoot'ta görünür (iletim) ve BeautyAsist'te gelen satırı oluşur.
+   - Hatırlatma → "EVET" → randevu Onaylandı.
+   - Giden mesaj `Sent` → `Delivered` olur (kontör kesinleşir).
+   - Chatwoot'tan temsilci yanıtı gider ve Chatwoot'ta iletildi/okundu tikleri görünür (durumlar da iletilir).
+
+**Geri dönüş:** 6. adımdaki URL'yi bugünkü Chatwoot adresine, belirteci 4. adımdaki Chatwoot belirtecine geri alın.
+
+Geçiş ve App Secret onay gerektirir (dış sistem ayarı); Meta'dan inceleme/onay GEREKMEZ.
+
+### 9.2 Yeni salon ekleme (her salon için)
+
+1. **Meta:** numara platformun WABA'sına eklenir (numara doğrulaması + görünen ad onayı — Meta'nın olağan adımları).
+   Uygulama incelemesi gerekmez. Şablonlar WABA düzeyindedir: onaylı 5 şablon yeni salonda da geçerli.
+2. **Chatwoot:** o numara için WhatsApp gelen kutusu **manuel kurulumla** açılır (Phone Number ID, WABA ID, API anahtarı =
+   platform uygulamasının sistem kullanıcısı token'ı).
+   - ⚠️ Chatwoot'un gösterdiği webhook adresini ve verify token'ı Meta'ya **GİRMEYİN**. Girilirse uygulamanın webhook'u
+     bütün salonlar için Chatwoot'a döner ve BeautyAsist yanıtları göremez.
+   - ⚠️ Chatwoot'un "WhatsApp ile bağlan" (embedded signup) akışını KULLANMAYIN. Numara başka bir Meta uygulamasına
+     bağlanır ve olayları BeautyAsist'e hiç gelmez.
+3. **BeautyAsist:** Platform › WhatsApp › Bağlantılar › salon → phone_number_id, WABA id, görünen numara, durum Bağlı,
+   şablon adları. Chatwoot için salon başına ayar YOK (tek iletim adresi hepsine yeter).
+4. **Paylaşımlı numara:** numara aynı zamanda destek hattıysa bağlantıda "Paylaşımlı numara: yalnız BeautyAsist
+   mesajlarına verilen yanıtları kaydet" açılır. Salonun kendi numarasında kapalı kalır.
+5. **Deneme:** hatırlatma → EVET → Onaylandı; mesaj Chatwoot'ta da görünür.
+
+### 9.3 İzleme ve sınırlar
+
+- Doğrudan iletilemeyen olaylar `background_jobs` (`whatsapp.chatwoot-relay`) içinde bekler. 10 denemeden sonra
+  Platform › Sistem › Arka plan iş kuyruğu'nda "başarısız" görünür ve oradan yeniden denenebilir. İş yükü müşteri metni
+  içerir; başarılılar 7 günde silinir.
+- Şimdiki test kurumu Maydanoz destek hattıyla aynı numarada: geçişten sonra bağlantısında "paylaşımlı numara" AÇIK
+  olmalı. Yoksa destek mesajları salonun kaydına düşer.
+- Meta'nın günlük "işletmenin başlattığı mesaj" sınırı salonlar çoğaldıkça önem kazanır. İşletme doğrulaması
+  (Business Verification) bu sınırı yükseltir; WhatsApp Manager'dan izlenir.

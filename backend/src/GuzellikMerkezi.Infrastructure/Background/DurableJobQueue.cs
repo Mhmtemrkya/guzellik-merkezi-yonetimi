@@ -19,9 +19,12 @@ public sealed class DurableJobQueue : IDurableJobQueue
         _signal = signal;
     }
 
-    public async Task EnqueueAsync(string jobType, object payload, CancellationToken ct = default)
+    public Task EnqueueAsync(string jobType, object payload, CancellationToken ct = default) =>
+        EnqueueAsync(jobType, payload, maxAttempts: 5, ct);
+
+    public async Task EnqueueAsync(string jobType, object payload, int maxAttempts, CancellationToken ct = default)
     {
-        var job = new BackgroundJob(jobType, JsonSerializer.Serialize(payload, JsonOptions));
+        var job = new BackgroundJob(jobType, JsonSerializer.Serialize(payload, JsonOptions), maxAttempts);
         _db.BackgroundJobs.Add(job);
         await _db.SaveChangesAsync(ct);
         // Outbox + broker: satır kalıcı; RabbitMQ açıksa anında işlensin diye sinyal gönder

@@ -45,6 +45,13 @@ public sealed class PlatformIntegrationSettings : Entity
     /// webhook adresinin sonundaki uzun rastgele anahtar olarak kullanılır. Yoksa köprü HİÇBİR isteği işlemez.
     /// </summary>
     public string? ChatwootWebhookSecretEncrypted { get; private set; }
+    /// <summary>
+    /// CHATWOOT İLETİMİ (olaylar önce BeautyAsist'e): Meta webhook'u BeautyAsist'e geldiğinde, imzası doğrulanan HER
+    /// olay (gövde + <c>X-Hub-Signature-256</c>) AYNEN bu adrese iletilir — Chatwoot'un WhatsApp webhook adresi
+    /// (ör. <c>https://chatdash.sophy.co/webhooks/whatsapp/+908502428425</c>). Chatwoot olayı gövdedeki numaraya göre
+    /// doğru gelen kutusuna koyduğu için TÜM salonlara tek adres yeter. Boş = iletim yok. Gizli değildir.
+    /// </summary>
+    public string? ChatwootRelayUrl { get; private set; }
 
     // --- Ödeme (iyzico) — abonelik tahsilatı; yalnızca PlatformAdmin girer ---
     // Anahtarlar at-rest şifreli tutulur (ENC:v1:) ve HİÇBİR okuma ucunda düz metin dönmez;
@@ -124,6 +131,17 @@ public sealed class PlatformIntegrationSettings : Entity
     {
         if (webhookSecretEnc is null) return;
         ChatwootWebhookSecretEncrypted = webhookSecretEnc;
+        Touch();
+    }
+
+    /// <param name="relayUrl">
+    /// null = mevcut KORUNUR (bu alanı bilmeyen istemcinin tam değiştirmeli kaydı, ör. Maydanoz köprüsü, iletimi
+    /// kapatamasın); boş metin = iletimi kapat. Adres doğrulaması (HTTPS, özel ağ değil) çağıranın işidir.
+    /// </param>
+    public void UpdateChatwootRelay(string? relayUrl)
+    {
+        if (relayUrl is null) return;
+        ChatwootRelayUrl = string.IsNullOrWhiteSpace(relayUrl) ? null : relayUrl.Trim();
         Touch();
     }
 

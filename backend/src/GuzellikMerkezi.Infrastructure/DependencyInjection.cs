@@ -202,6 +202,7 @@ public static class DependencyInjection
         services.AddScoped<IDurableJobHandler, Background.RatingLinkJobHandler>();
         services.AddScoped<IDurableJobHandler, Background.KvkkConsentJobHandler>();
         services.AddScoped<IDurableJobHandler, Background.SubscriptionRenewalJobHandler>();
+        services.AddScoped<IDurableJobHandler, Background.ChatwootRelayJobHandler>();
         services.AddScoped<IAppointmentService, AppointmentService>();
         services.AddScoped<IRatingService, RatingService>();
         services.AddScoped<Application.Features.PublicSalons.IPublicSalonService, PublicSalonService>();
@@ -215,6 +216,11 @@ public static class DependencyInjection
         // Dış gönderim HttpClient'ları Polly standart dayanıklılık boru hattıyla sarılır
         // (retry + timeout + circuit breaker + rate limiter) → tek deneme yerine geçici hatalara dayanıklı.
         services.AddHttpClient("WhatsApp").DisableRedirects().AddStandardResilienceHandler();
+        // Olaylar önce BeautyAsist'e: Meta olayının Chatwoot'a ham iletimi. Dayanıklılık hattı YOK — istek yolunda
+        // kısa zaman aşımıyla bir kez denenir, yeniden deneme kalıcı kuyruğun işidir. Günlük susturulur: her olay
+        // (durumlar dahil) satır yazardı; hatalar iletim sınıfı kendi kısa satırıyla yazar.
+        services.AddScoped<Application.Features.WhatsApp.IWhatsAppEventRelay, ChatwootEventRelay>();
+        services.AddHttpClient(ChatwootEventRelay.HttpClientName).DisableRedirects().RemoveAllLoggers();
         services.AddScoped<IPlatformMessagingService, PlatformMessagingService>();
         // SMS istemcisi: URL LOGLANMAZ.
         //

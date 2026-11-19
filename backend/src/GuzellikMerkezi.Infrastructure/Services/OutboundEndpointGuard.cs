@@ -132,6 +132,31 @@ public static class OutboundEndpointGuard
         return null;
     }
 
+    /// <summary>
+    /// Chatwoot İLETİM adresini doğrular; sorun varsa mesaj döner (null = geçerli, boş = iletim kapalı).
+    /// <para>
+    /// Bu adrese müşteri mesajlarının TAMAMI (metin, telefon) gider. Chatwoot kendi sunucusunda barındırılabildiği
+    /// için host allowlist'i KONAMAZ; bunun yerine: yalnız HTTPS, varsayılan port, kullanıcı bilgisi yok ve ad
+    /// GLOBAL bir adrese çözülmeli (iç ağa/metadata ucuna yönlendirme engellenir). Hem kayıtta hem her gönderimde
+    /// çağrılır (ad sonradan iç adrese çözülecek şekilde değiştirilmiş olabilir).
+    /// </para>
+    /// </summary>
+    public static string? ValidateRelayUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
+            return "Chatwoot iletim adresi geçerli bir URL değil.";
+        if (uri.Scheme != Uri.UriSchemeHttps)
+            return "Chatwoot iletim adresi yalnız HTTPS olabilir.";
+        if (ValidateAuthority(uri, "Chatwoot iletim adresi") is { } authorityError) return authorityError;
+        if (Uri.CheckHostName(uri.Host) == UriHostNameType.Unknown)
+            return "Chatwoot iletim adresinin sunucu adı geçersiz.";
+        if (IsPrivateHost(uri.Host))
+            return "Chatwoot iletim adresi özel/loopback bir adrese çözülüyor (ya da çözülemiyor).";
+        return null;
+    }
+
     /// <summary>SMTP host/port'unu doğrular; sorun varsa mesaj döner (null = geçerli).</summary>
     public static string? ValidateSmtp(string? host, int port) => ResolveSmtp(host, port, useTls: true).Error;
 

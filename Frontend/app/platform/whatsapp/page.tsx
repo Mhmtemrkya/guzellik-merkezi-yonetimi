@@ -143,6 +143,7 @@ function BindModal({ conn, onClose, onSaved }: { conn: ApiWhatsAppConnection; on
   const [templateLanguage, setTemplateLanguage] = useState(conn.templateLanguageCode || 'tr')
   // Chatwoot köprüsü: boş = bağ yok (kaydederken 0 gider → sunucu bağı kaldırır).
   const [chatwootInboxId, setChatwootInboxId] = useState(conn.chatwootInboxId ? String(conn.chatwootInboxId) : '')
+  const [recordRepliesOnly, setRecordRepliesOnly] = useState(!!conn.recordRepliesOnly)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [testPhone, setTestPhone] = useState('')
@@ -170,6 +171,7 @@ function BindModal({ conn, onClose, onSaved }: { conn: ApiWhatsAppConnection; on
         templateLanguageCode: templateLanguage.trim() || 'tr',
         // HER ZAMAN gönderilir: 0 = bağı kaldır (null gönderilseydi sunucu mevcut bağı korurdu).
         chatwootInboxId: inboxText ? Number(inboxText) : 0,
+        recordRepliesOnly,
       })
       onSaved()
     } catch (e) { setErr(e instanceof Error ? e.message : 'Kaydedilemedi.') } finally { setBusy(false) }
@@ -231,12 +233,26 @@ function BindModal({ conn, onClose, onSaved }: { conn: ApiWhatsAppConnection; on
           </div>
         </div>
 
-        {/* Chatwoot köprüsü — Meta webhook'u Chatwoot'tayken müşteri yanıtları buradan kuruma bağlanır. */}
+        {/* Paylaşımlı numara — numara aynı zamanda başka bir işe (ör. canlı destek hattı) hizmet ediyorsa. */}
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-[#ecd9e1] bg-[#fbf7f9] p-2.5">
+          <input type="checkbox" checked={recordRepliesOnly} onChange={(e) => setRecordRepliesOnly(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 accent-[#ef6088]" />
+          <span className="text-[11px] leading-relaxed text-[#3f2d36]">
+            <b>Paylaşımlı numara:</b> yalnız BeautyAsist mesajlarına verilen yanıtları kaydet.
+            <span className="block text-[10.5px] text-[#6c5661]">
+              Numara aynı zamanda destek hattıysa açın: BeautyAsist'in son 3 günde mesaj göndermediği kişilerin yazdıkları bu kurumun kaydına
+              karışmaz (Chatwoot'ta kalır). Salonun kendi numarasında kapalı bırakın.
+            </span>
+          </span>
+        </label>
+
+        {/* Chatwoot köprüsü (yedek yol) — yalnız Meta webhook'u Chatwoot'ta KALIRSA yanıtlar buradan kuruma bağlanır. */}
         <div className="space-y-1.5 rounded-lg border border-[#ecd9e1] bg-[#fbf7f9] p-2.5">
-          <Field label="Chatwoot gelen kutusu kimliği" value={chatwootInboxId} onChange={setChatwootInboxId} placeholder="opsiyonel, ör. 82" mono />
+          <Field label="Chatwoot gelen kutusu kimliği · yedek yol" value={chatwootInboxId} onChange={setChatwootInboxId} placeholder="genelde boş" mono />
           <p className="text-[10.5px] leading-relaxed text-[#6c5661]">
-            Meta webhook'u Chatwoot'a gidiyorsa müşteri yanıtları (EVET/HAYIR, ONAYLIYORUM) Chatwoot'tan okunur ve bu kuruma bağlanır.
-            Kimlik, Chatwoot'ta gelen kutusu ayarları adresindeki sayıdır (…/settings/inboxes/<b>82</b>). Boş bırakılırsa bağ kaldırılır.
+            Olağan kurulumda Meta webhook'u BeautyAsist'e gelir ve olaylar Chatwoot'a iletilir (Sistem Ayarları › WhatsApp › Chatwoot iletim adresi); bu alan
+            o zaman <b>gerekmez</b>. Yalnız webhook Chatwoot'ta kalırsa yanıtlar Chatwoot'tan okunur ve bu kimlikle kuruma bağlanır
+            (…/settings/inboxes/<b>82</b>). Boş bırakılırsa bağ kaldırılır.
           </p>
           {conn.webhookUrl && (
             <p className="text-[10.5px] leading-relaxed text-[#6c5661]">

@@ -2775,6 +2775,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("ChatwootRelayUrl")
+                        .HasColumnType("longtext");
+
                     b.Property<string>("ChatwootWebhookSecretEncrypted")
                         .HasColumnType("longtext");
 
@@ -5721,6 +5724,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                     b.Property<string>("RatingTemplateName")
                         .HasMaxLength(128)
                         .HasColumnType("varchar(128)");
+
+                    b.Property<bool>("RecordRepliesOnly")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("ReminderTemplate")
                         .HasMaxLength(1000)

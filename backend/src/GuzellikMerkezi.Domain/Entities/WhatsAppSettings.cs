@@ -38,6 +38,13 @@ public sealed class WhatsAppSettings : Entity
     /// gelen kutusu kimliği kurumu bulmanın TEK yoludur (Chatwoot yükü işletme numarasını taşımaz).
     /// </summary>
     public int? ChatwootInboxId { get; private set; }
+    /// <summary>
+    /// PAYLAŞIMLI NUMARA: true ise bu numaraya gelen mesajlardan yalnız BeautyAsist'in yakın zamanda mesaj
+    /// gönderdiği kişilerin YANITLARI kurumun kaydına yazılır. Numara aynı zamanda başka bir işe (ör. canlı destek
+    /// hattı) hizmet ediyorsa o konuşmalar salonun mesaj kaydına karışmaz. Salonun kendi numarasında false
+    /// kalır (24 saat penceresi her gelen mesajın kaydına dayanır).
+    /// </summary>
+    public bool RecordRepliesOnly { get; private set; }
 
     // --- İçerik (KURUM yönetir) ---
     public string? ReminderTemplate { get; private set; }
@@ -121,6 +128,13 @@ public sealed class WhatsAppSettings : Entity
     public void SetChatwootInbox(int inboxId)
     {
         ChatwootInboxId = inboxId > 0 ? inboxId : null;
+        Touch();
+    }
+
+    /// <summary>PLATFORM: paylaşımlı numara → yalnız yanıtları kaydet (bkz. <see cref="RecordRepliesOnly"/>).</summary>
+    public void SetRecordRepliesOnly(bool repliesOnly)
+    {
+        RecordRepliesOnly = repliesOnly;
         Touch();
     }
 

@@ -1708,6 +1708,8 @@ export interface ApiPlatformMessagingSettings {
   whatsAppVerifyToken?: string | null
   /** Chatwoot köprüsü anahtarı tanımlı mı (anahtarın kendisi hiç dönmez). */
   hasChatwootWebhookSecret?: boolean
+  /** Olaylar önce BeautyAsist'e: imzası doğrulanan her Meta olayının aynen iletildiği Chatwoot adresi. */
+  chatwootRelayUrl?: string | null
   // Ödeme (iyzico) — anahtarların KENDİSİ dönmez, yalnız "tanımlı mı" bilgisi döner.
   paymentsEnabled?: boolean
   paymentProvider?: string
@@ -1976,6 +1978,8 @@ export interface ApiWhatsAppConnection {
   ratingTemplateName?: string | null
   /** Chatwoot köprüsü: müşteri yanıtlarını bu kuruma bağlayan Chatwoot gelen kutusu kimliği. */
   chatwootInboxId?: number | null
+  /** Paylaşımlı numara: yalnız BeautyAsist mesajlarına verilen yanıtlar kurum kaydına yazılır. */
+  recordRepliesOnly?: boolean
 }
 
 /** Platform listesindeki satır: kurum + paketi + kendi SMS hesabı bağlantısı. */

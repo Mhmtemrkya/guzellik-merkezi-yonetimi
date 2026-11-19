@@ -115,8 +115,11 @@ public static class WhatsAppEndpoints
             if (body is null) return Results.StatusCode(413);
             // GÜVENLİK: imza servis içinde app secret ile doğrulanır (fail-closed); geçersizse gövde işlenmez.
             var signature = http.Request.Headers["X-Hub-Signature-256"].FirstOrDefault();
+            // Olağan sonuç 200'dür (geçersiz imza/ilgisiz olay dahil — yoksa Meta boşuna yeniden dener). TEK istisna:
+            // olay Chatwoot'a iletilemedi VE kuyruğa da yazılamadıysa servis istisna fırlatır → 500 → Meta olayı
+            // yeniden gönderir; aksi hâlde olay Chatwoot için kaybolurdu (BeautyAsist tarafı wamid ile tekilleşir).
             await service.HandleInboundAsync(body, signature, ct);
-            return Results.Ok(); // Meta'ya her zaman 200 dönmeli (yoksa yeniden dener)
+            return Results.Ok();
         }).AllowAnonymous();
 
         // --- Chatwoot köprüsü (anonim; Chatwoot çağırır) ---

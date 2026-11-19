@@ -65,9 +65,14 @@ public sealed class WhatsAppService : IWhatsAppService
     /// çözülür: AppointmentService → IWaitlistService → … zinciri ctor bağımlılığında döngü riski taşır.
     /// </summary>
     private readonly IServiceProvider _services;
+    private readonly IWhatsAppEventRelay? _relay;
 
-    public WhatsAppService(GuzellikDbContext db, IEncryptionService encryption, IHttpClientFactory httpFactory, IConfiguration config, ILogger<WhatsAppService> logger, IFeatureService features, IWhatsAppBillingService billing, ICurrentUser currentUser, IWaitlistService waitlist, Application.Features.AppNotifications.IAppNotificationService notifications, Application.Features.PublicSalons.IKvkkDocumentService kvkkDocuments, IServiceProvider services)
+    /// <param name="relay">
+    /// Chatwoot iletimi (olaylar önce BeautyAsist'e). DI kayıtlıysa enjekte edilir; null (testler) = iletim yok.
+    /// </param>
+    public WhatsAppService(GuzellikDbContext db, IEncryptionService encryption, IHttpClientFactory httpFactory, IConfiguration config, ILogger<WhatsAppService> logger, IFeatureService features, IWhatsAppBillingService billing, ICurrentUser currentUser, IWaitlistService waitlist, Application.Features.AppNotifications.IAppNotificationService notifications, Application.Features.PublicSalons.IKvkkDocumentService kvkkDocuments, IServiceProvider services, IWhatsAppEventRelay? relay = null)
     {
+        _relay = relay;
         _db = db;
         _encryption = encryption;
         _httpFactory = httpFactory;
@@ -200,6 +205,7 @@ public sealed class WhatsAppService : IWhatsAppService
         s.BindConnection(request.PhoneNumberId, request.BusinessAccountId, request.DisplayPhoneNumber, status, request.VerifyToken);
         // null = MEVCUT korunur (alanı bilmeyen istemci bağı silmesin); 0 = kaldır.
         if (request.ChatwootInboxId is { } chatwootInbox) s.SetChatwootInbox(chatwootInbox);
+        if (request.RecordRepliesOnly is { } repliesOnly) s.SetRecordRepliesOnly(repliesOnly);
         if (request.AccessTokenOverride is not null)
         {
             var enc = string.IsNullOrWhiteSpace(request.AccessTokenOverride) ? null : _encryption.Encrypt(request.AccessTokenOverride.Trim());
@@ -238,7 +244,8 @@ public sealed class WhatsAppService : IWhatsAppService
             s?.WaitlistOfferTemplateName,
             s?.WaitlistActivatedTemplateName,
             s?.RatingTemplateName,
-            s?.ChatwootInboxId);
+            s?.ChatwootInboxId,
+            s?.RecordRepliesOnly ?? false);
 
     public async Task<Result<ReminderResultDto>> SendTestMessageAsync(Guid tenantId, SendTestMessageRequest request, CancellationToken ct = default)
     {
@@ -1025,6 +1032,13 @@ public sealed class WhatsAppService : IWhatsAppService
             return;
         }
 
+        // ÖNCE İLET (olaylar önce BeautyAsist'e): Chatwoot HER olayı ister — hiçbir kuruma bağlı olmayan numaralar,
+        // metin dışı mesajlar ve temsilcilerin Chatwoot'tan gönderdiği mesajların teslim durumları dahil. Bu yüzden
+        // ayrıştırmadan ve kurum eşlemesinden ÖNCE, izlenen hiçbir değişiklik yokken çalışır (kuyruk yazımı ortak
+        // bağlamı kaydeder). Yalnız imzası DOĞRULANMIŞ olay iletilir. Kuyruğa da yazılamazsa istisna yukarı
+        // çıkar → Meta 200 almaz ve olayı yeniden gönderir (BeautyAsist tarafı wamid ile tekilleşir).
+        if (_relay is not null) await _relay.RelayAsync(payloadJson, signatureHeader!, ct);
+
         JsonDocument doc;
         try { doc = JsonDocument.Parse(payloadJson); }
         catch (JsonException) { return; }
@@ -1071,7 +1085,10 @@ public sealed class WhatsAppService : IWhatsAppService
                         // Meta'nın mesaj kimliği (wamid) — mükerrer teslimi eleyen tek yetkili anahtar.
                         var wamid = msg.TryGetProperty("id", out var mid) ? mid.GetString() : null;
 
-                        await ProcessInboundMessageAsync(tenantId, phoneNumberId!, wamid, from!, text, ct);
+                        // Paylaşımlı numara (ör. aynı zamanda destek hattı): yalnız BeautyAsist mesajlarına verilen
+                        // yanıtlar kurum kaydına girer; diğer konuşmalar Chatwoot'ta kalır.
+                        await ProcessInboundMessageAsync(tenantId, phoneNumberId!, wamid, from!, text, ct,
+                            repliesOnly: settings.RecordRepliesOnly);
                     }
                 }
             }

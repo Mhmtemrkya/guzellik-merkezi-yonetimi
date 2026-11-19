@@ -35,7 +35,9 @@ public sealed record PlatformIntegrationSettingsDto(
     string? PaymentsReturnUrl = null,
     bool PaymentsConfigured = false,
     // --- Chatwoot köprüsü --- anahtarın kendisi dönmez.
-    bool HasChatwootWebhookSecret = false);
+    bool HasChatwootWebhookSecret = false,
+    // --- Chatwoot iletimi (olaylar önce BeautyAsist'e) --- gizli değildir, aynen döner.
+    string? ChatwootRelayUrl = null);
 
 public sealed record SavePlatformMessagingRequest(
     bool SmsEnabled,
@@ -69,7 +71,9 @@ public sealed record SavePlatformMessagingRequest(
     string? PaymentsReturnUrl = null,
     // --- Chatwoot köprüsü --- boş = mevcut anahtar KORUNUR (bu alanı bilmeyen istemcinin tam
     // değiştirmeli kaydı, ör. Maydanoz köprüsü, anahtarı silemez).
-    string? ChatwootWebhookSecret = null);
+    string? ChatwootWebhookSecret = null,
+    // --- Chatwoot iletimi --- null = mevcut KORUNUR (aynı gerekçe), boş metin = iletimi kapat.
+    string? ChatwootRelayUrl = null);
 
 public sealed record MessagingTestRequest(string Target);
 

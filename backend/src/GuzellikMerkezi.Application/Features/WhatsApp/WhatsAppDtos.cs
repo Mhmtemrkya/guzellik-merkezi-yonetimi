@@ -96,7 +96,9 @@ public sealed record WhatsAppConnectionDto(
     string? WaitlistActivatedTemplateName = null,
     string? RatingTemplateName = null,
     // Chatwoot köprüsü: müşteri yanıtları Chatwoot'tan okunurken kurumu bulan gelen kutusu kimliği.
-    int? ChatwootInboxId = null);
+    int? ChatwootInboxId = null,
+    // Paylaşımlı numara: yalnız BeautyAsist mesajlarına verilen yanıtlar kurum kaydına yazılır.
+    bool RecordRepliesOnly = false);
 
 /// <summary>
 /// Platform: kurum numarasını bağlar. Şablon adlarında <c>null</c> = MEVCUT korunur (alanları bilmeyen
@@ -116,7 +118,9 @@ public sealed record BindWhatsAppConnectionRequest(
     string? WaitlistActivatedTemplateName = null,
     string? RatingTemplateName = null,
     // Chatwoot gelen kutusu kimliği: null = MEVCUT korunur, 0 = bağı kaldır.
-    int? ChatwootInboxId = null);
+    int? ChatwootInboxId = null,
+    // Paylaşımlı numara (yalnız yanıtları kaydet): null = MEVCUT korunur.
+    bool? RecordRepliesOnly = null);
 
 /// <summary>
 /// Hediye kartı gönderimi. <paramref name="PdfBase64"/> istemcide üretilen kartın PDF'idir

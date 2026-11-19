@@ -15,6 +15,26 @@ public static class DurableJobTypes
     public const string RatingLink = "whatsapp.rating-link";
     public const string KvkkConsent = "whatsapp.kvkk-consent";
     public const string SubscriptionRenewal = "billing.subscription-renewal";
+    public const string ChatwootRelay = "whatsapp.chatwoot-relay";
+}
+
+/// <summary>
+/// Doğrudan iletilemeyen Meta olayını Chatwoot'a yeniden gönderir (bkz. <see cref="Services.ChatwootEventRelay"/>).
+/// Başarısızsa istisna fırlatır: kuyruk üstel beklemeyle yeniden dener, hak bitince iş Sistem sayfasında görünür.
+/// Chatwoot aynı mesajı kaynak kimliğiyle (wamid) tekilleştirdiği için tekrar gönderim zararsızdır.
+/// </summary>
+public sealed class ChatwootRelayJobHandler : IDurableJobHandler
+{
+    private readonly Application.Features.WhatsApp.IWhatsAppEventRelay _relay;
+    public ChatwootRelayJobHandler(Application.Features.WhatsApp.IWhatsAppEventRelay relay) => _relay = relay;
+    public string JobType => DurableJobTypes.ChatwootRelay;
+
+    public async Task ExecuteAsync(string payloadJson, CancellationToken ct)
+    {
+        var job = JsonSerializer.Deserialize<Services.ChatwootRelayJob>(payloadJson)
+                  ?? throw new InvalidOperationException("ChatwootRelay payload çözülemedi.");
+        await _relay.SendQueuedAsync(job.Body, job.Signature, ct);
+    }
 }
 
 /// <summary>

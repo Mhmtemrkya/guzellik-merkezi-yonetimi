@@ -53,7 +53,7 @@ export default function PlatformMessagingSettings() {
 
   const [sms, setSms] = useState({ enabled: false, provider: 'Verimor', apiKey: '', apiSecret: '', sender: '', apiUrl: '' })
   const [email, setEmail] = useState({ enabled: false, fromAddress: '', fromName: '', host: '', port: 587, username: '', password: '', useSsl: true })
-  const [whatsApp, setWhatsApp] = useState({ enabled: false, phoneNumberId: '', accessToken: '', businessAccountId: '', appSecret: '', verifyToken: '', chatwootSecret: '' })
+  const [whatsApp, setWhatsApp] = useState({ enabled: false, phoneNumberId: '', accessToken: '', businessAccountId: '', appSecret: '', verifyToken: '', chatwootSecret: '', relayUrl: '' })
   const [payments, setPayments] = useState({ enabled: false, provider: 'Simulation', apiKey: '', secretKey: '', baseUrl: '', returnUrl: '' })
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -83,7 +83,7 @@ export default function PlatformMessagingSettings() {
     if (!data) return
     setSms((s) => ({ ...s, enabled: !!data.smsEnabled, provider: data.smsProvider || 'Verimor', sender: data.smsSender || '', apiUrl: data.smsApiUrl || '' }))
     setEmail((e) => ({ ...e, enabled: !!data.emailEnabled, fromAddress: data.emailFromAddress || '', fromName: data.emailFromName || '', host: data.smtpHost || '', port: data.smtpPort || 587, username: data.smtpUsername || '', useSsl: data.smtpUseSsl ?? true }))
-    setWhatsApp((w) => ({ ...w, enabled: !!data.whatsAppEnabled, phoneNumberId: data.whatsAppPhoneNumberId || '', businessAccountId: data.whatsAppBusinessAccountId || '', verifyToken: data.whatsAppVerifyToken || '' }))
+    setWhatsApp((w) => ({ ...w, enabled: !!data.whatsAppEnabled, phoneNumberId: data.whatsAppPhoneNumberId || '', businessAccountId: data.whatsAppBusinessAccountId || '', verifyToken: data.whatsAppVerifyToken || '', relayUrl: data.chatwootRelayUrl || '' }))
     setPayments((p) => ({ ...p, enabled: !!data.paymentsEnabled, provider: data.paymentProvider || 'Simulation', baseUrl: data.iyzicoBaseUrl || '', returnUrl: data.paymentsReturnUrl || '' }))
   }, [data])
 
@@ -97,6 +97,8 @@ export default function PlatformMessagingSettings() {
         whatsAppAppSecret: whatsApp.appSecret || null, whatsAppVerifyToken: whatsApp.verifyToken || null,
         // Chatwoot köprüsü anahtarı: boş = mevcut KORUNUR (yalnız yazılır, hiç geri okunmaz).
         chatwootWebhookSecret: whatsApp.chatwootSecret.trim() || null,
+        // Chatwoot iletim adresi HER ZAMAN gönderilir: boş metin = iletimi kapat (null gönderilseydi sunucu korurdu).
+        chatwootRelayUrl: whatsApp.relayUrl.trim(),
         paymentsEnabled: payments.enabled, paymentProvider: payments.provider,
         iyzicoApiKey: payments.apiKey || null, iyzicoSecretKey: payments.secretKey || null,
         iyzicoBaseUrl: payments.baseUrl || null, paymentsReturnUrl: payments.returnUrl || null,
@@ -274,9 +276,28 @@ export default function PlatformMessagingSettings() {
             <p className="text-[10.5px] leading-snug text-[#fff4f8]/40">
               Tek Business Manager modeli: buradaki token tüm kurumların numaralarına gönderim yapar. Kurum başına numara bağlama <b>WhatsApp Yönetimi</b> sayfasındadır.
             </p>
-            {/* CHATWOOT KÖPRÜSÜ — Meta webhook'u Chatwoot'tayken müşteri yanıtları Chatwoot'un webhook'uyla gelir. */}
+            {/* CHATWOOT İLETİMİ (asıl yol) — Meta webhook'u BeautyAsist'e gelir, imzası doğrulanan her olay aynen Chatwoot'a iletilir. */}
             <div className="space-y-1.5 border-t border-[#fff4f8]/10 pt-3">
-              <label className={labelCls}>Chatwoot köprüsü anahtarı {data?.hasChatwootWebhookSecret && <span className="text-emerald-300/80">· kayıtlı</span>}</label>
+              <label className={labelCls}>Chatwoot iletim adresi</label>
+              <input value={whatsApp.relayUrl} onChange={(e) => setWhatsApp((w) => ({ ...w, relayUrl: e.target.value }))}
+                placeholder="https://chatwoot-alan-adi/webhooks/whatsapp/+90XXXXXXXXXX" className={`${inputCls} font-mono`} autoComplete="off" spellCheck={false} />
+              {whatsApp.relayUrl.trim() && !data?.hasWhatsAppAppSecret && (
+                <div className="flex items-start gap-1.5 border border-amber-400/40 bg-amber-400/10 px-2.5 py-1.5 text-[10.5px] leading-snug text-amber-200">
+                  <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                  <span>App Secret kayıtlı değil: Meta olaylarının imzası doğrulanamaz; olaylar işlenmez ve Chatwoot'a da iletilmez. Önce App Secret'ı kaydedin.</span>
+                </div>
+              )}
+              <p className="text-[10.5px] leading-snug text-[#fff4f8]/40">
+                Meta webhook'u BeautyAsist'e (<span className="font-mono">…/api/whatsapp/webhook</span>) gelir; imzası doğrulanan her olay bu adrese <b>aynen</b> iletilir,
+                konuşmalar Chatwoot'ta görünmeye devam eder. Chatwoot olayı numaraya göre doğru gelen kutusuna koyar — salon başına ayar gerekmez. Boşsa iletim yapılmaz.
+                <b> Yeni salonda dikkat:</b> numarayı Chatwoot'ta <b>manuel kurulumla</b> (platform uygulamasının token'ı) açın; Chatwoot'un gösterdiği webhook adresini ve
+                verify token'ı Meta'ya <b>girmeyin</b>. Girilirse bütün salonların olayları yeniden Chatwoot'a gider ve BeautyAsist yanıtları göremez.
+              </p>
+            </div>
+
+            {/* CHATWOOT KÖPRÜSÜ (yedek yol) — yalnız Meta webhook'u Chatwoot'ta KALIRSA: yanıtlar Chatwoot'un webhook'uyla gelir. */}
+            <div className="space-y-1.5 border-t border-[#fff4f8]/10 pt-3">
+              <label className={labelCls}>Chatwoot köprüsü anahtarı · yedek yol {data?.hasChatwootWebhookSecret && <span className="text-emerald-300/80">· kayıtlı</span>}</label>
               <div className="flex gap-2">
                 <input type={chatwootKeyVisible ? 'text' : 'password'} value={whatsApp.chatwootSecret} onChange={(e) => setWhatsApp((w) => ({ ...w, chatwootSecret: e.target.value }))}
                   placeholder={data?.hasChatwootWebhookSecret ? 'değiştirmek için yaz' : "Chatwoot webhook secret'ı ya da Üret"} className={`${inputCls} font-mono`} autoComplete="off" spellCheck={false} />
@@ -290,7 +311,8 @@ export default function PlatformMessagingSettings() {
                 )}
               </div>
               <p className="text-[10.5px] leading-snug text-[#fff4f8]/40">
-                Müşteri yanıtları (EVET/HAYIR, ONAYLIYORUM) Chatwoot'tan okunur. Chatwoot'ta yalnız <b>Mesaj Oluşturuldu</b> olayına abone bir webhook açın.
+                Yalnız Meta webhook'u Chatwoot'ta kalırsa kullanılır (yukarıdaki iletim varken gerekmez): müşteri yanıtları (EVET/HAYIR, ONAYLIYORUM) Chatwoot'tan okunur.
+                Chatwoot'ta yalnız <b>Mesaj Oluşturuldu</b> olayına abone bir webhook açın.
                 Webhook imzalıysa buraya Chatwoot'un secret'ını yazın; imzasızsa <b>Üret</b> ile anahtar oluşturup kopyalayın ve adresin sonuna ekleyin.
                 Tam adres <b>WhatsApp Yönetimi › Bağlantılar</b> penceresinde görünür. Anahtar kaydedildikten sonra bir daha gösterilmez; anahtar yoksa köprü hiçbir isteği işlemez.
               </p>
