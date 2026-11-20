@@ -166,6 +166,9 @@ public sealed class PlatformBridgeTests
     [InlineData("GET", "/api/connector/v1/platform")]
     [InlineData("PUT", "/api/connector/v1/platform/subscription-plans/not-a-guid")]
     [InlineData("POST", "/api/connector/v1/platform/messaging/test-fax")]
+    [InlineData("DELETE", "/api/connector/v1/platform/assistant/conversations/0b8f1c1e-1111-4222-8333-944455556666")]
+    [InlineData("GET", "/api/connector/v1/platform/assistant/conversations/not-a-guid")]
+    [InlineData("GET", "/api/connector/v1/platform/assistant/unanswered")]
     public async Task PathsOutsideTheAllowList_AreRefused(string method, string path)
     {
         await using var db = Db();
@@ -213,6 +216,10 @@ public sealed class PlatformBridgeTests
     [Theory]
     [InlineData("GET", "/api/connector/v1/platform/support?scope=open&search=%C5%9Fule%20han%C4%B1m&page=1&pageSize=25", "/api/platform/support")]
     [InlineData("GET", "/api/connector/v1/platform/support/summary", "/api/platform/support/summary")]
+    [InlineData("GET", "/api/connector/v1/platform/assistant/stats?days=90", "/api/platform/assistant/stats")]
+    [InlineData("GET", "/api/connector/v1/platform/assistant/conversations?reason=support&note=%5BMaydanoz%3A%20a%40b.com%5D&days=7&page=1", "/api/platform/assistant/conversations")]
+    [InlineData("GET", "/api/connector/v1/platform/assistant/conversations/0b8f1c1e-1111-4222-8333-944455556666?reason=security", "/api/platform/assistant/conversations/0b8f1c1e-1111-4222-8333-944455556666")]
+    [InlineData("GET", "/api/connector/v1/platform/assistant/access-log?days=30", "/api/platform/assistant/access-log")]
     [InlineData("GET", "/api/connector/v1/platform/support/0b8f1c1e-1111-4222-8333-944455556666", "/api/platform/support/0b8f1c1e-1111-4222-8333-944455556666")]
     [InlineData("POST", "/api/connector/v1/platform/support/0b8f1c1e-1111-4222-8333-944455556666/reply", "/api/platform/support/0b8f1c1e-1111-4222-8333-944455556666/reply")]
     [InlineData("PUT", "/api/connector/v1/platform/support/0b8f1c1e-1111-4222-8333-944455556666", "/api/platform/support/0b8f1c1e-1111-4222-8333-944455556666")]

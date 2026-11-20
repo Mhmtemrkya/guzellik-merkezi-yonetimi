@@ -42,6 +42,9 @@ public sealed partial class PlatformBridgeMiddleware(RequestDelegate next, ILogg
     /// sayfasında kurum adına tıklayınca düzenleme yapılabilsin; veritabanları dinamik olsun"): DESTEK kuyruğu (liste,
     /// özet, ayrıntı, yanıt, durum/öncelik), KURUMLAR (liste, ayrıntı, YALNIZ PROFİL güncellemesi — paket/dönem/durum
     /// köprüden değişmez) ve VERİTABANI izleme (ölçümler + şema; satır verisi YOK).
+    /// 3. dilim (kullanıcı isteği 20 Kas 2026: "Maydi'nin sohbet kayıtlarını Maydanoz'un admin paneline çek"): Maydi
+    /// istatistiği, SOHBET KAYITLARI ve erişim izi — YALNIZ OKUMA. Gerekçe kapısı ve erişim izi hedef uçtadır (AssistantLogService);
+    /// Maydanoz, gerçek kişiyi nota "[Maydanoz: …]" önekiyle yazar (köprünün kimliği tek bir platform hesabıdır).
     /// </summary>
     internal static readonly IReadOnlyList<(string Method, Regex Path)> Allowed =
     [
@@ -55,6 +58,10 @@ public sealed partial class PlatformBridgeMiddleware(RequestDelegate next, ILogg
         ("PUT", Rule($"^/tenants/{Id}/profile$")),
         ("GET", Rule("^/system/database$")),
         ("GET", Rule("^/system/database/schema$")),
+        ("GET", Rule("^/assistant/stats$")),
+        ("GET", Rule("^/assistant/conversations$")),
+        ("GET", Rule($"^/assistant/conversations/{Id}$")),
+        ("GET", Rule("^/assistant/access-log$")),
         ("GET", Rule("^/messaging/settings$")),
         ("PUT", Rule("^/messaging/settings$")),
         ("POST", Rule("^/messaging/test-(sms|email|whatsapp)$")),
