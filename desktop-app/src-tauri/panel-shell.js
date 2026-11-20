@@ -89,10 +89,47 @@
     // Ayrı kural: :has desteklenmeyen eski WebKit'te yalnız bu düşsün, üstteki gizleme kalsın.
     'p:has(> a[href^="/kayit"]){display:none!important}'; // "Hesabınız yok mu?" boşta kalmasın
 
+  // 5) Store: WhatsApp kontör satın alma (kartla öde / havale talebi) — App Store 3.1.1 reddi
+  //    (2026-11-14). Kontör dijital bir hizmet; IAP dışı satın alma uygulamada görünmemeli.
+  //    Bakiye, kullanım ve bekleyen talepler görünmeye devam eder. Bileşende sabit bir seçici
+  //    olmadığı için "Ek kontör al" başlığından satın alma bloğu bulunur ve gizlenir.
+  //    Başlık web'de değişti (2026-11-18): "Ek kontör al" → "WhatsApp kredisi al" / "SMS kredisi al".
+  var PURCHASE_HEADINGS = ['Ek kontör al', 'WhatsApp kredisi al', 'SMS kredisi al'];
+  function hidePurchaseBlocks() {
+    var nodes = document.querySelectorAll('div');
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (el.children.length !== 0) continue;
+      var text = (el.textContent || '').trim();
+      if (PURCHASE_HEADINGS.indexOf(text) === -1 && !/^(\S+ )?kredisi al$/i.test(text)) continue;
+      // Başlık → üst satır (başlık + "Özel tutar") → satın alma bloğu (ödeme yolu, paketler, not).
+      var block = el.parentElement && el.parentElement.parentElement;
+      if (block && block.style.display !== 'none') block.style.setProperty('display', 'none', 'important');
+    }
+    // Yetkili olmayan kullanıcıya "kredi maydanozasist.com'da kurum yetkilisiyle alınır" notu: dış ödemeye yönlendirme.
+    var notes = document.querySelectorAll('div > b:first-child');
+    for (var j = 0; j < notes.length; j++) {
+      if ((notes[j].textContent || '').trim() !== 'Mesaj kredisi kurum yetkilisinin hesabıyla alınır.') continue;
+      var note = notes[j].parentElement;
+      if (note.style.display !== 'none') note.style.setProperty('display', 'none', 'important');
+    }
+  }
+
   function onReady() {
     var style = document.createElement('style');
     style.textContent = css;
     document.head.appendChild(style);
+    if (store) {
+      hidePurchaseBlocks();
+      // Panel istemci tarafında çizilir; sonradan gelen kartı da yakala. (rAF değil: pencere
+      // arka plandayken/tepsideyken rAF durur, setTimeout çalışmaya devam eder.)
+      var pending = false;
+      new MutationObserver(function () {
+        if (pending) return;
+        pending = true;
+        setTimeout(function () { pending = false; hidePurchaseBlocks(); }, 0);
+      }).observe(document.body, { childList: true, subtree: true });
+    }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', onReady);

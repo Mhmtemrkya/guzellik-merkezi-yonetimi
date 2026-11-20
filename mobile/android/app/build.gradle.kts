@@ -1,5 +1,6 @@
 import java.util.Properties
 import java.io.FileInputStream
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -18,6 +19,16 @@ if (hasReleaseKeystore) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+val dartDefines = providers.gradleProperty("dart-defines").orNull
+    ?.split(",")?.map { String(Base64.getDecoder().decode(it)) }.orEmpty()
+val isPlayStoreBuild = dartDefines.contains("PLAY_STORE_BUILD=true")
+if (isPlayStoreBuild) {
+    check(hasReleaseKeystore) { "Google Play builds require a release upload key." }
+    check(!dartDefines.contains("LAN_POLLER=true")) {
+        "The Play build uses FCM and local reminders; LAN polling is for direct distribution."
+    }
+}
+
 // FCM: google-services.json bırakılırsa Firebase yapılandırması derlemeye enjekte edilir.
 // Dosya yoksa plugin uygulanmaz → build normal devam eder; firebase_messaging derlenir ama
 // Firebase.initializeApp() runtime'da guard'lı hata verir (uygulama yerel+LAN ile çalışır).
@@ -29,6 +40,10 @@ android {
     namespace = "com.beautyasist.beautyasist_mobile"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+
+    if (isPlayStoreBuild) {
+        sourceSets.getByName("release").manifest.srcFile("src/playStore/AndroidManifest.xml")
+    }
 
     compileOptions {
         // flutter_local_notifications v18 java.time API'lerini eski Android'de kullanabilmek için

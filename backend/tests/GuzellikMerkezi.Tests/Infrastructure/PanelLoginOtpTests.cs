@@ -101,6 +101,55 @@ public sealed class PanelLoginOtpTests
     private static LoginRequest Request() =>
         new("yonetici@ornek.test", "parola", UserRole.InstitutionOwner, Guid.CreateVersion7(), Guid.CreateVersion7());
 
+    [Theory]
+    [InlineData("exact")]
+    [InlineData("disabled")]
+    [InlineData("wrong-email")]
+    [InlineData("wrong-user")]
+    [InlineData("wrong-tenant")]
+    [InlineData("missing-user")]
+    [InlineData("invalid-tenant")]
+    [InlineData("wrong-role")]
+    [InlineData("wrong-password")]
+    public async Task SeparateDemo_RequiresExactIdentityAndSuccessfulAuthentication(string scenario)
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["DemoAccess:Enabled"] = (scenario != "disabled").ToString(),
+            ["DemoAccess:Email"] = scenario == "wrong-email" ? "other@example.test" : Profile.Email,
+            ["DemoAccess:UserId"] = scenario switch
+            {
+                "wrong-user" => Guid.NewGuid().ToString(),
+                "missing-user" => null,
+                _ => Profile.UserId.ToString(),
+            },
+            ["DemoAccess:TenantId"] = scenario switch
+            {
+                "wrong-tenant" => Guid.NewGuid().ToString(),
+                "invalid-tenant" => "invalid",
+                _ => Profile.TenantId!.Value.ToString(),
+            },
+        };
+        var messaging = NewMessaging();
+        var auth = NewAuth(passwordOk: scenario != "wrong-password",
+            role: scenario == "wrong-role" ? UserRole.Staff : null);
+        var result = await NewService(auth, messaging, settings: settings).StartAsync(Request(), CancellationToken.None);
+        if (scenario == "wrong-password")
+        {
+            Assert.True(result.IsFailure);
+        }
+        else
+        {
+            Assert.True(result.IsSuccess);
+            Assert.Equal(scenario == "exact", result.Value!.AccessToken is not null);
+            Assert.Null(result.Value.DevCode);
+        }
+        if (scenario is "exact" or "wrong-password")
+            await messaging.DidNotReceive().SendEmailAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        else
+            await messaging.Received(1).SendEmailAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     /// <summary>Doğru parola OTURUM DEĞİL, meydan okuma döndürür; kod e-postaya gider.</summary>
     [Fact]
     public async Task CorrectPassword_ReturnsChallenge_NotSession()

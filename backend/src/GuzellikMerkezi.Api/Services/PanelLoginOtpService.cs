@@ -15,7 +15,8 @@ namespace GuzellikMerkezi.Api.Services;
 /// <summary>Parola doğrulandı, sırada e-posta kodu var.</summary>
 /// <remarks>
 /// <b>Oturum alanları YALNIZ mağaza inceleme hesabında dolar</b> (bkz.
-/// <c>PanelLoginOtpService.AppReviewOwnerCode</c>): o hesapta kod adımı yoktur, oturum doğrudan
+/// <c>PanelLoginOtpService.AppReviewOwnerCode</c>) veya tam kimliği tanımlı ayrı demo hesabında
+/// dolar: o hesaplarda kod adımı yoktur, oturum doğrudan
 /// döner. Alanlar iç içe bir nesnede değil ÜST SEVİYEDEDİR — web proxy'si <c>/api/auth/login</c>
 /// yanıtındaki <c>data.refreshToken</c>'ı HttpOnly çereze taşıyor; iç içe konsaydı refresh token
 /// tarayıcı JavaScript'ine açık kalırdı. Diğer tüm hesaplarda null'dır ve yanıta hiç yazılmaz.
@@ -107,7 +108,7 @@ public sealed class PanelLoginOtpService
 
     /// <summary>
     /// Adım 1 — parola ve tüm giriş kontrolleri. Geçerse e-postaya kod gider ve MEYDAN OKUMA döner.
-    /// Tek istisna mağaza inceleme hesabıdır: kod gönderilmez, oturum bu adımda döner.
+    /// Tanımlı mağaza inceleme/demo hesabında kod gönderilmez, oturum bu adımda döner.
     /// </summary>
     public async Task<Result<PanelLoginChallenge>> StartAsync(LoginRequest request, CancellationToken ct)
     {
@@ -117,6 +118,13 @@ public sealed class PanelLoginOtpService
         if (login.IsFailure) return Result<PanelLoginChallenge>.Failure(login.Error);
 
         var session = login.Value!;
+        // Ayrı, boş demo kurumu: yalnız sunucuda tanımlanan kullanıcı + kurum + e-posta.
+        // Parola/hesap/kurum kontrolleri yukarıdaki normal giriş zincirinde uygulanır.
+        if (IsDemoOwner(session.User))
+            return Result<PanelLoginChallenge>.Success(new PanelLoginChallenge(
+                string.Empty, EmailMask.Mask(session.User.Email), null,
+                session.AccessToken, session.RefreshToken, session.ExpiresAtUtc, session.User));
+
         var email = session.User.Email;
         // Apple inceleme hesabı `.test` adresi kullandığı için gerçek posta teslimatı mümkün
         // değildir. Kısa yol yalnız yapılandırılmış e-posta + InstitutionOwner rolü + kurumun
@@ -160,6 +168,18 @@ public sealed class PanelLoginOtpService
         return Result<PanelLoginChallenge>.Success(new PanelLoginChallenge(
             challengeId, EmailMask.Mask(email), _env.IsDevelopment() ? code : null));
     }
+
+    /// <summary>
+    /// Ayrı demo hesabında kimliğin üç parçası da sunucu yapılandırmasıyla eşleşmelidir.
+    /// </summary>
+    private bool IsDemoOwner(UserProfileDto user) =>
+        _config.GetValue<bool>("DemoAccess:Enabled") &&
+        user.Role == UserRole.InstitutionOwner &&
+        Guid.TryParse(_config["DemoAccess:TenantId"], out var tenantId) && tenantId != Guid.Empty &&
+        Guid.TryParse(_config["DemoAccess:UserId"], out var userId) && userId != Guid.Empty &&
+        user.TenantId == tenantId && user.UserId == userId &&
+        !string.IsNullOrWhiteSpace(_config["DemoAccess:Email"]) &&
+        string.Equals(user.Email.Trim(), _config["DemoAccess:Email"]!.Trim(), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// App Store incelemesinde yalnız önceden belirlenmiş demo yöneticisine gösterilecek sabit kod.

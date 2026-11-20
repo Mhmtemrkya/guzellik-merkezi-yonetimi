@@ -89,6 +89,9 @@ mobile/ios/Pods/
 Frontend/.stitch/
 generated-images/
 Frontend/memory/test_credentials.md
+publication/google-play/private/
+publication/google-play/assets/*contact.jpg
+play-create-app.jpg
 
 # OS/editor files
 .DS_Store

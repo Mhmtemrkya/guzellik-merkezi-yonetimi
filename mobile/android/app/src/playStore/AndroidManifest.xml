@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- LAN polling is disabled in the public Play build. Keep its unused
+         foreground service out of this bundle; FCM and local reminders remain. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" tools:node="remove" />
+    <application>
+        <service android:name="id.flutter.flutter_background_service.BackgroundService" tools:node="remove" />
+        <receiver android:name="id.flutter.flutter_background_service.BootReceiver" tools:node="remove" />
+        <receiver android:name="id.flutter.flutter_background_service.WatchdogReceiver" tools:node="remove" />
+    </application>
+</manifest>
