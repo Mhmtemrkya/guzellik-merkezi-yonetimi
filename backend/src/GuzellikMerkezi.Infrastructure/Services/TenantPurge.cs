@@ -53,6 +53,9 @@ public static class TenantPurge
     private static readonly HashSet<string> KeepTables = new(StringComparer.OrdinalIgnoreCase)
     {
         "audit_logs",
+        // Platform yöneticisinin Maydi kayıtlarına erişim izi: erişilen sohbetler silinse de "kim, ne zaman,
+        // neden baktı" kaydı kalmalıdır (audit_logs ile aynı gerekçe). Kişisel veri içermez.
+        "assistant_access_logs",
     };
 
     /// <summary>

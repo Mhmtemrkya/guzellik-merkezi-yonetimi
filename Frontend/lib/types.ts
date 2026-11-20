@@ -731,7 +731,7 @@ export type FeatureKey =
   | 'finance.cashclosing' | 'appointments.waitlist'
   // Kurum & Sistem
   | 'staff.permissions' | 'approval.workflow' | 'multiBranch'
-  | 'api.access' | 'ai.insights'
+  | 'api.access' | 'ai.insights' | 'ai.assistant'
   // Güvenlik
   | 'security.devicecontrol'
 

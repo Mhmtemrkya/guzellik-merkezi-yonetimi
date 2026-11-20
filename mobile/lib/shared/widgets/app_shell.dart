@@ -5,6 +5,7 @@ import '../../core/auth/auth_controller.dart';
 import '../../core/auth/permissions.dart';
 import '../../core/theme/app_theme.dart';
 import '../../features/appointments/appointment_form.dart';
+import '../../features/assistant/maydi_launcher.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({
@@ -55,7 +56,13 @@ class AppShell extends StatelessWidget {
     final showFab = canCreateAppointment && navigationShell.currentIndex != 2;
 
     return Scaffold(
-      body: navigationShell,
+      // Maydi asistanı: paketinde "ai.assistant" olmayan kurumda ve platform yöneticisinde görünmez.
+      body: MaydiOverlay(
+        auth: auth,
+        routeKey: '${navigationShell.currentIndex}',
+        bottomInset: showFab ? 84 : 12,
+        child: navigationShell,
+      ),
       floatingActionButton: showFab
           ? FloatingActionButton.extended(
               onPressed: () async {

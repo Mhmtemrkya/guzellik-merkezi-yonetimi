@@ -244,6 +244,21 @@ public static class DependencyInjection
         // Abonelik ödemesi (iyzico / simülasyon). Sağlayıcı ve anahtarlar platform ayarlarından
         // çalışma anında çözülür → anahtar değişince yeniden başlatma gerekmez.
         services.AddHttpClient("Iyzico").DisableRedirects().AddStandardResilienceHandler();
+
+        // Yapay zekâ (Maydi) — OpenAI uyumlu tek istemci; sağlayıcı ayarları "Llm:{Sağlayıcı}" bölümünde,
+        // anahtar YALNIZ user-secrets / ortam değişkeninde (Llm__OpenRouter__ApiKey). Standart dayanıklılık
+        // boru hattı EKLENMEZ: istemci Retry-After'a uyan kendi yeniden denemesini ve çağrı başına zaman
+        // aşımını yönetir; üstüne ikinci bir retry/timeout aynı ücretli çağrıyı iki kez ödetirdi.
+        services.AddSingleton<ILlmUsageRecorder, Services.Llm.LlmUsageRecorder>();
+        services.AddHttpClient<ILlmClient, Services.Llm.OpenAiCompatibleLlmClient>(client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .DisableRedirects();
+        // Maydi yardım katmanı: yapay zekâ ile makale seçimi (anahtar yoksa kapalı) + katalog/anahtar kelime.
+        services.AddScoped<Application.Features.Assistant.IAssistantHelpMatcher, Services.Assistant.AssistantHelpMatcher>();
+        services.AddScoped<Application.Features.Assistant.IAssistantHelpService, Services.Assistant.AssistantHelpService>();
+        services.AddScoped<Application.Features.Assistant.IAssistantService, Services.Assistant.AssistantService>();
+        services.AddScoped<Application.Features.Assistant.IAssistantStatsService, Services.Assistant.AssistantStatsService>();
+        services.AddScoped<Services.Assistant.AssistantDataRetention>();
+        services.AddScoped<Application.Features.Assistant.IAssistantLogService, Services.Assistant.AssistantLogService>();
         services.AddScoped<Application.Features.Billing.IPaymentGatewayResolver, Payments.PaymentGatewayResolver>();
         services.AddScoped<Application.Features.Billing.IBillingService, Services.BillingService>();
 

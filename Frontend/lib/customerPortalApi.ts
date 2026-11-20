@@ -220,6 +220,11 @@ async function portalRequest<T>(
   return envelope.data as T
 }
 
+/** Maydi asistanı (müşteri portalı): /api/customer/assistant/* — müşteri token'ıyla (bkz. lib/assistantApi.ts). */
+export function customerAssistantRequest<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+  return portalRequest<T>(`/api/customer/assistant${path}`, options)
+}
+
 // ---- Auth ----
 
 /**

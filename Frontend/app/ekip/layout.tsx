@@ -27,6 +27,7 @@ import PanelBackdrop from '@/components/dashboard/PanelBackdrop'
 import QuickMenu from '@/components/dashboard/QuickMenu'
 import { FeatureLockedNotice } from '@/components/dashboard/FeatureGate'
 import { useAuth } from '@/components/dashboard/AuthContext'
+import MaydiAssistant from '@/components/assistant/MaydiAssistant'
 import { useFeatureContext } from '@/components/dashboard/FeatureContext'
 import type { FeatureKey } from '@/lib/types'
 
@@ -300,6 +301,7 @@ export default function PersonelLayout({ children }: { children: ReactNode }) {
           )}
         </main>
         <QuickMenu />
+        <MaydiAssistant audience="business" scope={user?.userId} />
       </div>
     </RouteGuard>
   )

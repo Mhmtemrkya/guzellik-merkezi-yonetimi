@@ -96,6 +96,8 @@ flutter:
   assets:
     - assets/images/
     - assets/fonts/
+    # Maydi asistan maskotu (SchoolAsist Maydi ile aynı ön işlenmiş görseller).
+    - assets/maydi/
 
 flutter_launcher_icons:
   android: true

@@ -273,6 +273,11 @@ public sealed class AccountDeletionService : IAccountDeletionService
 
         await _db.SaveChangesAsync(ct);
 
+        // MAYDİ SOHBETLERİ de silinir: hesabı silinen müşterinin yazdıkları (adı, randevu soruları) güvenlik
+        // kaydı süresince bile tutulmaz — silme talebi saklama süresinden önce gelir.
+        if (_currentUser.UserId is Guid portalUserId)
+            await new Assistant.AssistantDataRetention(_db).DeleteUserDataAsync(tenantId, portalUserId, ct);
+
         await _audit.LogActorAsync(
             tenantId, branchId, null, maskedEmail ?? maskedPhone, UserRole.Customer.ToString(),
             "CustomerAccountDeleted", "Customer", customerId,

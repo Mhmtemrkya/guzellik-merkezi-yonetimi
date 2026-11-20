@@ -6,16 +6,24 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/responsive.dart';
 import '../account/account_deletion.dart';
+import '../assistant/maydi_launcher.dart';
 
 /// Online randevu müşteri portalı — alt sekmeli kabuk (Ana Sayfa / Randevularım / Profil).
 class CustomerShell extends StatelessWidget {
-  const CustomerShell({required this.navigationShell, super.key});
+  const CustomerShell({required this.navigationShell, required this.auth, super.key});
   final StatefulNavigationShell navigationShell;
+  final AuthController auth;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: navigationShell,
+      // Maydi: müşteri yalnız kendi randevu/seans bilgisini ve portal kullanımını sorar.
+      body: MaydiOverlay(
+        auth: auth,
+        routeKey: '${navigationShell.currentIndex}',
+        bottomInset: 12,
+        child: navigationShell,
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: (i) =>

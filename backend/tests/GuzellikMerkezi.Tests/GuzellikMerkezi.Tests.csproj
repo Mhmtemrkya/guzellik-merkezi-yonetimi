@@ -36,6 +36,8 @@
       seviyede kalır. Değer düşürülürse koşu uzar, yükseltilirse takılma geri gelir.
     -->
     <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Maydi yardım eşleştirmesi ölçüm veri seti (AssistantHelpEvaluation). -->
+    <None Update="TestData\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

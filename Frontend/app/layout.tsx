@@ -1,4 +1,5 @@
 import './globals.css'
+import './maydi.css'
 import { connection } from 'next/server'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'

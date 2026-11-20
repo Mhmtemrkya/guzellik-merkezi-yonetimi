@@ -85,6 +85,8 @@ public static class FeatureCatalog
     /// <summary>Cihaz güvenliği: personel yalnızca tanımlı cihazlarından giriş yapar, loglara cihaz kimliği + ağ bilgisi düşer.</summary>
     public const string SecurityDeviceControl = "security.devicecontrol";
     public const string AiInsights          = "ai.insights";
+    /// <summary>Maydi yapay zekâ asistanı (yardım + veri soruları). Paket kapısı: kapalıysa uçlar 403.</summary>
+    public const string AiAssistant         = "ai.assistant";
 
     public static readonly FeatureItem[] All =
     {
@@ -154,6 +156,7 @@ public static class FeatureCatalog
         new(MultiBranch,      "Çoklu şube",               "Birden fazla şube yönetimi",                       FeatureCategory.Organization),
         new(ApiAccess,        "API erişimi",              "Public REST API anahtarı + dokümantasyon",         FeatureCategory.Organization),
         new(AiInsights,       "AI öneriler",              "AI tabanlı müşteri segmentasyonu, randevu öneri",  FeatureCategory.Organization),
+        new(AiAssistant,      "AI Asistanı (Maydi)",      "Uygulama içi yardım asistanı: nasıl yapılır cevapları ve rol bazlı günlük veri soruları", FeatureCategory.Organization),
         new(SecurityDeviceControl, "Cihaz güvenliği",     "Personel için cihaz limiti + tanımlı cihaz zorunluluğu; loglarda cihaz kimliği ve ağ bilgisi", FeatureCategory.Organization),
     };
 

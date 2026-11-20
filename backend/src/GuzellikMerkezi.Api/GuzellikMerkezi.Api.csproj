@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Yerel gizli anahtarlar (ör. Llm:OpenRouter:ApiKey) — dotnet user-secrets; depoya girmez. -->
+    <UserSecretsId>beautyasist-api-7c1f3e2a</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

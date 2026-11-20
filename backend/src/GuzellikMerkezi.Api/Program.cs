@@ -82,6 +82,8 @@ builder.Services.AddHostedService<TenantDeletionBackgroundService>();
 builder.Services.AddHostedService<NotificationDispatchBackgroundService>();
 builder.Services.AddHostedService<MonthlyReportBackgroundService>();
 builder.Services.AddHostedService<WhatsAppReservationSweepBackgroundService>();
+// Maydi sohbet kayıtları: saklama süresi (varsayılan 90 gün) dolunca silinir.
+builder.Services.AddHostedService<AssistantRetentionBackgroundService>();
 builder.Services.AddHostedService<SubscriptionRenewalBackgroundService>();
 // Arka plan iş kuyruğu tüketicisi (WhatsApp/SMS/FCM gönderimlerini request-path dışında yürütür).
 builder.Services.AddHostedService<QueuedHostedService>();
@@ -202,6 +204,11 @@ builder.Services.AddRateLimiter(options =>
     // Herkese açık salon vitrini (anonim gezinme): IP başına dakikada 60 istek.
     options.AddPolicy("public-browse", http => RateLimitPartition.GetFixedWindowLimiter(ClientIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    // Maydi mesajları: kullanıcı başına dakikada 20 (oturum yoksa IP). Yapay zekâ maliyetinin asıl sınırı
+    // serviste kişi başı günlük kota (Assistant:Help:DailyLimit); bu yalnız seri tıklama/betik freni.
+    options.AddPolicy("assistant", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.User.FindFirst("sub")?.Value ?? http.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? ClientIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     // SELF-SERVİS KURUM KAYDI: her istek e-posta/SMS gönderebiliyor, yani PARA harcıyor.
     // Kendi kovasında durur — müşteri girişiyle bütçe paylaşmaz. Servis tarafında ayrıca
     // e-posta bazlı fren var (aynı adrese 30 dakikada en çok 3 kayıt denemesi).
@@ -516,6 +523,7 @@ app.MapFeatureEndpoints();
 app.MapPlatformMessagingEndpoints();
 app.MapPlatformWhatsAppEndpoints();
 app.MapPlatformOpsEndpoints();
+app.MapAssistantEndpoints();
 
 app.Run();
 return 0;

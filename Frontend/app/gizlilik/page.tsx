@@ -14,7 +14,7 @@ export default function GizlilikPage() {
       eyebrow="Yasal"
       title="Gizlilik Politikası"
       // Google Play veri güvenliği beyanıyla eşleşen metin; 14 Ekim 2026 sürümü canlıdaydı, depoya sonradan alındı.
-      updatedAt="14 Ekim 2026"
+      updatedAt="19 Kasım 2026"
       intro={
         <>
           Bu politika, <strong>{company.brand}</strong> mobil, masaüstü ve web uygulamasının
@@ -41,6 +41,7 @@ export default function GizlilikPage() {
             <><strong>Müşteri bilgileri:</strong> ad-soyad, telefon numarası, T.C. kimlik numarası (girildiyse), e-posta, adres ve müşteriye ait notlar.</>,
             <><strong>Danışma ve onay kayıtları:</strong> işletmenin işlem öncesi danışma formuna kaydettiği, müşterinin beyan ettiği alerjiler, kullanılan ilaçlar, kronik rahatsızlıklar, cilt geçmişi ve işlemle ilgili diğer sağlık bilgileri. Bu bilgiler giriş veya hesap oluşturma için zorunlu değildir; ilgili işletmenin yetkili çalışanları tarafından kozmetik hizmetin danışma ve onay sürecinde kullanılır.</>,
             <><strong>Fotoğraflar ve kullanıcı içeriği:</strong> kullanıcı tarafından yüklenen profil veya işlem günlüğü fotoğrafları, danışma notları, onay kayıtları ve uygulama içi mesajlar. Kamera veya fotoğraf seçimi yalnız kullanıcı ilgili özelliği kullandığında yapılır.</>,
+            <><strong>Maydi asistanı sohbet kayıtları:</strong> uygulama içi asistan Maydi&apos;ye yazılan sorular ve verilen cevaplar; soran kullanıcı, kurum ve zaman bilgisiyle birlikte güvenlik amacıyla kaydedilir (bkz. 7. bölüm).</>,
             <><strong>Operasyonel veriler:</strong> randevular, seanslar, paket ve hizmet satışları, stok, ödeme/kasa kayıtları ve finansal işlemler.</>,
             <><strong>Abonelik ve fatura verileri:</strong> abonelik paketi, dönem, fatura kayıtları ve ödeme sonuçları.</>,
             <><strong>Cihaz ve bildirim verileri:</strong> anlık bildirim (push) gönderebilmek için cihazın bildirim token’ı ve temel cihaz/platform bilgisi.</>,
@@ -96,6 +97,7 @@ export default function GizlilikPage() {
             <><strong>Firebase Cloud Messaging (Google):</strong> anlık bildirimlerin iletilmesi için cihaz token’ı kullanılır.</>,
             <><strong>Apple Push Notification service (Apple):</strong> iOS cihazlara bildirim iletimi için kullanılır.</>,
             <><strong>Mesajlaşma sağlayıcıları:</strong> randevu hatırlatma ve bilgilendirme için WhatsApp, SMS ve e-posta servisleri.</>,
+            <><strong>Yapay zekâ hizmeti (OpenRouter üzerinden):</strong> Maydi&apos;nin &quot;nasıl yapılır&quot; sorularını doğru yardım makalesiyle eşleştirmesi için, yalnız kullanıcı onay verdiyse, soru metni gönderilir. Göndermeden önce ad, telefon, T.C. kimlik numarası ve e-posta gizlenir; konsültasyon ve sağlık bilgileri hiçbir zaman gönderilmez. Sağlayıcı veriyi saklamayan/eğitimde kullanmayan altyapılarla sınırlandırılır.</>,
             <><strong>Barındırma/altyapı sağlayıcıları:</strong> verilerin güvenli sunucularda saklanması için kullanılır.</>,
           ]}
         />
@@ -106,6 +108,13 @@ export default function GizlilikPage() {
           Kişisel veriler, hizmetin sunulması ve yasal saklama süreleri boyunca tutulur. İşletme veya
           ilgili kişi talep ettiğinde, yasal yükümlülükler saklı kalmak kaydıyla veriler silinir veya
           anonim hâle getirilir.
+        </p>
+        <p>
+          <strong>Maydi sohbet kayıtları</strong> güvenlik amacıyla <strong>90 gün</strong> saklanır ve bu sürenin
+          sonunda otomatik olarak silinir. Bu süre içinde kayıtlar, güvenlik, destek, şikâyet incelemesi veya kalite
+          amacıyla yetkili {company.brand} personeli tarafından görüntülenebilir; her görüntüleme, kimin ne zaman ve
+          hangi gerekçeyle baktığıyla birlikte ayrıca kayda alınır. Müşteri hesabını sildiğinde o hesaba ait Maydi
+          kayıtları da silinir.
         </p>
       </LegalSection>
 

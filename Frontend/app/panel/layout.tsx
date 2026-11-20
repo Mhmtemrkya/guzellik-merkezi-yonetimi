@@ -25,8 +25,10 @@ import {
   Boxes,
   Gift,
   Store,
+  MessageCircleQuestion,
 } from 'lucide-react'
 import { useAuth } from '@/components/dashboard/AuthContext'
+import MaydiAssistant from '@/components/assistant/MaydiAssistant'
 import { useFeatureContext } from '@/components/dashboard/FeatureContext'
 import type { FeatureKey } from '@/lib/types'
 
@@ -227,6 +229,14 @@ const items: SidebarNavItem[] = [
       { label: 'Tüm geçmiş', href: '/panel/loglar?scope=all' },
     ],
   },
+  {
+    group: 'Yönetim',
+    label: 'Maydi Soruları',
+    href: '/panel/maydi-sorulari',
+    icon: MessageCircleQuestion,
+    // Maydi'nin cevaplayamadığı sorular — kurum sahibi tüm kurum, şube yöneticisi kendi şubesi.
+    featureKeys: ['ai.assistant'],
+  },
   { group: 'Yönetim', label: 'Ayarlar', href: '/panel/ayarlar', icon: Settings, permissionKey: 'Settings' },
 ]
 
@@ -243,6 +253,7 @@ const ADMIN_ONLY_HREFS = new Set<string>([
 const ROUTE_FEATURE_GUARDS: Array<{ prefix: string; anyOf: FeatureKey[]; title: string }> = [
   { prefix: '/panel/onaylar', anyOf: ['approval.workflow'], title: 'Onay akışı paketinizde yok' },
   { prefix: '/panel/loglar', anyOf: ['audit.logs'], title: 'Log kayıtları paketinizde yok' },
+  { prefix: '/panel/maydi-sorulari', anyOf: ['ai.assistant'], title: 'Maydi asistanı paketinizde yok' },
   { prefix: '/panel/stok', anyOf: ['stock.products', 'stock.movements'], title: 'Stok yönetimi paketinizde yok' },
   {
     prefix: '/panel/raporlar',
@@ -307,6 +318,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           {blockedByPlan && activeGuard ? <FeatureLockedNotice title={activeGuard.title} /> : children}
         </main>
         <QuickMenu />
+        <MaydiAssistant audience="business" scope={user?.userId} />
       </div>
     </RouteGuard>
   )

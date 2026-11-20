@@ -103,6 +103,10 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
     public DbSet<ConnectorNonce> ConnectorNonces => Set<ConnectorNonce>();
     public DbSet<ExternalCheckout> ExternalCheckouts => Set<ExternalCheckout>();
     public DbSet<MaydanozHandoff> MaydanozHandoffs => Set<MaydanozHandoff>();
+    public DbSet<LlmUsageRecord> LlmUsageRecords => Set<LlmUsageRecord>();
+    public DbSet<AssistantConversation> AssistantConversations => Set<AssistantConversation>();
+    public DbSet<AssistantMessage> AssistantMessages => Set<AssistantMessage>();
+    public DbSet<AssistantAccessLog> AssistantAccessLogs => Set<AssistantAccessLog>();
     public DbSet<Adisyon> Adisyonlar => Set<Adisyon>();
     public DbSet<AdisyonItem> AdisyonItems => Set<AdisyonItem>();
     public DbSet<StaffCommission> StaffCommissions => Set<StaffCommission>();
@@ -1128,6 +1132,57 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         mh.HasIndex(x => x.TokenHash).IsUnique();
         mh.Property(x => x.CheckoutRef).HasMaxLength(32).IsRequired();
         mh.HasIndex(x => x.ExpiresAtUtc);
+
+        // Yapay zekâ çağrılarının SAYISAL kaydı (metin yok). Kurum filtresi: bir kurum yalnız kendi
+        // kullanımını görür; platform yöneticisi (filtre kapalı) tüm kurumların maliyet raporunu okur.
+        var llm = modelBuilder.Entity<LlmUsageRecord>();
+        llm.ToTable("llm_usage_records");
+        llm.HasKey(x => x.Id);
+        llm.Property(x => x.Role).HasMaxLength(50).IsRequired();
+        llm.Property(x => x.Feature).HasMaxLength(60).IsRequired();
+        llm.Property(x => x.Provider).HasMaxLength(30).IsRequired();
+        llm.Property(x => x.Model).HasMaxLength(150).IsRequired();
+        llm.Property(x => x.Error).HasMaxLength(60).IsRequired();
+        llm.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
+        llm.HasIndex(x => new { x.UserId, x.Feature, x.CreatedAtUtc });
+        llm.HasQueryFilter(x => TenantFilterDisabled || x.TenantId == TenantFilterId);
+
+        // Maydi sohbetleri: kişiye özel. Kurum filtresi uygulanır; kişi kapsamı (UserId) serviste zorunludur.
+        var ac = modelBuilder.Entity<AssistantConversation>();
+        ac.ToTable("assistant_conversations");
+        ac.HasKey(x => x.Id);
+        ac.Property(x => x.Portal).HasMaxLength(16).IsRequired();
+        ac.Property(x => x.Title).HasMaxLength(120).IsRequired();
+        ac.HasIndex(x => new { x.TenantId, x.UserId, x.LastMessageAtUtc });
+        ac.HasQueryFilter(x => TenantFilterDisabled || x.TenantId == TenantFilterId);
+
+        var am = modelBuilder.Entity<AssistantMessage>();
+        am.ToTable("assistant_messages");
+        am.HasKey(x => x.Id);
+        am.Property(x => x.Sender).HasMaxLength(12).IsRequired();
+        am.Property(x => x.Text).HasMaxLength(4000).IsRequired();
+        am.Property(x => x.Intent).HasConversion<string>().HasMaxLength(40);
+        am.Property(x => x.Outcome).HasMaxLength(24).IsRequired();
+        am.Property(x => x.MatchedBy).HasMaxLength(16).IsRequired();
+        am.Property(x => x.ArticleId).HasMaxLength(60);
+        am.Property(x => x.Kind).HasMaxLength(20).IsRequired();
+        am.Property(x => x.PayloadJson).HasColumnType("longtext").IsRequired();
+        am.HasIndex(x => new { x.ConversationId, x.CreatedAtUtc });
+        am.HasIndex(x => new { x.TenantId, x.Outcome, x.CreatedAtUtc });
+        am.HasIndex(x => new { x.UserId, x.ClientMessageId });
+        am.HasQueryFilter(x => TenantFilterDisabled || x.TenantId == TenantFilterId);
+
+        // Platform yöneticisinin sohbet kaydı erişim izi: kurum filtresi YOK (yalnız platform okur/yazar).
+        var aal = modelBuilder.Entity<AssistantAccessLog>();
+        aal.ToTable("assistant_access_logs");
+        aal.HasKey(x => x.Id);
+        aal.Property(x => x.Action).HasMaxLength(12).IsRequired();
+        aal.Property(x => x.Reason).HasMaxLength(20).IsRequired();
+        aal.Property(x => x.Note).HasMaxLength(300);
+        aal.Property(x => x.Filter).HasMaxLength(200);
+        aal.Property(x => x.IpAddress).HasMaxLength(64);
+        aal.HasIndex(x => x.CreatedAtUtc);
+        aal.HasIndex(x => new { x.TenantId, x.CreatedAtUtc });
 
         // Maydanoz'da alınacak ödeme: adresteki anahtar ve işlem anahtarı benzersiz.
         var xc = modelBuilder.Entity<ExternalCheckout>();

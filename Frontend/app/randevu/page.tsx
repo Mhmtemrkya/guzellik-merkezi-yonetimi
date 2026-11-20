@@ -1,6 +1,7 @@
 'use client'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import MaydiAssistant from '@/components/assistant/MaydiAssistant'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft,
@@ -936,6 +937,8 @@ export default function CustomerPortalPage() {
           </div>
         </aside>
       </div>
+      {/* Maydi: müşteri yalnız kendi randevu/seans bilgisini ve portal kullanımını sorar. */}
+      <MaydiAssistant audience="customer" scope={getCustomerSession()?.user.customerId ?? getCustomerSession()?.user.userId} />
     </main>
   )
 }
