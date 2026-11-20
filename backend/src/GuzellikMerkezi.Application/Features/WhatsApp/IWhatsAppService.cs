@@ -112,6 +112,19 @@ public interface IWhatsAppService
     /// </param>
     Task<MessagingTestResult> SendNotificationAsync(Guid tenantId, Guid customerId, string body, bool marketing, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// RANDEVU HATIRLATMASI bildirim şablonundan (Bildirimler sayfası, elle/toplu) gönderildiğinde: müşterinin
+    /// önümüzdeki 7 gündeki en yakın randevusu varsa randevuya BAĞLI iki yönlü hatırlatma gider — müşterinin
+    /// EVET/HAYIR/ERTELE yanıtı o randevuya işlenir ve randevuya damga vurulur (otomatik tarama ikinci kez
+    /// göndermez). Yaklaşan randevusu yoksa GÖNDERİLMEZ (hatırlatılacak randevu yok); sonuç sebebiyle döner.
+    /// <paramref name="fallbackBody"/> ileride genel metne düşmek gerekirse diye imzada tutulur.
+    /// <para>
+    /// SOMUT HATA (20 Kas 2026): bu yol genel bildirim gönderiyordu; müşterinin "Gelemeyeceğim" yanıtı hiçbir
+    /// randevuya bağlanamadı, ardından otomatik tarama aynı randevu için ikinci hatırlatmayı attı.
+    /// </para>
+    /// </summary>
+    Task<MessagingTestResult> SendCustomerAppointmentReminderAsync(Guid tenantId, Guid customerId, string fallbackBody, CancellationToken cancellationToken = default);
+
     /// <summary>Meta webhook doğrulaması (GET). Eşleşen verify token varsa challenge döner.</summary>
     Task<string?> VerifyWebhookAsync(string? mode, string? verifyToken, string? challenge, CancellationToken cancellationToken = default);
 

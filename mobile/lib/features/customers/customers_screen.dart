@@ -359,9 +359,11 @@ class CustomersScreen extends StatelessWidget {
               final queued = numberOf(map, const ['queued']).toInt();
               final approved = numberOf(map, const ['alreadyApproved']).toInt();
               final noPhone = numberOf(map, const ['noPhone']).toInt();
+              final recent = numberOf(map, const ['recentlySent']).toInt();
               final extra = [
                 if (approved > 0) '$approved kayıt zaten onaylı',
                 if (noPhone > 0) '$noPhone kayıtta telefon yok',
+                if (recent > 0) '$recent müşteriye son 24 saatte zaten gönderildi',
               ].join(' · ');
               if (queued == 0) {
                 return extra.isEmpty ? 'Mesaj gönderilmedi.' : 'Mesaj gönderilmedi — $extra.';

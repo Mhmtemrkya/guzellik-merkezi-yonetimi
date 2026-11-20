@@ -891,11 +891,24 @@ FROM (
         var wanted = ids.ToHashSet();
         var rows = all.Where(c => wanted.Contains(c.Id)).ToList();
 
-        int queued = 0, approved = 0, noPhone = 0;
+        // SON 24 SAATTE İSTENENLER ATLANIR: müşteri kaydı KVKK isteğini zaten otomatik kuyruğa alıyor; hemen ardından
+        // toplu "KVKK mesajı" basılınca müşteriye aynı istek iki kez gidiyordu (20 Kas 2026 canlı testi). Küme bellekte
+        // tutulur — MySQL sağlayıcısı yerel listeyle .Contains() çeviremez.
+        var since = DateTime.UtcNow - WhatsAppService.KvkkResendCooldown;
+        var recentlyRequested = (await _db.WhatsAppMessages.IgnoreQueryFilters().AsNoTracking()
+                .Where(m => m.TenantId == tenantId && !m.IsDeleted && m.CustomerId != null
+                         && m.Direction == WhatsAppMessageDirection.Outbound && m.TemplateName == WhatsAppService.KvkkTemplateName
+                         && m.Status != WhatsAppMessageStatus.Failed && m.CreatedAtUtc >= since)
+                .Select(m => m.CustomerId!.Value)
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+
+        int queued = 0, approved = 0, noPhone = 0, recent = 0;
         foreach (var row in rows)
         {
             if (row.KvkkConsent) { approved++; continue; }
             if (string.IsNullOrWhiteSpace(row.Phone)) { noPhone++; continue; }
+            if (recentlyRequested.Contains(row.Id)) { recent++; continue; }
             await _jobs.EnqueueAsync(DurableJobTypes.KvkkConsent, new KvkkConsentJob(tenantId, row.Id), cancellationToken);
             queued++;
         }
@@ -906,7 +919,7 @@ FROM (
                 $"{queued} müşteriye KVKK onay mesajı gönderildi.", new { queued, approved, noPhone }, cancellationToken);
         }
 
-        return Result<KvkkRequestResultDto>.Success(new KvkkRequestResultDto(queued, approved, noPhone));
+        return Result<KvkkRequestResultDto>.Success(new KvkkRequestResultDto(queued, approved, noPhone, recent));
     }
 
     public async Task<Result<CustomerDto>> UpdateAsync(Guid tenantId, Guid id, UpsertCustomerRequest request, CancellationToken cancellationToken = default)

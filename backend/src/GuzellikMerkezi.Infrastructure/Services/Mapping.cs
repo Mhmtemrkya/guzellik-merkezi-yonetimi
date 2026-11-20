@@ -109,7 +109,8 @@ internal static class Mapping
         appointment.IsOnline,
         CustomerIsVip: appointment.Customer?.IsVip ?? false,
         Number: appointment.Number,
-        SourceCustomerPackageSessionId: appointment.SourceCustomerPackageSessionId);
+        SourceCustomerPackageSessionId: appointment.SourceCustomerPackageSessionId,
+        RescheduleProposalUtc: appointment.RescheduleProposalUtc);
 
     public static CustomExpenseCategoryDto ToDto(this CustomExpenseCategory category) => new(
         category.Id,

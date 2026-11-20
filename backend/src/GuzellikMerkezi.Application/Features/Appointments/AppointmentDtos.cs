@@ -31,7 +31,9 @@ public sealed record AppointmentDto(
     /// aynı hizmeti hem paketten hem tekil satın aldığında iş yanlış sekmede görünüyordu.
     /// Tamamlamada GERÇEKTEN tüketilen seansla düzeltilir; eski kayıtlarda null.
     /// </summary>
-    Guid? SourceCustomerPackageSessionId = null);
+    Guid? SourceCustomerPackageSessionId = null,
+    // Müşterinin WhatsApp erteleme yanıtında önerdiği zaman (varsa).
+    DateTime? RescheduleProposalUtc = null);
 /// <param name="SourceCustomerPackageSessionId">
 /// Randevunun HANGİ satın alınmış seans bakiyesinden karşılanacağı. Arayüz paket kırılımında
 /// belirli bir satır seçtirdiği için bu bilgi sunucuya taşınmalıdır: aksi hâlde backend aynı

@@ -49,7 +49,7 @@ public sealed record SendKvkkRequestRequest(IReadOnlyCollection<Guid> CustomerId
 /// KVKK mesaj gönderim sonucu. Gönderim kalıcı kuyruğa yazıldığı için "Queued" istek anında
 /// kesinleşir; zaten onaylı ya da telefonsuz kayıtlar sessizce atlanır ve burada raporlanır.
 /// </summary>
-public sealed record KvkkRequestResultDto(int Queued, int AlreadyApproved, int NoPhone);
+public sealed record KvkkRequestResultDto(int Queued, int AlreadyApproved, int NoPhone, int RecentlySent = 0);
 
 public sealed record SetVipRequest(bool Vip);
 

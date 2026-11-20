@@ -114,6 +114,16 @@ public sealed class Appointment : Entity
     // WhatsApp hatırlatma / müşteri onayı (iş akışı Status'tan bağımsız bilgi alanları)
     public WhatsAppConfirmationStatus CustomerConfirmation { get; private set; } = WhatsAppConfirmationStatus.None;
     public DateTime? LastReminderAtUtc { get; private set; }
+    /// <summary>Müşterinin erteleme yanıtında önerdiği zaman ("cuma 15:00 olur mu"). Taşınınca/yanıt değişince temizlenir.</summary>
+    public DateTime? RescheduleProposalUtc { get; private set; }
+
+    /// <summary>Müşteri WhatsApp ile erteleme istedi; varsa önerdiği zaman (UTC) saklanır.</summary>
+    public void RequestReschedule(DateTime? proposalUtc)
+    {
+        CustomerConfirmation = WhatsAppConfirmationStatus.RescheduleRequested;
+        RescheduleProposalUtc = proposalUtc;
+        Touch();
+    }
 
     /// <summary>WhatsApp hatırlatması gönderildi — zamanı işaretle, onay durumunu Beklemede yap.</summary>
     public void MarkReminderSent()
@@ -142,6 +152,7 @@ public sealed class Appointment : Entity
     public void SetCustomerConfirmation(WhatsAppConfirmationStatus status)
     {
         CustomerConfirmation = status;
+        if (status != WhatsAppConfirmationStatus.RescheduleRequested) RescheduleProposalUtc = null;
         Touch();
     }
 
@@ -192,6 +203,16 @@ public sealed class Appointment : Entity
         }
         if (endUtc <= startUtc) throw new DomainException("Randevu bitiş zamanı başlangıçtan sonra olmalı.");
         if (Status == AppointmentStatus.Completed) throw new BusinessRuleException("Tamamlanan randevu taşınamaz.");
+
+        // YENİ SAAT = YENİ SORU. Müşterinin önceki yanıtı (onay / "erteleme istedi") ESKİ saate verilmişti; taşınan
+        // randevuda rozet kalırsa personel "erteleme bekliyor" sanmaya devam eder. Hatırlatma damgası da kalkar ki
+        // otomatik tarama yeni saati müşteriye tekrar hatırlatıp onay istesin (yoksa yeni saat hiç bildirilmezdi).
+        if (startUtc != StartUtc)
+        {
+            CustomerConfirmation = WhatsAppConfirmationStatus.None;
+            LastReminderAtUtc = null;
+            RescheduleProposalUtc = null;
+        }
         StartUtc = startUtc;
         EndUtc = endUtc;
         Touch();

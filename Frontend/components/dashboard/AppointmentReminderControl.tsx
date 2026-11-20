@@ -5,14 +5,8 @@ import { MessageCircle, Loader2 } from 'lucide-react'
 import { adminApi, isPendingApprovalResult } from '@/lib/apiClient'
 import { useFeature } from '@/components/dashboard/FeatureContext'
 import type { WhatsAppConfirmation, ApiWhatsAppReminderResult } from '@/lib/types'
+import CustomerReplyBadge from '@/components/dashboard/CustomerReplyBadge'
 
-const CONF_META: Record<WhatsAppConfirmation, { label: string; cls: string } | null> = {
-  None: null,
-  Pending: { label: 'Onay bekliyor', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
-  Confirmed: { label: 'Onaylandı', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  Declined: { label: 'İptal etti', cls: 'border-rose-200 bg-rose-50 text-rose-700' },
-  RescheduleRequested: { label: 'Erteleme istedi', cls: 'border-violet-200 bg-violet-50 text-violet-700' },
-}
 
 /** Randevu için WhatsApp onay rozeti + "Hatırlat" düğmesi. */
 export default function AppointmentReminderControl({
@@ -20,17 +14,24 @@ export default function AppointmentReminderControl({
   confirmation = 'None',
   tenantId,
   onChanged,
+  proposalUtc,
+  durationMinutes,
+  onReschedule,
 }: {
   appointmentId: string
   confirmation?: WhatsAppConfirmation
   tenantId?: string
   onChanged?: () => void
+  /** Müşterinin erteleme yanıtında önerdiği zaman. */
+  proposalUtc?: string | null
+  durationMinutes?: number
+  /** "Yeni saat ver": randevu düzenleme penceresini açar. */
+  onReschedule?: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [failed, setFailed] = useState(false)
   const allowed = useFeature('notifications.whatsapp')
-  const meta = CONF_META[confirmation] ?? null
 
   if (!allowed) return null
 
@@ -57,7 +58,15 @@ export default function AppointmentReminderControl({
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {meta && <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${meta.cls}`}>{meta.label}</span>}
+      <CustomerReplyBadge
+        confirmation={confirmation}
+        appointmentId={appointmentId}
+        proposalUtc={proposalUtc}
+        durationMinutes={durationMinutes}
+        tenantId={tenantId}
+        onReschedule={onReschedule}
+        onChanged={onChanged}
+      />
       <button
         type="button"
         onClick={send}

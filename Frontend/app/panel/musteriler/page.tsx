@@ -1,5 +1,6 @@
 'use client'
 
+import ReminderNowPrompt, { createdAppointmentId } from '@/components/dashboard/ReminderNowPrompt'
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { AnimatePresence, motion, type Variants } from 'framer-motion'
@@ -236,6 +237,7 @@ function MusterilerPageInner() {
   const [pageSize, setPageSize] = useState(10)
   const [actionError, setActionError] = useState('')
   const [actionMsg, setActionMsg] = useState('')
+  const [reminderPrompt, setReminderPrompt] = useState<{ id: string; customerName?: string } | null>(null)
   const [apptOpen, setApptOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [newOpen, setNewOpen] = useState(false)
@@ -415,14 +417,16 @@ Bu kartı bu müşteriye devretmek istiyor musunuz?`)) {
         label: 'KVKK onay mesajı gönder',
         icon: MessageCircle,
         run: async (ids: string[]) => {
-          const res = await adminApi.sendKvkkRequest<{ queued?: number; alreadyApproved?: number; noPhone?: number; pendingApproval?: boolean }>(ids, tenantId)
+          const res = await adminApi.sendKvkkRequest<{ queued?: number; alreadyApproved?: number; noPhone?: number; recentlySent?: number; pendingApproval?: boolean }>(ids, tenantId)
           if (res?.pendingApproval) return 'KVKK mesaj gönderimi onaya gönderildi.'
           const queued = Number(res?.queued ?? 0)
           const approved = Number(res?.alreadyApproved ?? 0)
           const noPhone = Number(res?.noPhone ?? 0)
+          const recent = Number(res?.recentlySent ?? 0)
           const extra = [
             approved > 0 ? `${approved} kayıt zaten onaylı` : '',
             noPhone > 0 ? `${noPhone} kayıtta telefon yok` : '',
+            recent > 0 ? `${recent} müşteriye son 24 saatte zaten gönderildi` : '',
           ].filter(Boolean).join(' · ')
           return queued === 0
             ? `Mesaj gönderilmedi${extra ? ` — ${extra}` : ''}.`
@@ -713,13 +717,15 @@ Bu kartı bu müşteriye devretmek istiyor musunuz?`)) {
     // backend onu "taslak" yapıp kurum yöneticisi onayına düşürür (randevularda taslak → aktif akışı).
     //
     // KATALOGDAN SATIŞ tek transaction: randevu açılamazsa satış da geri alınır.
-    if (values.catalogSale) {
-      await adminApi.createAppointmentWithSale({ appointment: payload, sale: values.catalogSale }, tenantId)
-    } else {
-      await adminApi.createAppointment(payload, tenantId)
-    }
+    const created = values.catalogSale
+      ? await adminApi.createAppointmentWithSale({ appointment: payload, sale: values.catalogSale }, tenantId)
+      : await adminApi.createAppointment(payload, tenantId)
+    // Doğrudan aktif açılan randevuda (personel taslağı değil) "hatırlatma hemen gitsin mi?" sorulur.
+    const createdId = createdAppointmentId(created)
     if (isStaff) {
       setActionMsg('Randevu taslak olarak oluşturuldu ve kurum yöneticisi onayına gönderildi.')
+    } else if (createdId) {
+      setReminderPrompt({ id: createdId })
     }
     await reloadWithSessions()
   }
@@ -742,6 +748,13 @@ Bu kartı bu müşteriye devretmek istiyor musunuz?`)) {
 
   return (
     <>
+      {reminderPrompt && (
+        <ReminderNowPrompt
+          appointmentId={reminderPrompt.id}
+          tenantId={tenantId}
+          onClose={() => setReminderPrompt(null)}
+        />
+      )}
       <Topbar
         title={isStaff ? 'Müşterilerim' : 'Müşteriler'}
         subtitle={`${selectedInstitution?.name || 'Kurum'} · ${selectedBranch?.name || 'Tüm şubeler'} · ${TABS.find((t) => t.key === tab)?.label}`}

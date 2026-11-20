@@ -1,5 +1,7 @@
 'use client'
 
+import ReminderNowPrompt, { createdAppointmentId } from '@/components/dashboard/ReminderNowPrompt'
+import CustomerReplyBadge from '@/components/dashboard/CustomerReplyBadge'
 import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Topbar from '@/components/dashboard/Topbar'
@@ -638,6 +640,7 @@ function RandevularPageInner() {
   const branchId = guidOrUndefined(selectedBranch?.id || selectedBranch?.branchId)
   const { performWrite } = useStaffApproval()
   const [staffActionMsg, setStaffActionMsg] = useState<string>('')
+  const [reminderPrompt, setReminderPrompt] = useState<{ id: string; customerName?: string } | null>(null)
   const range = monthRange(monthDate)
   // VERİ PENCERESİ AYDAN GENİŞ: gün modalı seçilen tarihin HAFTASINI gösteriyor, ay sınırındaki
   // bir güne tıklanınca komşu ayın günleri (ör. 1 Ağustos'un haftasındaki 27–31 Temmuz) veri
@@ -1098,11 +1101,11 @@ function RandevularPageInner() {
     // yöneticisi onayına düşürür — randevularda taslak görünür, onaylanınca aktif randevuya döner.
     //
     // KATALOGDAN SATIŞ tek transaction: randevu açılamazsa satış da geri alınır.
-    if (values.catalogSale) {
-      await adminApi.createAppointmentWithSale({ appointment: payload, sale: values.catalogSale }, tenantId)
-    } else {
-      await adminApi.createAppointment(payload, tenantId)
-    }
+    const created = values.catalogSale
+      ? await adminApi.createAppointmentWithSale({ appointment: payload, sale: values.catalogSale }, tenantId)
+      : await adminApi.createAppointment(payload, tenantId)
+    // Doğrudan aktif açılan randevuda (personel taslağı değil) "hatırlatma hemen gitsin mi?" sorulur.
+    const createdId = createdAppointmentId(created)
     if (isStaffUser) {
       setStaffActionMsg('Randevu taslak olarak oluşturuldu ve kurum yöneticisi onayına gönderildi. Onaylanınca aktif randevuya dönecek.')
       await reload()
@@ -1111,6 +1114,7 @@ function RandevularPageInner() {
 
     // Not: Paket satışı / cari açma artık randevu ekranında YAPILMAZ — satış adisyon akışında.
     // Randevu yalnızca müşterinin satın aldığı seansa açılır ve tamamlanınca o seanstan düşer.
+    if (createdId) setReminderPrompt({ id: createdId, customerName: normalizedLookups.customers[values.customerId]?.name })
     await reload()
   }
 
@@ -1334,6 +1338,15 @@ function RandevularPageInner() {
 
   return (
     <>
+      {reminderPrompt && (
+        <ReminderNowPrompt
+          appointmentId={reminderPrompt.id}
+          customerName={reminderPrompt.customerName}
+          tenantId={tenantId}
+          onClose={() => setReminderPrompt(null)}
+          onSent={() => void reload()}
+        />
+      )}
       <Topbar
         title={isStaffUser ? 'Randevularım' : 'Randevular'}
         subtitle={`${selectedInstitution?.name || 'Kurum'} · ${selectedBranch?.name || 'Tüm şubeler'} · ${scopeInfo.label}${isStaffUser ? ' · sadece kendi randevuların' : ''}`}
@@ -1723,6 +1736,9 @@ function RandevularPageInner() {
                                   </span>
                                 )}
                               </div>
+                              {r.customerConfirmation && r.customerConfirmation !== 'None' && !['Cancelled', 'Completed', 'NoShow'].includes(r.rawStatus ?? '') && (
+                                <div className="mt-1"><CustomerReplyBadge compact confirmation={r.customerConfirmation} proposalUtc={r.rescheduleProposalUtc} /></div>
+                              )}
                               {hasNote && (
                                 <div className="mt-1 flex items-start gap-1 border-l border-amber-300/40 bg-amber-400/[0.06] px-1.5 py-0.5">
                                   <StickyNote className="mt-px h-2.5 w-2.5 shrink-0 text-amber-300" strokeWidth={1.6} />
@@ -1925,6 +1941,9 @@ function RandevularPageInner() {
                                 confirmation={r.customerConfirmation}
                                 tenantId={tenantId}
                                 onChanged={reload}
+                                proposalUtc={r.rescheduleProposalUtc}
+                                durationMinutes={r.sure}
+                                onReschedule={isStaffUser ? undefined : () => setEditingId(r.id)}
                               />
                             </div>
                           )}

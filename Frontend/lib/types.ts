@@ -2777,6 +2777,8 @@ export interface ApiAppointment {
   number?: number | null
   /** Randevunun düştüğü seans kaydı — paketten mi karşılandığının KESİN cevabı (eski kayıtta null). */
   sourceCustomerPackageSessionId?: string | null
+  /** Müşterinin WhatsApp erteleme yanıtında önerdiği zaman ("cuma 15:00 olur mu"). */
+  rescheduleProposalUtc?: string | null
 }
 
 export interface AppointmentLookups {
@@ -2804,6 +2806,7 @@ export interface Appointment {
   rawStatus?: string
   customerConfirmation?: WhatsAppConfirmation
   lastReminderAtUtc?: string | null
+  rescheduleProposalUtc?: string | null
   isOnline?: boolean
   customerPhone?: string
   isVip?: boolean

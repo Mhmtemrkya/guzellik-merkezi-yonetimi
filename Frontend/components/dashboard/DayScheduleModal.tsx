@@ -1,5 +1,6 @@
 'use client'
 
+import CustomerReplyBadge from '@/components/dashboard/CustomerReplyBadge'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -35,7 +36,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react'
-import type { Appointment, AppointmentStatusKey, Customer, Staff, StaffTimeOff } from '@/lib/types'
+import type { Appointment, AppointmentStatusKey, Customer, Staff, StaffTimeOff, WhatsAppConfirmation } from '@/lib/types'
 import { formatTL } from '@/lib/apiMappers'
 
 // ---------------------------------------------------------------------------
@@ -1772,7 +1773,7 @@ function Row({ label, value, muted }: { label: string; value: string; muted?: bo
 // Seçim yokken: günün özeti
 // ---------------------------------------------------------------------------
 
-interface ReminderRow { id: string; time: string; musteri: string; islem: string; customerConfirmation?: string }
+interface ReminderRow { id: string; time: string; musteri: string; islem: string; customerConfirmation?: string; rescheduleProposalUtc?: string | null }
 interface RiskRow { id: string; name: string; noshow: number; cancel: number; weight: number }
 
 function DaySummary({
@@ -1851,9 +1852,11 @@ function DaySummary({
                     <span className="block truncate text-[12px] font-semibold text-[#241923]">{r.musteri}</span>
                     <span className="block truncate text-[10.5px] text-[#74616A]">{r.islem}</span>
                   </span>
-                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${r.customerConfirmation === 'Confirmed' ? 'bg-emerald-50 text-emerald-600' : r.customerConfirmation === 'Pending' ? 'bg-amber-50 text-amber-600' : 'bg-[#f4edf0] text-[#9d8592]'}`}>
-                    {r.customerConfirmation === 'Confirmed' ? 'Onaylı' : r.customerConfirmation === 'Pending' ? 'Bekliyor' : 'Gönderilecek'}
-                  </span>
+                  {r.customerConfirmation && r.customerConfirmation !== 'None' ? (
+                    <span className="shrink-0"><CustomerReplyBadge compact confirmation={r.customerConfirmation as WhatsAppConfirmation} proposalUtc={r.rescheduleProposalUtc} /></span>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-[#F7F6F6] px-1.5 py-0.5 text-[10px] font-semibold text-[#4a3a44]">Gönderilecek</span>
+                  )}
                 </button>
               ))}
             </div>

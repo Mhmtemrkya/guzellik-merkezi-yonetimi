@@ -35,7 +35,7 @@ public sealed class WhatsAppService : IWhatsAppService
         "Merhaba {ad}, {tarih} {saat} için {hizmetcumlen} oluşturuldu. Sizi bekliyoruz!{salonimza}";
     /// <summary>KVKK açık rıza isteği. Müşteri ONAYLIYORUM yazınca kayıt otomatik onaylanır.</summary>
     /// <summary>KVKK isteği mesajının şablon adı — gelen yanıt bununla eşleştirilir.</summary>
-    private const string KvkkTemplateName = "kvkk-consent";
+    internal const string KvkkTemplateName = "kvkk-consent";
     private const string KvkkConsentTemplate =
         "Merhaba {ad}, {salon} olarak kişisel verilerinizi (ad, telefon, işlem geçmişi) randevu ve " +
         "hizmet süreçlerinizi yürütmek için işliyoruz. Aydınlatma metnimiz ekteki PDF'tedir. " +
@@ -625,6 +625,36 @@ public sealed class WhatsAppService : IWhatsAppService
     }
 
     /// <inheritdoc />
+    /// <summary>Elle gönderilen randevu hatırlatmasının bakacağı ileri pencere.</summary>
+    private static readonly TimeSpan ManualReminderLookahead = TimeSpan.FromDays(7);
+
+    /// <inheritdoc />
+    public async Task<MessagingTestResult> SendCustomerAppointmentReminderAsync(Guid tenantId, Guid customerId, string fallbackBody, CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var until = now + ManualReminderLookahead;
+        var appointmentId = await _db.Appointments.IgnoreQueryFilters().AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.CustomerId == customerId && !a.IsDeleted
+                     && a.StartUtc > now && a.StartUtc <= until
+                     // Taslak (onay bekleyen) randevu hatırlatılmaz — otomatik taramayla aynı kural.
+                     && (a.Status == AppointmentStatus.Scheduled || a.Status == AppointmentStatus.Confirmed))
+            .OrderBy(a => a.StartUtc)
+            .Select(a => (Guid?)a.Id)
+            .FirstOrDefaultAsync(ct);
+
+        // Yaklaşan randevu yoksa hatırlatılacak bir şey yoktur: genel mesaj olarak gitseydi tarih/saat boş kalır,
+        // müşteri olmayan bir randevuya "EVET" yazardı. Gönderilmez; sebep bildirim geçmişinde görünür.
+        if (appointmentId is null)
+            return new MessagingTestResult(false, false, null,
+                $"Müşterinin önümüzdeki {(int)ManualReminderLookahead.TotalDays} günde randevusu yok; hatırlatma gönderilmedi.");
+
+        // Randevuya bağlı elle hatırlatma: onaylı şablon + damga (MarkReminderSent) — "Hatırlat" düğmesiyle aynı yol.
+        var result = await SendReminderAsync(tenantId, appointmentId.Value, ct);
+        if (!result.IsSuccess) return new MessagingTestResult(false, false, null, result.Error?.Message);
+        var sent = result.Value!;
+        return new MessagingTestResult(sent.Sent, sent.Simulated, sent.ProviderMessageId, sent.Error);
+    }
+
     public async Task<MessagingTestResult> SendNotificationAsync(Guid tenantId, Guid customerId, string body, bool marketing, CancellationToken ct = default)
     {
         try
@@ -652,6 +682,19 @@ public sealed class WhatsAppService : IWhatsAppService
     }
 
     /// <inheritdoc cref="SendWaitlistOfferAsync" />
+    /// <summary>KVKK isteğinin tekrar gönderilmeyeceği süre (otomatik + elle mükerrer gönderim freni).</summary>
+    public static readonly TimeSpan KvkkResendCooldown = TimeSpan.FromHours(24);
+
+    /// <summary>Bu müşteriye son <see cref="KvkkResendCooldown"/> içinde başarısız olmamış bir KVKK isteği gitti mi?</summary>
+    private async Task<bool> HasRecentKvkkRequestAsync(Guid tenantId, Guid customerId, CancellationToken ct)
+    {
+        var since = DateTime.UtcNow - KvkkResendCooldown;
+        return await _db.WhatsAppMessages.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(m => m.TenantId == tenantId && m.CustomerId == customerId && !m.IsDeleted
+                        && m.Direction == WhatsAppMessageDirection.Outbound && m.TemplateName == KvkkTemplateName
+                        && m.Status != WhatsAppMessageStatus.Failed && m.CreatedAtUtc >= since, ct);
+    }
+
     public async Task<WhatsAppDispatchReport> SendKvkkConsentRequestAsync(Guid tenantId, Guid customerId, CancellationToken ct = default)
     {
         try
@@ -661,6 +704,10 @@ public sealed class WhatsAppService : IWhatsAppService
             if (customer is null || string.IsNullOrWhiteSpace(customer.Phone)) return WhatsAppDispatchReport.Skipped;
             // Zaten onaylıysa tekrar rahatsız etme.
             if (customer.KvkkConsent) return WhatsAppDispatchReport.Skipped;
+            // YAKIN ZAMANDA İSTENDİYSE TEKRAR GÖNDERME (20 Kas 2026 canlı testi): müşteri kaydı KVKK isteğini
+            // otomatik kuyruğa alıyor, 10 sn sonra toplu "KVKK mesajı" ikinci kez kuyrukluyordu → müşteriye aynı
+            // istek iki kez gitti. Son 24 saatte başarısız olmamış bir istek varsa bu iş sessizce kapanır.
+            if (await HasRecentKvkkRequestAsync(tenantId, customerId, ct)) return WhatsAppDispatchReport.Skipped;
 
             var salonName = await SalonNameAsync(tenantId, customer.BranchId, ct);
             var firstName = FirstName(customer.FullName);
@@ -1247,12 +1294,80 @@ public sealed class WhatsAppService : IWhatsAppService
         var candidates = await _db.WhatsAppMessages.IgnoreQueryFilters().AsNoTracking()
             .Where(m => m.TenantId == tenantId && m.Direction == WhatsAppMessageDirection.Outbound && m.CreatedAtUtc >= since)
             .OrderByDescending(m => m.CreatedAtUtc)
-            .Select(m => new { m.Id, m.Phone })
+            .Select(m => new { m.Id, m.Phone, m.TemplateName })
             .ToListAsync(ct);
-        var hit = candidates.FirstOrDefault(c => PhonesMatch(c.Phone, fromPhone));
-        if (hit is null) return null;
+        var mine = candidates.Where(c => PhonesMatch(c.Phone, fromPhone)).ToList();
+        if (mine.Count == 0) return null;
+
+        // Yanıt BEKLEMEYEN sistem mesajı (KVKK teşekkürü, bağlantı testi) yanıtı "yutmaz": müşteri onlardan sonra
+        // yazdıysa yanıtı ondan ÖNCEKİ mesaja vermiştir (ör. hatırlatma → KVKK teşekkürü → müşteri "EVET").
+        // Kampanya/doğum günü gibi genel mesajlar ise saydam DEĞİLDİR: onlara verilen "HAYIR" eski bir hatırlatmaya
+        // kayıp randevuyu iptal etmemeli.
+        var hit = mine.FirstOrDefault(c => c.TemplateName is null || !NonReplyTemplates.Contains(c.TemplateName)) ?? mine[0];
         return await _db.WhatsAppMessages.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(m => m.Id == hit.Id, ct);
     }
+
+    /// <summary>Bu mesaj müşteriden yanıt BEKLİYOR mu: iki yönlü hatırlatma, KVKK isteği ya da bekleme teklifi.</summary>
+    private static bool IsAwaitingReply(WhatsAppMessage message) =>
+        (message.TemplateName == ReminderTemplateName && message.AppointmentId is not null)
+        || (message.TemplateName == KvkkTemplateName && message.CustomerId is not null)
+        || message.WaitlistEntryId is not null;
+
+    /// <summary>
+    /// Niyeti çıkarılamayan yanıtı yöneticiye bildirir (randevu/kayıt DEĞİŞTİRİLMEZ). Bildirim mesajın ilk 80
+    /// karakterini taşır — yönetici WhatsApp kaydına zaten erişebilir; tekilleştirme gelen mesaj başınadır.
+    /// </summary>
+    private async Task NotifyUnclearReplyAsync(Guid tenantId, WhatsAppMessage match, Guid inboundId, string text, CancellationToken ct)
+    {
+        var name = match.CustomerId is { } cid
+            ? await _db.Customers.IgnoreQueryFilters().AsNoTracking()
+                .Where(c => c.TenantId == tenantId && c.Id == cid).Select(c => c.FullName).FirstOrDefaultAsync(ct)
+            : null;
+        var snippet = text.Trim();
+        if (snippet.Length > 80) snippet = snippet[..80] + "…";
+        var (subject, route, id) = match.TemplateName == ReminderTemplateName && match.AppointmentId is { } appointmentId
+            ? ("randevu hatırlatmasına", "/appointments", appointmentId.ToString())
+            : match.WaitlistEntryId is not null
+                ? ("bekleme listesi teklifine", "/customers", match.CustomerId?.ToString())
+                : ("KVKK isteğine", "/customers", match.CustomerId?.ToString());
+
+        await _notifications.NotifyRolesAsync(
+            tenantId, match.BranchId,
+            new[] { UserRole.InstitutionOwner, UserRole.BranchManager },
+            AppNotificationType.WhatsAppReply, AppNotificationSeverity.Info,
+            "Müşteri yanıtı kontrol bekliyor",
+            $"{(string.IsNullOrWhiteSpace(name) ? "Müşteri" : name)} {subject} yanıt verdi: \"{snippet}\" — otomatik anlaşılamadı, lütfen kontrol edin.",
+            data: new { route, id },
+            dedupeKey: $"wa-unclear:{inboundId}",
+            ct: ct);
+    }
+
+    /// <summary>
+    /// Erteleme yanıtındaki önerilen zamanı UTC olarak çözer (Türkiye UTC+3). Eksik parça randevudan tamamlanır;
+    /// geçmişte kalan öneri (ör. yanlış okunmuş tarih) yok sayılır.
+    /// </summary>
+    internal static DateTime? ResolveProposalUtc(string text, DateTime appointmentStartUtc)
+    {
+        var nowLocal = DateTime.UtcNow.AddHours(3);
+        var apptLocal = appointmentStartUtc.AddHours(3);
+        var proposal = WhatsAppTimeProposalParser.Parse(text, nowLocal);
+        if (proposal.IsEmpty) return null;
+        var date = proposal.Date ?? DateOnly.FromDateTime(apptLocal);
+        var time = proposal.Time ?? TimeOnly.FromDateTime(apptLocal);
+        var local = date.ToDateTime(time);
+        if (local <= nowLocal) return null;
+        return DateTime.SpecifyKind(local.AddHours(-3), DateTimeKind.Utc);
+    }
+
+    /// <summary>Yanıt beklemeyen sistem mesajları (bkz. <see cref="FindReplyTargetAsync"/>).</summary>
+    private static readonly HashSet<string> NonReplyTemplates = new(StringComparer.Ordinal) { "kvkk-thanks", "connection-test" };
+
+    /// <summary>
+    /// İki yönlü randevu hatırlatması. Randevu onay/iptal/erteleme YALNIZ buna verilen yanıtla işlenir: randevu
+    /// kimliği taşıyan değerlendirme linkine ya da bekleme onayına yazılan "hayır", tamamlanmış randevuya
+    /// "müşteri iptal etti" bildirimi doğurmamalı.
+    /// </summary>
+    private const string ReminderTemplateName = "reminder";
 
     /// <param name="repliesOnly">
     /// true = yalnız BeautyAsist'in yakın zamanda mesaj gönderdiği numaranın YANITI kaydedilir (Chatwoot köprüsü:
@@ -1264,7 +1379,7 @@ public sealed class WhatsAppService : IWhatsAppService
         var match = await FindReplyTargetAsync(tenantId, fromPhone, ct);
         if (match is null && repliesOnly) return InboundOutcome.NotAReply;
 
-        var intent = Interpret(text);
+        var intent = WhatsAppReplyInterpreter.Interpret(text);
         var inbound = new WhatsAppMessage(
             tenantId, match?.BranchId, match?.AppointmentId, match?.CustomerId, WhatsAppMessageDirection.Inbound,
             NormalizePhone(fromPhone), text, WhatsAppMessageStatus.Received,
@@ -1300,12 +1415,38 @@ public sealed class WhatsAppService : IWhatsAppService
             return InboundOutcome.Duplicate;
         }
 
-        if (match is null || intent == WhatsAppReplyIntent.Unknown) return InboundOutcome.Recorded;
+        if (match is null) return InboundOutcome.Recorded;
+
+        // ANLAŞILAMAYAN YANIT KAYBOLMAZ: hatırlatmaya / KVKK isteğine / bekleme teklifine verilen yanıttan niyet
+        // çıkarılamadıysa ("geç kalacağım", "yarın olur mu?", hem evet hem hayır) tahmin edilip randevu
+        // değiştirilmez; yöneticiye "kontrol bekliyor" bildirimi gider. Genel mesajlara (kampanya, doğum günü)
+        // verilen yanıtlar bildirim üretmez — gürültü olurdu.
+        if (intent == WhatsAppReplyIntent.Unknown)
+        {
+            if (IsAwaitingReply(match)) await NotifyUnclearReplyAsync(tenantId, match, inbound.Id, text, ct);
+            return InboundOutcome.Recorded;
+        }
 
         // 0) KVKK açık rıza isteğine yanıt: son giden mesaj KVKK şablonuysa ve müşteri onayladıysa
         //    kayıt otomatik onaylanır (yönetici elle işaretlemek zorunda kalmaz).
         if (match.TemplateName == KvkkTemplateName && match.CustomerId is { } kvkkCustomerId)
         {
+            if (intent is WhatsAppReplyIntent.Cancel or WhatsAppReplyIntent.Reschedule)
+            {
+                // Rızayı VERMEDİ: kayıt değişmez (rıza zaten yok), ama yönetici bilmeli — pazarlama/KVKK
+                // gerektiren işlemler bu müşteride yapılmamalı.
+                var declinedName = await _db.Customers.IgnoreQueryFilters().AsNoTracking()
+                    .Where(c => c.TenantId == tenantId && c.Id == kvkkCustomerId).Select(c => c.FullName).FirstOrDefaultAsync(ct);
+                await _notifications.NotifyRolesAsync(
+                    tenantId, match.BranchId,
+                    new[] { UserRole.InstitutionOwner, UserRole.BranchManager },
+                    AppNotificationType.WhatsAppReply, AppNotificationSeverity.Warning,
+                    "KVKK açık rızası verilmedi",
+                    $"{(string.IsNullOrWhiteSpace(declinedName) ? "Müşteri" : declinedName)} WhatsApp'ta KVKK isteğini onaylamadı.",
+                    data: new { route = "/customers", id = kvkkCustomerId.ToString() },
+                    dedupeKey: $"kvkk-declined:{inbound.Id}",
+                    ct: ct);
+            }
             if (intent == WhatsAppReplyIntent.Confirm)
             {
                 var customer = await _db.Customers.IgnoreQueryFilters()
@@ -1350,20 +1491,30 @@ public sealed class WhatsAppService : IWhatsAppService
             return InboundOutcome.Recorded;
         }
 
-        // 2) Randevu hatırlatmasına yanıt.
-        if (match.AppointmentId is { } apptId)
+        // 2) Randevu hatırlatmasına yanıt — YALNIZ iki yönlü hatırlatma (bkz. ReminderTemplateName).
+        if (match.AppointmentId is { } apptId && match.TemplateName == ReminderTemplateName)
         {
             var appt = await _db.Appointments.IgnoreQueryFilters()
                 .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == apptId, ct);
             if (appt is null) return InboundOutcome.Recorded;
 
-            appt.SetCustomerConfirmation(intent switch
+            DateTime? proposalUtc = null;
+            if (intent == WhatsAppReplyIntent.Reschedule)
             {
-                WhatsAppReplyIntent.Confirm => WhatsAppConfirmationStatus.Confirmed,
-                WhatsAppReplyIntent.Cancel => WhatsAppConfirmationStatus.Declined,
-                WhatsAppReplyIntent.Reschedule => WhatsAppConfirmationStatus.RescheduleRequested,
-                _ => WhatsAppConfirmationStatus.Pending,
-            });
+                // Müşteri somut zaman önerdiyse ("cuma 15:00 olur mu") randevuya yazılır: ekranda "Bu saate taşı".
+                // Yalnız tarih verildiyse randevunun saati, yalnız saat verildiyse randevunun günü kullanılır.
+                proposalUtc = ResolveProposalUtc(text, appt.StartUtc);
+                appt.RequestReschedule(proposalUtc);
+            }
+            else
+            {
+                appt.SetCustomerConfirmation(intent switch
+                {
+                    WhatsAppReplyIntent.Confirm => WhatsAppConfirmationStatus.Confirmed,
+                    WhatsAppReplyIntent.Cancel => WhatsAppConfirmationStatus.Declined,
+                    _ => WhatsAppConfirmationStatus.Pending,
+                });
+            }
 
             if (intent == WhatsAppReplyIntent.Cancel &&
                 appt.Status is not (AppointmentStatus.Cancelled or AppointmentStatus.Completed or AppointmentStatus.NoShow))
@@ -1401,7 +1552,8 @@ public sealed class WhatsAppService : IWhatsAppService
                     new[] { UserRole.InstitutionOwner, UserRole.BranchManager },
                     AppNotificationType.WhatsAppReply, severity,
                     title,
-                    $"{(string.IsNullOrWhiteSpace(custName) ? "Müşteri" : custName)} · {appt.StartUtc.AddHours(3):dd.MM.yyyy HH:mm}",
+                    $"{(string.IsNullOrWhiteSpace(custName) ? "Müşteri" : custName)} · {appt.StartUtc.AddHours(3):dd.MM.yyyy HH:mm}"
+                        + (proposalUtc is { } p ? $" · önerdiği zaman: {p.AddHours(3):dd.MM.yyyy HH:mm}" : string.Empty),
                     data: new { route = "/appointments", id = appt.Id.ToString() },
                     dedupeKey: $"wa-reply:{appt.Id}:{intent}",
                     ct: ct);
@@ -1698,38 +1850,6 @@ public sealed class WhatsAppService : IWhatsAppService
         return na[^min..] == nb[^min..];
     }
 
-    private static WhatsAppReplyIntent Interpret(string text)
-    {
-        var t = NormalizeTr(text);
-        if (t.Length == 0) return WhatsAppReplyIntent.Unknown;
-        var words = t.Split(new[] { ' ', '\t', '\n', '\r', '.', ',', '!', '?', ';' }, StringSplitOptions.RemoveEmptyEntries);
-        bool Has(params string[] keys) => keys.Contains(t) || words.Any(w => keys.Contains(w));
-        if (t is "e" or "1" || Has("evet", "onay", "onayliyorum", "onayla", "tamam", "olur", "geliyorum", "katiliyorum", "geldim")) return WhatsAppReplyIntent.Confirm;
-        if (t is "h" or "2" || Has("hayir", "iptal", "gelemeyecegim", "gelemeyecem", "gelmiyorum", "gelemiyorum", "gelemem")) return WhatsAppReplyIntent.Cancel;
-        if (t is "3" || Has("ertele", "ertelensin", "erteleme", "erteleyelim", "degistir", "baska")) return WhatsAppReplyIntent.Reschedule;
-        return WhatsAppReplyIntent.Unknown;
-    }
-
-    private static string NormalizeTr(string? text)
-    {
-        var s = (text ?? string.Empty).Trim().Replace('İ', 'i').Replace('I', 'i').Replace('ı', 'i').ToLowerInvariant();
-        var sb = new System.Text.StringBuilder(s.Length);
-        foreach (var ch in s)
-        {
-            switch (ch)
-            {
-                case 'ı': sb.Append('i'); break;
-                case 'ş': sb.Append('s'); break;
-                case 'ğ': sb.Append('g'); break;
-                case 'ü': sb.Append('u'); break;
-                case 'ö': sb.Append('o'); break;
-                case 'ç': sb.Append('c'); break;
-                case '̇': break;
-                default: sb.Append(ch); break;
-            }
-        }
-        return sb.ToString();
-    }
 
     private readonly record struct SendContext(bool Live, string? PhoneNumberId, string Token, WhatsAppSettings? Settings = null)
     {

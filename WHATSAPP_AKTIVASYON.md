@@ -433,6 +433,13 @@ Geçiş ve App Secret onay gerektirir (dış sistem ayarı); Meta'dan inceleme/o
    mesajlarına verilen yanıtları kaydet" açılır. Salonun kendi numarasında kapalı kalır.
 5. **Deneme:** hatırlatma → EVET → Onaylandı; mesaj Chatwoot'ta da görünür.
 
+### 9.2b Müşteri yanıtları (20 Kas, canlı test sonrası)
+
+- Yanıt yalnız **iki yönlü hatırlatmaya** verilirse randevuya işlenir (EVET → Gelecek, HAYIR → iptal, ERTELE / zaman
+  önerisi → Erteleme istedi + önerilen saat). Bildirimler sayfasından gönderilen randevu hatırlatması da artık bu yoldan
+  gider. Anlaşılamayan yanıt yöneticiye "kontrol bekliyor" bildirimi olarak düşer. Ayrıntı: TURETILEN_URUNLERE_AKTARIM.md
+  paket 22.
+
 ### 9.3 İzleme ve sınırlar
 
 - Doğrudan iletilemeyen olaylar `background_jobs` (`whatsapp.chatwoot-relay`) içinde bekler. 10 denemeden sonra

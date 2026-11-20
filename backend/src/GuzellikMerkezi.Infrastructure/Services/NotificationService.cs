@@ -372,7 +372,12 @@ public sealed class NotificationService : INotificationService
                      */
                     var marketing = template.Trigger is not (NotificationTrigger.AppointmentReminder or NotificationTrigger.PaymentDue);
                     var whatsApp = _services.GetRequiredService<Application.Features.WhatsApp.IWhatsAppService>();
-                    (ok, error) = Judge(await whatsApp.SendNotificationAsync(tenantId, c.Id, body, marketing, ct));
+                    // RANDEVU HATIRLATMASI RANDEVUYA BAĞLI GİDER: genel bildirim olarak gitseydi müşterinin
+                    // EVET/HAYIR/ERTELE yanıtı hiçbir randevuya işlenmez, otomatik tarama da aynı randevuyu
+                    // ikinci kez hatırlatırdı (20 Kas 2026 canlı testinde yaşandı).
+                    (ok, error) = template.Trigger == NotificationTrigger.AppointmentReminder
+                        ? Judge(await whatsApp.SendCustomerAppointmentReminderAsync(tenantId, c.Id, body, ct))
+                        : Judge(await whatsApp.SendNotificationAsync(tenantId, c.Id, body, marketing, ct));
                     break;
                 }
                 default:

@@ -353,6 +353,9 @@ namespace GuzellikMerkezi.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<DateTime?>("RescheduleProposalUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<Guid>("ServiceDefinitionId")
                         .HasColumnType("char(36)");
 

@@ -73,13 +73,22 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
     }, 'Randevu iptal edildi.');
   }
 
+  /// Müşterinin erteleme yanıtında önerdiği zaman (yerel saat).
+  static String _formatProposal(String utc) {
+    final d = DateTime.tryParse(utc.endsWith('Z') ? utc : '${utc}Z')?.toLocal();
+    if (d == null) return utc;
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(d.day)}.${two(d.month)}.${d.year} ${two(d.hour)}:${two(d.minute)}';
+  }
+
   /// Müşterinin WhatsApp onay durumu — web'deki rozetin karşılığı.
   /// (etiket, renk) döner; None ise rozet gösterilmez.
   static (String, Color)? _confirmationMeta(String value) => switch (value) {
-        'Pending' => ('Onay bekliyor', const Color(0xFFA3701F)),
-        'Confirmed' => ('Onayladı', AppColors.success),
-        'Declined' => ('İptal etti', AppColors.danger),
-        'RescheduleRequested' => ('Erteleme istedi', Color(0xFF7C5CBF)),
+        // Web CustomerReplyBadge ile aynı dil ve palet (--bd-*).
+        'Pending' => ('Yanıt bekleniyor', const Color(0xFF8E7882)),
+        'Confirmed' => ('Gelecek', const Color(0xFFA5556E)),
+        'Declined' => ('Gelmeyecek', const Color(0xFF8E7882)),
+        'RescheduleRequested' => ('Erteleme istedi', const Color(0xFF1E4E8C)),
         _ => null,
       };
 
@@ -551,6 +560,12 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
                               const Text('WhatsApp hatırlatma',
                                   style: TextStyle(
                                       fontSize: 12.5, fontWeight: FontWeight.w700)),
+                              if (meta != null && appt['rescheduleProposalUtc'] != null)
+                                Text('Önerdiği zaman: ${_formatProposal('${appt['rescheduleProposalUtc']}')}',
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF1E4E8C))),
                               if (meta != null)
                                 Text('Müşteri: ${meta.$1}',
                                     style: TextStyle(

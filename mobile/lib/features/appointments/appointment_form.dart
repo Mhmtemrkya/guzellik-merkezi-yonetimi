@@ -631,10 +631,11 @@ class _AppointmentFormState extends State<AppointmentForm> {
           // ESKİ seansı tüketir ve kullanıcı B paketini seçse bile A paketinden düşerdi.
           'sourceCustomerPackageSessionId': _sourceSessionId,
         };
+        dynamic created;
         if (sellNow) {
           // SATIS + RANDEVU TEK TRANSACTION. Ayri cagrilarla yapilsaydi randevu adimi
           // (slot dolu, yetki, ag) dustugunde musteriye yazilmis acik satis ortada kalirdi.
-          await widget.api.post('/api/admin/appointments/with-sale', {
+          created = await widget.api.post('/api/admin/appointments/with-sale', {
             'appointment': appointment,
             'sale': {
               'serviceDefinitionId': serviceId,
@@ -643,8 +644,11 @@ class _AppointmentFormState extends State<AppointmentForm> {
             },
           });
         } else {
-          await widget.api.post('/api/admin/appointments/', appointment);
+          created = await widget.api.post('/api/admin/appointments/', appointment);
         }
+        // Web ReminderNowPrompt paritesi: doğrudan aktif açılan randevuda (personel taslağı değil)
+        // "WhatsApp hatırlatması hemen gitsin mi?" sorulur.
+        await _offerReminderNow(created);
       }
       if (mounted) Navigator.pop(context, true);
     } on ApiException catch (e) {
@@ -661,6 +665,48 @@ class _AppointmentFormState extends State<AppointmentForm> {
       }
     } finally {
       if (mounted) setState(() => saving = false);
+    }
+  }
+
+  /// RANDEVU OLUŞTURULUR OLUŞTURULMAZ hatırlatma sorusu. "Şimdi gönder" randevuya BAĞLI iki yönlü
+  /// hatırlatmayı yollar (detaydaki "Hatırlat" ile aynı uç): müşterinin EVET/HAYIR/ERTELE yanıtı bu
+  /// randevuya işlenir, otomatik tarama ikinci kez göndermez. Taslak randevuda sorulmaz.
+  Future<void> _offerReminderNow(dynamic created) async {
+    if (!mounted || created is! Map) return;
+    final map = created.cast<String, dynamic>();
+    final appt = map['appointment'] is Map ? (map['appointment'] as Map).cast<String, dynamic>() : map;
+    final id = '${appt['id'] ?? ''}';
+    if (id.isEmpty || '${appt['status'] ?? ''}' == 'Draft') return;
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.notifications_active_rounded, color: Color(0xFFA5556E)),
+        title: const Text('Randevu oluşturuldu'),
+        content: const Text(
+            'Müşteriye WhatsApp hatırlatması şimdi gönderilsin mi?\n\n'
+            'Müşteri EVET / HAYIR / ERTELE yazınca randevuya otomatik işlenir.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Daha sonra')),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF1DA851)),
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.chat_rounded, size: 18),
+            label: const Text('Şimdi gönder'),
+          ),
+        ],
+      ),
+    );
+    if (send != true || !mounted) return;
+    try {
+      await widget.api.post('/api/admin/whatsapp/reminder/$id', const {});
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Hatırlatma gönderildi ✓')));
+      }
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     }
   }
 

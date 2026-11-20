@@ -805,6 +805,7 @@ deposuna göredir.
 | 19 — Köprü 2. dilim (destek, kurum profili, veritabanı, aylık değer) | Aktarılmadı | — |
 | 20 — WhatsApp yanıtları Chatwoot köprüsüyle (yedek yol) | Aktarılmadı (ürünün numarası Chatwoot'taysa gerekir) | — |
 | 21 — Olaylar önce Asist'e + Chatwoot'a ham iletim | Aktarılmadı (ürün Chatwoot kullanıyorsa asıl yol budur) | — |
+| 22 — Akıllı müşteri yanıtı + zaman önerisi + hemen hatırlat | Aktarılmadı (DentistAsist'te "hasta" metinleri) | — |
 
 Bir paket aktarılınca bu tabloyu tarih ve commit ile güncelleyin.
 
@@ -1262,6 +1263,46 @@ kullanır); 18 → 8 + 9 (ödeme yönlendirmesi ve Maydanoz Hesabım oturumu); 1
   - Chatwoot'un "WhatsApp ile bağlan" akışı numarayı başka bir uygulamaya bağlar; yeni numara manuel kurulumla açılır.
   - Numarada ya da WABA'da override varsa uygulama düzeyindeki webhook değişikliği etkisiz kalır.
 - **Canlı:** yayın ve Meta geçişi ayrı onaylarla yapılır (`WHATSAPP_AKTIVASYON.md` §9.1). Meta'dan inceleme gerekmez.
+
+### Paket 22 — Akıllı müşteri yanıtı, zaman önerisi, "hemen hatırlat" (20 Kas)
+
+- **Kullanıcının sözleri:** "niyetleri akıllaştıralım"; "geleceğim, gelmeyeceğim, ertelesek mi cümlelerini iyi anla";
+  "tarih ve saat de verebilir, bu zaman gelsem olur mu diye"; "evet derse gelecek gibi bir şey ekle, şık olsun";
+  "bildirimler sayfasında da gönderince sorunsuz çalışsın"; "randevu oluşturur oluşturmaz hatırlatma hemen gönderilsin
+  mi sorusu, mobilde de".
+- **Niyet motoru** (`WhatsAppReplyInterpreter`, saf, test edilebilir). Sıra:
+  1. menü yanıtı (1/2/3, e/h);
+  2. erteleme ifadesi (ertele…, başka gün/saat, değiştir/kaydır, öne/ileri/sonraya al, "gelecek hafta", ya da
+     zaman kelimesi + değiştirme fiili);
+  3. zaman ÖNERİSİ (tarih/saat + "gelsem/olur/uygun/müsait/alabilir");
+  4. FİİL biçimi (gelemeyeceğim/gelmiyom/müsait değilim ↔ geleceğim/gelcem/gelebilirim) — evet/hayır kelimesinden üstün;
+  5. zayıf işaret (evet/tamam/👍 ↔ hayır/olmaz/❌).
+  Aynı katmanda iki yön → Anlaşılamadı (tahmin edilmez). "Hayır, geleceğim" = onay; "Evet ama gelemeyeceğim" = iptal.
+- **Zaman ayrıştırıcı** (`WhatsAppTimeProposalParser`): 15:00, 14.30 (dakika>12 ya da ek varsa saat), "saat 3",
+  "3'te", "3 buçukta", "sabah/öğleden sonra/akşam N", öğlen; bugün/yarın/öbür gün, gün adları ("haftaya salı"),
+  "21 Kasım", "21.11(.2026)", "ayın 25'i". 1–7 arası saat salon saatinde öğleden sonradır. Öneri
+  `Appointment.RescheduleProposalUtc`'ye yazılır (eksik parça randevudan; geçmişse yok sayılır), bildirime eklenir.
+- **Yanıt hedefi:** yanıt beklemeyen sistem mesajları (kvkk-thanks, connection-test) atlanır; genel mesajlar
+  (kampanya) yanıtı "yutar" — kampanyaya "HAYIR" eski hatırlatmanın randevusunu iptal ETMEZ. Randevu işlemi YALNIZ
+  iki yönlü hatırlatmanın ("reminder") yanıtıyla; değerlendirme linkine "hayır" randevuya işlenmez.
+- **Anlaşılamayan yanıt** (hatırlatma/KVKK/bekleme) → yöneticiye "Müşteri yanıtı kontrol bekliyor" bildirimi.
+  KVKK'ya ret → "KVKK açık rızası verilmedi" bildirimi.
+- **Bildirimler sayfasından randevu hatırlatması** (`SendCustomerAppointmentReminderAsync`): 7 gün içindeki en yakın
+  randevuya BAĞLI iki yönlü hatırlatma + damga; randevusu yoksa GÖNDERİLMEZ (sebep yazılır). Eskiden genel bildirim
+  gidiyor, yanıt hiçbir randevuya işlenmiyor, otomatik tarama ikinci hatırlatmayı atıyordu.
+- **Randevu taşınınca** (`Appointment.Reschedule`, başlangıç değiştiyse) müşteri yanıtı, öneri ve hatırlatma damgası
+  sıfırlanır → yeni saat otomatik yeniden sorulur.
+- **KVKK mükerrer gönderim:** müşteri kaydı isteği otomatik kuyruklar; 24 saat içinde aynı müşteriye ikinci istek gitmez
+  (gönderimde `HasRecentKvkkRequestAsync` + toplu aksiyonda `RecentlySent` sayacı).
+- **Ekran:** ortak `CustomerReplyBadge` (dolu palet renkleri) — Yanıt bekleniyor / Gelecek / Gelmeyecek / Erteleme
+  istedi (+ "Bu saate taşı", "Yeni saat ver"); randevu listesi, gün takvimi, aylık takvim kartı. `ReminderNowPrompt`:
+  randevu açılınca (personel taslağı hariç) "WhatsApp hatırlatması şimdi gönderilsin mi?". Mobil: detayda aynı
+  etiketler + önerilen zaman, formda aynı soru penceresi.
+- **Şema:** migration `RescheduleProposal` (`appointments.RescheduleProposalUtc` datetime null). DTO'ya eklendi:
+  `ListAsync` + gelen kutusu projeksiyonu + `Mapping.ToDto` (projeksiyon tuzağı).
+- **Testler:** `WhatsAppReplyIntentTests` (niyet tablosu ~60 cümle, ayrıştırıcı 12, uçtan uca MySQL: sistem
+  mesajı atlama, kampanyaya HAYIR, iptal/erteleme/öneri, anlaşılamayan yanıt, değerlendirme linki, KVKK ret ve
+  mükerrer, Bildirimler'den bağlı hatırlatma).
 
 ### Ürüne göre değişenler (aktarmadan önce)
 

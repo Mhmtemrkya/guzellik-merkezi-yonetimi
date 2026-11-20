@@ -1783,6 +1783,7 @@ export function normalizeAppointment(
     rawStatus: appointment?.status,
     customerConfirmation: appointment?.customerConfirmation,
     lastReminderAtUtc: appointment?.lastReminderAtUtc,
+    rescheduleProposalUtc: appointment?.rescheduleProposalUtc ?? null,
     isOnline: Boolean(appointment?.isOnline),
     customerPhone: appointment?.customerPhone || customer?.phone || undefined,
     isVip: appointment?.customerIsVip ?? customer?.isVip ?? false,
