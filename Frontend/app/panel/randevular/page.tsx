@@ -2144,6 +2144,8 @@ function RandevularPageInner() {
           customerLabel={editingAppointment.musteri}
           serviceLabel={editingAppointment.islem}
           staffLabel={editingAppointment.personel}
+          customerConfirmation={editingAppointment.customerConfirmation}
+          rescheduleProposalUtc={editingAppointment.rescheduleProposalUtc}
           initialValues={{
             customerId: editingAppointment.customerId || '',
             serviceDefinitionId: editingAppointment.serviceDefinitionId || '',

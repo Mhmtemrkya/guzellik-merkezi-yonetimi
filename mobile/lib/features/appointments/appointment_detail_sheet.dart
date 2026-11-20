@@ -539,6 +539,44 @@ class _AppointmentDetailSheetState extends State<AppointmentDetailSheet> {
               const SizedBox(height: 18),
               // WHATSAPP HATIRLATMA + müşteri onay durumu (web AppointmentReminderControl).
               // Tamamlanmış/iptal randevuda hatırlatmanın anlamı yok.
+              if (status != 'Completed' && status != 'Cancelled' &&
+                  '${appt['customerConfirmation']}' == 'RescheduleRequested') ...[
+                // Web AppointmentEditor şeridi paritesi: müşteri erteleme istedi → yeni saat ver.
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E4E8C),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(children: [
+                        Icon(Icons.event_repeat_rounded, color: Colors.white, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text('Müşteri WhatsApp\'tan erteleme istedi',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+                        ),
+                      ]),
+                      if (appt['rescheduleProposalUtc'] != null) ...[
+                        const SizedBox(height: 4),
+                        Text('Önerdiği zaman: ${_formatProposal('${appt['rescheduleProposalUtc']}')}',
+                            style: const TextStyle(color: Colors.white, fontSize: 12)),
+                      ],
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                            backgroundColor: Colors.white, foregroundColor: const Color(0xFF1E4E8C)),
+                        onPressed: _busy ? null : _edit,
+                        icon: const Icon(Icons.edit_calendar_rounded, size: 18),
+                        label: const Text('Yeni saat ver'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               if (status != 'Completed' && status != 'Cancelled') ...[
                 Builder(builder: (_) {
                   final meta = _confirmationMeta('${appt['customerConfirmation'] ?? 'None'}');
@@ -1128,6 +1166,18 @@ class _EditSheetState extends State<_EditSheet> {
               ),
               onTap: _pick,
             ),
+            if (widget.appointment['rescheduleProposalUtc'] != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () {
+                    final p = parseUtcToLocal(widget.appointment['rescheduleProposalUtc']);
+                    if (p != null) setState(() => start = p);
+                  },
+                  icon: const Icon(Icons.event_available_rounded, size: 18),
+                  label: const Text('Müşterinin önerdiği saati uygula'),
+                ),
+              ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: status,

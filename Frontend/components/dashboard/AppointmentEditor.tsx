@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { AnimatePresence, motion } from 'framer-motion'
+import CustomerReplyBadge, { formatProposal } from '@/components/dashboard/CustomerReplyBadge'
+import type { WhatsAppConfirmation } from '@/lib/types'
 import {
   Banknote,
   CalendarClock,
@@ -119,6 +121,9 @@ export interface AppointmentEditorProps {
    * Verilmezse dolu-slot hatası normal hata olarak gösterilir.
    */
   onAddToWaitlist?: (values: AppointmentEditorValues) => Promise<void>
+  /** Düzenlemede: müşterinin WhatsApp yanıtı (Gelecek / Erteleme istedi …) ve varsa önerdiği zaman. */
+  customerConfirmation?: WhatsAppConfirmation
+  rescheduleProposalUtc?: string | null
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -584,6 +589,8 @@ export default function AppointmentEditor({
   serverCustomerSearch = false,
   onQuickCreateCustomer,
   onAddToWaitlist,
+  customerConfirmation,
+  rescheduleProposalUtc,
 }: AppointmentEditorProps) {
   // YEREL gün: toISOString() UTC'ye kaydırdığı için Türkiye'de 00:00–02:59 arasında yeni randevu
   // varsayılanı BİR ÖNCEKİ güne düşüyordu.
@@ -1188,6 +1195,42 @@ export default function AppointmentEditor({
                     alt alta uzuyor ve form kaydırma gerektiriyordu; yan yana dizilince
                     tamamı tek ekrana sığıyor. */}
                 <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-7">
+                  {/* MÜŞTERİNİN WHATSAPP YANITI — erteleme istediyse yeni saat buradan verilir. */}
+                  {mode === 'edit' && customerConfirmation === 'RescheduleRequested' && (
+                    <div className="mb-6 overflow-hidden rounded-xl border border-[#1E4E8C]/30 bg-white shadow-sm">
+                      <div className="flex items-center gap-2 bg-[#1E4E8C] px-4 py-2.5 text-[13px] font-semibold text-white">
+                        <CalendarClock className="h-4 w-4" /> Müşteri WhatsApp'tan erteleme istedi
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 px-4 py-3 text-[12.5px] text-[#2A2027]">
+                        {rescheduleProposalUtc ? (
+                          <>
+                            <span>Önerdiği zaman: <b className="text-[#1E4E8C]">{formatProposal(rescheduleProposalUtc)}</b></span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const d = new Date(rescheduleProposalUtc)
+                                const p = (n: number) => String(n).padStart(2, '0')
+                                setValues((v) => ({ ...v, date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`, time: `${p(d.getHours())}:${p(d.getMinutes())}` }))
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E4E8C] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[#173d6e]"
+                            >
+                              <CalendarClock className="h-3.5 w-3.5" /> Önerilen saati uygula
+                            </button>
+                          </>
+                        ) : (
+                          <span>Müşteri belirli bir saat söylemedi.</span>
+                        )}
+                        <span className="basis-full text-[11.5px] text-[#4a3a44]">
+                          Aşağıdan yeni tarih ve saati seçip <b>Kaydet</b>'e basın. Yeni saat için müşteriye hatırlatma otomatik gider.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  {mode === 'edit' && customerConfirmation && customerConfirmation !== 'None' && customerConfirmation !== 'RescheduleRequested' && (
+                    <div className="mb-5 flex items-center gap-2 text-[12px] text-[#4a3a44]">
+                      Müşterinin WhatsApp yanıtı: <CustomerReplyBadge compact confirmation={customerConfirmation} />
+                    </div>
+                  )}
                   <div className="grid gap-x-8 gap-y-7 xl:grid-cols-2">
                     <div className="space-y-7">
                       {/* 1 — MÜŞTERİ */}
