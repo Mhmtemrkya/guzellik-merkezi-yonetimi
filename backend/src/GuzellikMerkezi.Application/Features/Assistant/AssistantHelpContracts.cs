@@ -32,7 +32,19 @@ public interface IAssistantHelpService
 /// <param name="English">Başlıklar (yapay zekâya sunulan) ve kart metni İngilizce mi.</param>
 /// <param name="StoreBuild">App Store / Mac App Store istemcisi: satın alma yüzeyleri gösterilmez (3.1.1).</param>
 /// <param name="AllowAi">false: yapay zekâ hiç denenmez (ör. kural motoru zaten bir niyet buldu).</param>
-public sealed record AssistantHelpOptions(bool English = false, bool StoreBuild = false, bool AllowAi = true);
+/// <param name="DataChoices">
+/// Kural motorunun anlamadığı soru bir VERİ sorusu da olabilir: kişinin cevaplayabildiği veri niyetleri yapay zekâya
+/// tarifleriyle sunulur; seçilirse <see cref="AssistantHelpOutcome.Data"/> döner ve rakamı veritabanı hesaplar.
+/// </param>
+public sealed record AssistantHelpOptions(bool English = false, bool StoreBuild = false, bool AllowAi = true,
+    IReadOnlyList<AssistantDataChoice>? DataChoices = null);
+
+/// <summary>Yapay zekâya sunulan bir veri niyeti: yalnız kimliği ve kısa tarifi (hiçbir veri içermez).</summary>
+public sealed record AssistantDataChoice(AssistantIntent Intent, string Description)
+{
+    public const string Prefix = "veri_";
+    public string Id => Prefix + Intent;
+}
 
 public enum AssistantHelpOutcome
 {
@@ -44,6 +56,8 @@ public enum AssistantHelpOutcome
     NotFound,
     /// <summary>Kişinin Maydi portalı yok (platform yöneticisi / oturumsuz).</summary>
     NoPortal,
+    /// <summary>Soru bir veri sorusu: <see cref="AssistantHelpAnswer.DataIntent"/> cevaplanır (yapay zekâ seçti).</summary>
+    Data,
 }
 
 /// <param name="MatchedBy">"ai", "rule", "rule_spelling" ya da boş.</param>
@@ -52,7 +66,8 @@ public sealed record AssistantHelpAnswer(
     string Portal,
     AssistantHelpArticle? Article,
     string MatchedBy,
-    string? Route)
+    string? Route,
+    AssistantIntent? DataIntent = null)
 {
     public static AssistantHelpAnswer None(string portal, AssistantHelpOutcome outcome = AssistantHelpOutcome.NotFound) =>
         new(outcome, portal, null, string.Empty, null);

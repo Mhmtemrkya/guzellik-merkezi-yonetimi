@@ -1,5 +1,5 @@
 using System.Globalization;
-using GuzellikMerkezi.Application.Features.CashFlow;
+using GuzellikMerkezi.Application.Features.Reports;
 using GuzellikMerkezi.Domain.Assistant;
 using GuzellikMerkezi.Domain.Entities;
 using GuzellikMerkezi.Domain.Enums;
@@ -16,6 +16,8 @@ namespace GuzellikMerkezi.Infrastructure.Services.Assistant;
 /// <item>Müşteri yalnız kendi kaydını görür.</item>
 /// <item>Konsültasyon/sağlık verisi hiçbir niyette dönmez.</item>
 /// </list>
+/// Finans, hizmet, personel, şube ve müşteri rakamları <see cref="IReportsService"/>'ten gelir: Maydi'nin
+/// söylediği sayı Raporlar ekranındakiyle (aynı dönem ve şube seçimiyle) birebir aynıdır.
 /// </summary>
 public sealed partial class AssistantService
 {
@@ -55,8 +57,13 @@ public sealed partial class AssistantService
 
     private static string Clock(DateTime utc) => (utc + TurkeyOffset).ToString("HH:mm", Tr);
     private static string Day(DateTime utc) => (utc + TurkeyOffset).ToString("d MMMM dddd", Tr);
+    private static string ShortDay(DateTime utc) => (utc + TurkeyOffset).ToString("d MMMM", Tr);
     private static string DayEn(DateTime utc) => (utc + TurkeyOffset).ToString("dddd, MMMM d", CultureInfo.InvariantCulture);
     private static string Money(decimal value) => value.ToString("#,##0.00", Tr) + " ₺";
+    private static DateTime Utc(DateTime local) => DateTime.SpecifyKind(local - TurkeyOffset, DateTimeKind.Utc);
+
+    /// <summary>Türkçe başlıklı tablo satırı (istemciler bilinmeyen alan adını olduğu gibi başlık yapar).</summary>
+    private static Dictionary<string, object?> Row(params (string Key, object? Value)[] cells) => cells.ToDictionary(c => c.Key, c => c.Value);
 
     private static string StatusTr(AppointmentStatus status) => status switch
     {
@@ -69,24 +76,77 @@ public sealed partial class AssistantService
         _ => "taslak",
     };
 
-    private async Task<DataAnswer> DataAsync(AssistantIntent intent, AssistantPeriod period, string portal, AssistantVoice v, CancellationToken ct)
+    // ── Dönem varsayılanları ────────────────────────────────────────────────
+
+    private AssistantDateRange TodayRange => AssistantDateParser.Make(LocalNow.Date, LocalNow.Date.AddDays(1), "Bugün", "Today");
+    private AssistantDateRange MonthRange
+    {
+        get
+        {
+            var start = new DateTime(LocalNow.Year, LocalNow.Month, 1);
+            return AssistantDateParser.Make(start, start.AddMonths(1), "Bu ay", "This month");
+        }
+    }
+    private AssistantDateRange LastDays(int days) =>
+        AssistantDateParser.Make(LocalNow.Date.AddDays(1 - days), LocalNow.Date.AddDays(1), $"Son {days} gün", $"Last {days} days");
+    private AssistantDateRange AllTime => AssistantDateParser.Make(new DateTime(2000, 1, 1), LocalNow.Date.AddDays(1), "Bugüne kadar", "All time");
+
+    private static string Title(AssistantDateRange range, AssistantVoice v) => v.English ? range.TitleEn : range.Title;
+
+    /// <summary>"geçen döneme göre %12 artış" — önceki değer yoksa boş.</summary>
+    private static string Change(decimal current, decimal previous, AssistantVoice v)
+    {
+        if (previous == 0) return string.Empty;
+        var pct = Math.Round((current - previous) / Math.Abs(previous) * 100m, 0);
+        if (pct == 0) return v.T(" Önceki döneme göre değişmedi.", " Unchanged from the previous period.");
+        return pct > 0
+            ? v.T($" Önceki döneme göre %{pct} artış.", $" Up {pct}% on the previous period.")
+            : v.T($" Önceki döneme göre %{-pct} düşüş.", $" Down {-pct}% on the previous period.");
+    }
+
+    private ReportRangeRequest ReportRange(AssistantDateRange range, bool compare = true)
+    {
+        var (prevFrom, prevTo) = range.Previous();
+        return compare
+            ? new ReportRangeRequest(Utc(range.From), Utc(range.To), Utc(prevFrom), Utc(prevTo))
+            : new ReportRangeRequest(Utc(range.From), Utc(range.To));
+    }
+
+    private async Task<DataAnswer> DataAsync(AssistantIntent intent, AssistantDateRange? range, string portal, AssistantVoice v, CancellationToken ct)
     {
         var staff = portal == AssistantPortals.Staff;
         return intent switch
         {
-            AssistantIntent.AppointmentsToday => staff ? await MyAppointmentsTodayAsync(v, ct) : await AppointmentsTodayAsync(v, ct),
+            AssistantIntent.AppointmentsToday => portal == AssistantPortals.Customer
+                ? (range is null ? await CustomerNextAsync(v, ct) : await CustomerAppointmentsAsync(range, v, ct))
+                : staff ? await MyAppointmentsAsync(range ?? TodayRange, v, ct) : await AppointmentsAsync(range ?? TodayRange, v, ct),
             AssistantIntent.NextAppointment => staff ? await MyNextCustomerAsync(v, ct) : await CustomerNextAsync(v, ct),
             AssistantIntent.WeekSchedule => await WeekAsync(staff, v, ct),
             AssistantIntent.RemainingSessions => staff ? await MyCustomersSessionsAsync(v, ct) : await CustomerSessionsAsync(v, ct),
             AssistantIntent.MyRating => await MyRatingAsync(v, ct),
             AssistantIntent.PendingApprovals => await PendingAsync(staff, v, ct),
-            AssistantIntent.FreeSlots => await FreeSlotsAsync(v, ct),
-            AssistantIntent.Revenue => await RevenueAsync(period, v, ct),
+            AssistantIntent.FreeSlots => await FreeSlotsAsync(range, v, ct),
+            AssistantIntent.Revenue => await RevenueAsync(range ?? TodayRange, v, ct),
+            AssistantIntent.Expenses => await ExpensesAsync(range ?? MonthRange, v, ct),
+            AssistantIntent.Profit => await ProfitAsync(range ?? MonthRange, v, ct),
+            AssistantIntent.Sales => await SalesAsync(range ?? TodayRange, v, ct),
+            AssistantIntent.PaymentMethods => await PaymentMethodsAsync(range ?? TodayRange, v, ct),
             AssistantIntent.OverdueInstallments => await OverdueAsync(v, ct),
+            AssistantIntent.Receivables => await ReceivablesAsync(v, ct),
             AssistantIntent.CriticalStock => await CriticalStockAsync(v, ct),
+            AssistantIntent.Inventory => await InventoryAsync(range ?? MonthRange, v, ct),
             AssistantIntent.Waitlist => await WaitlistAsync(v, ct),
-            AssistantIntent.TopStaff => await TopStaffAsync(v, ct),
-            AssistantIntent.NoShows => await NoShowsAsync(v, ct),
+            AssistantIntent.TopStaff => await TopStaffAsync(range ?? MonthRange, v, ct),
+            AssistantIntent.TopServices => await TopServicesAsync(range ?? MonthRange, v, ct),
+            AssistantIntent.Branches => await BranchesAsync(range ?? MonthRange, v, ct),
+            AssistantIntent.NewCustomers => await NewCustomersAsync(range ?? MonthRange, v, ct),
+            AssistantIntent.CustomerCount => await CustomerCountAsync(v, ct),
+            AssistantIntent.TopCustomers => await TopCustomersAsync(range ?? AllTime, v, ct),
+            AssistantIntent.PassiveCustomers => await PassiveCustomersAsync(v, ct),
+            AssistantIntent.Birthdays => await BirthdaysAsync(range ?? TodayRange, v, ct),
+            AssistantIntent.NoShows => await NoShowsAsync(range ?? LastDays(30), v, ct),
+            AssistantIntent.Cancellations => await CancellationsAsync(range ?? MonthRange, v, ct),
+            AssistantIntent.BusiestTimes => await BusiestTimesAsync(range ?? LastDays(90), v, ct),
             AssistantIntent.AppointmentHistory => await CustomerHistoryAsync(v, ct),
             _ => new DataAnswer(v.OutOfPortal(), []),
         };
@@ -94,21 +154,28 @@ public sealed partial class AssistantService
 
     // ── Personel ────────────────────────────────────────────────────────────
 
-    private async Task<DataAnswer> MyAppointmentsTodayAsync(AssistantVoice v, CancellationToken ct)
+    private async Task<DataAnswer> MyAppointmentsAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
     {
         if (await MyStaffIdAsync(ct) is not Guid staffId) return NoStaffProfile(v);
-        var start = DayStartUtc(LocalNow);
+        var start = Utc(range.From);
+        var end = Utc(range.To);
         var rows = await db.Appointments.AsNoTracking()
-            .Where(x => x.TenantId == TenantId && x.StaffMemberId == staffId && x.Status != AppointmentStatus.Draft && x.StartUtc >= start && x.StartUtc < start.AddDays(1))
+            .Where(x => x.TenantId == TenantId && x.StaffMemberId == staffId && x.Status != AppointmentStatus.Draft && x.StartUtc >= start && x.StartUtc < end)
             .OrderBy(x => x.StartUtc)
             .Select(x => new { x.StartUtc, Customer = x.Customer!.FullName, Service = x.ServiceDefinition!.Name, x.Status })
-            .ToListAsync(ct);
-        var items = rows.Select(x => (object)new { time = Clock(x.StartUtc), customer = x.Customer, service = x.Service, status = StatusTr(x.Status) }).ToList();
-        if (rows.Count == 0) return new DataAnswer(v.T("Bugün size atanmış randevu yok.", "You have no appointments today."), items);
-        // Panodaki "sırada" ile aynı: saati henüz gelmemiş açık randevular.
+            .Take(500).ToListAsync(ct);
+        var title = Title(range, v);
+        var items = rows.Take(30).Select(x => (object)new
+        {
+            time = range.SingleDay ? Clock(x.StartUtc) : $"{ShortDay(x.StartUtc)} {Clock(x.StartUtc)}",
+            customer = x.Customer, service = x.Service, status = StatusTr(x.Status),
+        }).ToList();
+        if (rows.Count == 0) return new DataAnswer(v.T($"{title}: size atanmış randevu yok.", $"{title}: you have no appointments."), items);
         var now = DateTime.UtcNow;
         var upcoming = rows.Count(x => Active.Contains(x.Status) && x.StartUtc >= now);
-        return new DataAnswer(v.T($"Bugün {rows.Count} randevunuz var; {upcoming} tanesi sırada.", $"You have {rows.Count} appointments today; {upcoming} still to come."), items);
+        var done = rows.Count(x => x.Status == AppointmentStatus.Completed);
+        return new DataAnswer(v.T($"{title}: {rows.Count} randevunuz var; {done} tamamlandı, {upcoming} sırada.",
+            $"{title}: you have {rows.Count} appointments; {done} completed, {upcoming} to come."), items);
     }
 
     private async Task<DataAnswer> MyNextCustomerAsync(AssistantVoice v, CancellationToken ct)
@@ -142,8 +209,8 @@ public sealed partial class AssistantService
             .Select(x => (object)new { customer = x.FullName, service = x.Service, left = x.Left }).ToList();
         return rows.Count == 0
             ? new DataAnswer(v.T("Kalan seansı olan paketli müşteriniz yok.", "None of your package customers have sessions left."), items)
-            : new DataAnswer(v.T($"{customerCount} paketli müşterinizin toplam {rows.Sum(x => x.Left)} seansı kaldı.",
-                $"{customerCount} of your package customers have {rows.Sum(x => x.Left)} sessions left in total."), items);
+            : new DataAnswer(v.T($"{customerCount} müşterinizin toplam {rows.Sum(x => x.Left)} seansı kaldı.",
+                $"{customerCount} of your customers have {rows.Sum(x => x.Left)} sessions left in total."), items);
     }
 
     private async Task<DataAnswer> MyRatingAsync(AssistantVoice v, CancellationToken ct)
@@ -163,31 +230,48 @@ public sealed partial class AssistantService
         new(v.T("Hesabınıza bağlı bir personel kaydı bulamadım; yöneticiniz Personel ekranından bağlayabilir.",
             "I couldn't find a staff profile linked to your account; your manager can link it from the Staff page."), []);
 
-    // ── Yönetici ────────────────────────────────────────────────────────────
+    // ── Yönetici: randevular ────────────────────────────────────────────────
 
-    private async Task<DataAnswer> AppointmentsTodayAsync(AssistantVoice v, CancellationToken ct)
+    private async Task<DataAnswer> AppointmentsAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
     {
-        var start = DayStartUtc(LocalNow);
-        var end = start.AddDays(1);
-        var today = await Appointments().Where(x => x.StartUtc >= start && x.StartUtc < end)
-            .Select(x => new { x.Status, x.StartUtc }).ToListAsync(ct);
-        var total = today.Count;
-        var items = today.GroupBy(x => x.Status).OrderBy(g => g.Key)
-            .Select(g => (object)new { status = StatusTr(g.Key), count = g.Count() }).ToList();
-        if (total == 0) return new DataAnswer(v.T("Bugün randevu yok.", "There are no appointments today."), items);
-        // Panodaki "sırada" ile aynı: saati henüz gelmemiş açık randevular.
+        var start = Utc(range.From);
+        var end = Utc(range.To);
+        var rows = await Appointments().Where(x => x.StartUtc >= start && x.StartUtc < end)
+            .OrderBy(x => x.StartUtc)
+            .Select(x => new { x.Status, x.StartUtc, Customer = x.Customer!.FullName, Service = x.ServiceDefinition!.Name, Staff = x.StaffMember!.FullName })
+            .Take(20000).ToListAsync(ct);
+        var title = Title(range, v);
+        var total = rows.Count;
+        if (total == 0) return new DataAnswer(v.T($"{title}: randevu yok.", $"{title}: no appointments."), []);
+
         var now = DateTime.UtcNow;
-        var upcoming = today.Count(x => Active.Contains(x.Status) && x.StartUtc >= now);
-        var done = today.Count(x => x.Status == AppointmentStatus.Completed);
-        return new DataAnswer(v.T($"Bugün {total} randevu var: {done} tamamlandı, {upcoming} sırada.",
-            $"{total} appointments today: {done} completed, {upcoming} still to come."), items);
+        var upcoming = rows.Count(x => Active.Contains(x.Status) && x.StartUtc >= now);
+        var done = rows.Count(x => x.Status == AppointmentStatus.Completed);
+        var cancelled = rows.Count(x => x.Status == AppointmentStatus.Cancelled);
+        var missed = rows.Count(x => x.Status == AppointmentStatus.NoShow);
+        var parts = new List<string> { v.T($"{done} tamamlandı", $"{done} completed") };
+        if (upcoming > 0) parts.Add(v.T($"{upcoming} sırada", $"{upcoming} to come"));
+        if (cancelled > 0) parts.Add(v.T($"{cancelled} iptal", $"{cancelled} cancelled"));
+        if (missed > 0) parts.Add(v.T($"{missed} gelmedi", $"{missed} no-show"));
+        var text = v.T($"{title}: {total} randevu var ({string.Join(", ", parts)}).", $"{title}: {total} appointments ({string.Join(", ", parts)}).");
+
+        // Tek gün: saat saat liste; uzun dönem: gün gün (≤ 31 gün) ya da durum dağılımı.
+        List<object> items;
+        if (range.SingleDay)
+            items = rows.Take(40).Select(x => (object)new { time = Clock(x.StartUtc), customer = x.Customer, service = x.Service, staff = x.Staff, status = StatusTr(x.Status) }).ToList();
+        else if ((range.To - range.From).TotalDays <= 31)
+            items = rows.GroupBy(x => (x.StartUtc + TurkeyOffset).Date).OrderBy(g => g.Key)
+                .Select(g => (object)new { day = g.Key.ToString("d MMMM dddd", Tr), count = g.Count(), completed = g.Count(x => x.Status == AppointmentStatus.Completed) }).ToList();
+        else
+            items = rows.GroupBy(x => x.Status).OrderBy(g => g.Key).Select(g => (object)new { status = StatusTr(g.Key), count = g.Count() }).ToList();
+        return new DataAnswer(text, items);
     }
 
     private async Task<DataAnswer> WeekAsync(bool staff, AssistantVoice v, CancellationToken ct)
     {
         var today = LocalNow.Date;
         var monday = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
-        var start = DayStartUtc(monday);
+        var start = Utc(monday);
         var query = Appointments().Where(x => x.StartUtc >= start && x.StartUtc < start.AddDays(7) && x.Status != AppointmentStatus.Cancelled);
         if (staff)
         {
@@ -198,7 +282,7 @@ public sealed partial class AssistantService
         var times = await query.Select(x => x.StartUtc).ToListAsync(ct);
         var items = Enumerable.Range(0, 7)
             .Select(i => monday.AddDays(i))
-            .Select(day => (object)new { day = day.ToString(v.English ? "dddd" : "dddd", v.English ? CultureInfo.InvariantCulture : Tr), count = times.Count(t => (t + TurkeyOffset).Date == day) })
+            .Select(day => (object)new { day = day.ToString("dddd", v.English ? CultureInfo.InvariantCulture : Tr), count = times.Count(t => (t + TurkeyOffset).Date == day) })
             .ToList();
         return new DataAnswer(staff
             ? v.T($"Bu hafta {times.Count} randevunuz var.", $"You have {times.Count} appointments this week.")
@@ -227,14 +311,17 @@ public sealed partial class AssistantService
     }
 
     /// <summary>
-    /// Bugün, şu andan mesai bitimine kadar her personelin boş aralıkları (çalışma saati − aktif randevular).
-    /// Çalışma saati tanımlı olmayan personel listelenmez (uydurma saat gösterilmez).
+    /// Bir gün için (varsayılan bugün; sorulan gün bugün ya da sonrasıysa o gün) her personelin boş aralıkları
+    /// (çalışma saati − aktif randevular). Çalışma saati tanımlı olmayan personel listelenmez (uydurma saat gösterilmez).
     /// </summary>
-    private async Task<DataAnswer> FreeSlotsAsync(AssistantVoice v, CancellationToken ct)
+    private async Task<DataAnswer> FreeSlotsAsync(AssistantDateRange? range, AssistantVoice v, CancellationToken ct)
     {
         var local = LocalNow;
-        var weekday = ((int)local.DayOfWeek + 6) % 7; // 0 = Pazartesi
-        var start = DayStartUtc(local);
+        var day = range is { SingleDay: true } && range.From.Date > local.Date ? range.From.Date : local.Date;
+        var isToday = day == local.Date;
+        var label = isToday ? v.T("Bugün", "Today") : (v.English ? range!.TitleEn : range!.Title);
+        var weekday = ((int)day.DayOfWeek + 6) % 7; // 0 = Pazartesi
+        var start = Utc(day);
         var staffQuery = db.StaffMembers.AsNoTracking().Where(x => x.TenantId == TenantId && x.IsActive);
         if (ScopeBranch is Guid branch) staffQuery = staffQuery.Where(x => x.BranchId == branch);
         var staff = await staffQuery.Select(x => new { x.Id, x.FullName }).ToListAsync(ct);
@@ -250,7 +337,7 @@ public sealed partial class AssistantService
                               && appointment.Status != AppointmentStatus.Draft
                           select new { appointment.StaffMemberId, appointment.StartUtc, appointment.EndUtc }).ToListAsync(ct);
 
-        var nowMinute = local.Hour * 60 + local.Minute;
+        var nowMinute = isToday ? local.Hour * 60 + local.Minute : 0;
         var items = new List<object>();
         var freeTotal = 0;
         foreach (var person in staff.OrderBy(x => x.FullName))
@@ -261,8 +348,8 @@ public sealed partial class AssistantService
             var windows = new List<string>();
             foreach (var appointment in busy.Where(x => x.StaffMemberId == person.Id).OrderBy(x => x.StartUtc))
             {
-                var from = (int)((appointment.StartUtc + TurkeyOffset) - local.Date).TotalMinutes;
-                var to = (int)((appointment.EndUtc + TurkeyOffset) - local.Date).TotalMinutes;
+                var from = (int)((appointment.StartUtc + TurkeyOffset) - day).TotalMinutes;
+                var to = (int)((appointment.EndUtc + TurkeyOffset) - day).TotalMinutes;
                 if (from - cursor >= 30) { windows.Add($"{cursor / 60:00}:{cursor % 60:00}–{from / 60:00}:{from % 60:00}"); freeTotal += from - cursor; }
                 cursor = Math.Max(cursor, to);
             }
@@ -270,44 +357,122 @@ public sealed partial class AssistantService
             if (windows.Count > 0) items.Add(new { staff = person.FullName, free = windows });
         }
         if (hours.Count == 0)
-            return new DataAnswer(v.T("Bugün için tanımlı personel çalışma saati yok; boş saatleri hesaplayamıyorum.",
-                "No staff working hours are defined for today, so I can't work out free slots."), items);
+            return new DataAnswer(v.T($"{label} için tanımlı personel çalışma saati yok; boş saatleri hesaplayamıyorum.",
+                $"No staff working hours are defined for {label}, so I can't work out free slots."), items);
         return items.Count == 0
-            ? new DataAnswer(v.T("Bugün kalan saatlerde 30 dakikalık boşluk yok.", "There are no 30-minute gaps left today."), items)
-            : new DataAnswer(v.T($"Bugün {items.Count} personelde toplam {freeTotal / 60} saat {freeTotal % 60} dakika boşluk var.",
-                $"{items.Count} staff have {freeTotal / 60}h {freeTotal % 60}m free in total today."), items);
+            ? new DataAnswer(v.T($"{label} kalan saatlerde 30 dakikalık boşluk yok.", $"There are no 30-minute gaps left ({label})."), items)
+            : new DataAnswer(v.T($"{label} {items.Count} personelde toplam {freeTotal / 60} saat {freeTotal % 60} dakika boşluk var.",
+                $"{label}: {items.Count} staff have {freeTotal / 60}h {freeTotal % 60}m free in total."), items);
     }
 
-    private async Task<DataAnswer> RevenueAsync(AssistantPeriod period, AssistantVoice v, CancellationToken ct)
+    // ── Yönetici: finans (Raporlar ile aynı hesap) ──────────────────────────
+
+    private async Task<ReportSummaryDto?> SummaryAsync(AssistantDateRange range, CancellationToken ct)
     {
-        var local = LocalNow.Date;
-        var from = period switch
+        var result = await reports.GetSummaryAsync(TenantId, ReportRange(range), ct);
+        return result.IsSuccess ? result.Value : null;
+    }
+
+    private static decimal Metric(ReportSummaryDto summary, string key, bool previous = false) =>
+        summary.Metrics.FirstOrDefault(x => x.Key == key) is { } metric ? (previous ? metric.PreviousValue : metric.Value) : 0m;
+
+    private static string? Hint(ReportSummaryDto summary, string key) => summary.Metrics.FirstOrDefault(x => x.Key == key)?.Hint;
+
+    /// <summary>Uzun dönemde (≥ 2 ay) aylık seri, kısa dönemde ödeme yöntemleri.</summary>
+    private static List<object> FinanceItems(ReportSummaryDto summary, AssistantDateRange range)
+    {
+        var busy = summary.Series.Where(p => p.Income != 0 || p.Sales != 0 || p.Expense != 0 || p.Appointments != 0).ToList();
+        if ((range.To - range.From).TotalDays > 45 && busy.Count > 1)
+            return busy.Select(p => (object)Row(("Dönem", p.Label), ("income", p.Income), ("Satış", Money(p.Sales)), ("Randevu", p.Appointments))).ToList();
+        return summary.PaymentMethods.Where(x => x.Amount != 0).Select(x => (object)new { method = x.Label, amount = x.Amount, count = x.Count }).ToList();
+    }
+
+    private async Task<DataAnswer> RevenueAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        if (await SummaryAsync(range, ct) is not { } summary) return new DataAnswer(v.Error(), []);
+        var income = Metric(summary, "income");
+        var expense = Metric(summary, "expense");
+        var sales = Metric(summary, "sales");
+        var title = Title(range, v);
+        var text = v.T(
+            $"{title} gelir (tahsilat) {Money(income)} ({Hint(summary, "income")}). Satış {Money(sales)}, gider {Money(expense)}, net {Money(income - expense)}.",
+            $"{title}: income (collections) {Money(income)}. Sales {Money(sales)}, expenses {Money(expense)}, net {Money(income - expense)}.")
+            + Change(income, Metric(summary, "income", previous: true), v);
+        return new DataAnswer(text, FinanceItems(summary, range));
+    }
+
+    private async Task<DataAnswer> ExpensesAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        if (await SummaryAsync(range, ct) is not { } summary) return new DataAnswer(v.Error(), []);
+        var expense = Metric(summary, "expense");
+        var title = Title(range, v);
+        if (expense == 0) return new DataAnswer(v.T($"{title}: kayıtlı gider yok.", $"{title}: no expenses recorded."), []);
+        var top = summary.ExpenseCategories.OrderByDescending(x => x.Amount).FirstOrDefault();
+        var text = v.T($"{title} toplam gider {Money(expense)} ({Hint(summary, "expense")})." + (top is null ? "" : $" En büyük kalem: {top.Label} ({Money(top.Amount)})."),
+                $"{title}: total expenses {Money(expense)}." + (top is null ? "" : $" Largest: {top.Label} ({Money(top.Amount)})."))
+            + Change(expense, Metric(summary, "expense", previous: true), v);
+        return new DataAnswer(text, summary.ExpenseCategories.OrderByDescending(x => x.Amount)
+            .Select(x => (object)Row(("Kategori", x.Label), ("amount", x.Amount), ("count", x.Count))).ToList());
+    }
+
+    private async Task<DataAnswer> ProfitAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        if (await SummaryAsync(range, ct) is not { } summary) return new DataAnswer(v.Error(), []);
+        var income = Metric(summary, "income");
+        var expense = Metric(summary, "expense");
+        var net = income - expense;
+        var previousNet = Metric(summary, "income", true) - Metric(summary, "expense", true);
+        var margin = income > 0 ? Math.Round(net / income * 100m, 0) : 0m;
+        var title = Title(range, v);
+        var verdict = net >= 0 ? v.T("kâr", "profit") : v.T("zarar", "loss");
+        var text = v.T($"{title} net {verdict} {Money(Math.Abs(net))}: gelir {Money(income)} − gider {Money(expense)}" + (income > 0 && net >= 0 ? $" (kâr marjı %{margin})." : "."),
+                $"{title}: net {verdict} {Money(Math.Abs(net))} — income {Money(income)} − expenses {Money(expense)}.")
+            + Change(net, previousNet, v);
+        var items = new List<object>
         {
-            AssistantPeriod.Month => new DateTime(local.Year, local.Month, 1),
-            AssistantPeriod.Week => local.AddDays(-(((int)local.DayOfWeek + 6) % 7)),
-            _ => local,
+            Row(("Kalem", v.T("Gelir (tahsilat)", "Income")), ("amount", income)),
+            Row(("Kalem", v.T("Gider", "Expenses")), ("amount", expense)),
+            Row(("Kalem", v.T("Net", "Net")), ("amount", net)),
+            Row(("Kalem", v.T("Önceki dönem net", "Previous net")), ("amount", previousNet)),
         };
-        var result = await cashFlow.SummaryAsync(TenantId, new CashFlowFilter(DayStartUtc(from), DateTime.UtcNow), ct);
-        if (result.IsFailure || result.Value is null) return new DataAnswer(v.Error(), []);
-        var summary = result.Value;
-        var label = period switch
-        {
-            AssistantPeriod.Month => v.T("Bu ay", "This month"),
-            AssistantPeriod.Week => v.T("Bu hafta", "This week"),
-            _ => v.T("Bugün", "Today"),
-        };
-        return new DataAnswer(v.T($"{label} tahsilat {Money(summary.TotalIncome)} ({summary.IncomeCount} işlem); gider {Money(summary.TotalExpense)}, net {Money(summary.NetAmount)}.",
-            $"{label}: collections {Money(summary.TotalIncome)} ({summary.IncomeCount} entries); expenses {Money(summary.TotalExpense)}, net {Money(summary.NetAmount)}."),
-            summary.ByMethod.Select(x => (object)new { method = x.Method, income = x.IncomeAmount }).ToList());
+        return new DataAnswer(text, items);
+    }
+
+    private async Task<DataAnswer> SalesAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        if (await SummaryAsync(range, ct) is not { } summary) return new DataAnswer(v.Error(), []);
+        var sales = Metric(summary, "sales");
+        var title = Title(range, v);
+        var text = v.T($"{title} satış tutarı {Money(sales)} ({Hint(summary, "sales")}); bunun tahsil edilmeyen kısmı {Money(Metric(summary, "openReceivable"))}.",
+                $"{title}: sales {Money(sales)}; uncollected part {Money(Metric(summary, "openReceivable"))}.")
+            + Change(sales, Metric(summary, "sales", previous: true), v);
+        return new DataAnswer(text, summary.RevenueSources.Where(x => x.Amount != 0)
+            .Select(x => (object)Row(("Kaynak", x.Label), ("amount", x.Amount), ("count", x.Count))).ToList());
+    }
+
+    private async Task<DataAnswer> PaymentMethodsAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        if (await SummaryAsync(range, ct) is not { } summary) return new DataAnswer(v.Error(), []);
+        var methods = summary.PaymentMethods.Where(x => x.Amount != 0).OrderByDescending(x => x.Amount).ToList();
+        var title = Title(range, v);
+        if (methods.Count == 0) return new DataAnswer(v.T($"{title}: tahsilat yok.", $"{title}: no collections."), []);
+        var text = v.T($"{title} tahsilatın dağılımı: " + string.Join(", ", methods.Select(x => $"{x.Label} {Money(x.Amount)}")) + ".",
+            $"{title} collections by method: " + string.Join(", ", methods.Select(x => $"{x.Label} {Money(x.Amount)}")) + ".");
+        return new DataAnswer(text, methods.Select(x => (object)new { method = x.Label, amount = x.Amount, count = x.Count }).ToList());
+    }
+
+    private IQueryable<CustomerAccount> ScopedAccounts()
+    {
+        // Taksit tablosunda kurum filtresi yok: kapsam hesap (kurum + şube filtreli) üzerinden kurulur.
+        var accounts = db.CustomerAccounts.AsNoTracking().Where(x => x.TenantId == TenantId);
+        if (ScopeBranch is Guid branch) accounts = accounts.Where(x => x.BranchId == null || x.BranchId == branch);
+        return accounts;
     }
 
     private async Task<DataAnswer> OverdueAsync(AssistantVoice v, CancellationToken ct)
     {
         var today = DateOnly.FromDateTime(LocalNow);
-        // Taksit tablosunda kurum filtresi yok: kapsam hesap (kurum + şube filtreli) üzerinden kurulur.
-        var accounts = db.CustomerAccounts.AsNoTracking().Where(x => x.TenantId == TenantId);
-        if (ScopeBranch is Guid branch) accounts = accounts.Where(x => x.BranchId == null || x.BranchId == branch);
-        var rows = await (from account in accounts
+        var rows = await (from account in ScopedAccounts()
                           join installment in db.Installments.AsNoTracking() on account.Id equals installment.CustomerAccountId
                           where installment.Status == InstallmentStatus.Planned && installment.DueDate < today
                           select new { account.CustomerId, CustomerName = account.Customer!.FullName, installment.Amount, installment.DueDate }).Take(1000).ToListAsync(ct);
@@ -320,6 +485,28 @@ public sealed partial class AssistantService
             byCustomer.Select(x => (object)new { customer = x.Name, amount = x.Amount, oldest = x.Oldest.ToString("d MMMM", Tr) }).ToList());
     }
 
+    /// <summary>Müşterilerin açık borcu (ödenmemiş taksitler) — anlık; vadesi geçen kısım ayrıca söylenir.</summary>
+    private async Task<DataAnswer> ReceivablesAsync(AssistantVoice v, CancellationToken ct)
+    {
+        var today = DateOnly.FromDateTime(LocalNow);
+        var rows = await (from account in ScopedAccounts()
+                          join installment in db.Installments.AsNoTracking() on account.Id equals installment.CustomerAccountId
+                          where installment.Status == InstallmentStatus.Planned
+                          select new { account.CustomerId, CustomerName = account.Customer!.FullName, installment.Amount, installment.DueDate }).Take(20000).ToListAsync(ct);
+        if (rows.Count == 0) return new DataAnswer(v.T("Ödenmemiş taksit (açık alacak) yok.", "There are no open receivables."), []);
+        var total = rows.Sum(x => x.Amount);
+        var overdue = rows.Where(x => x.DueDate < today).Sum(x => x.Amount);
+        var customers = rows.Select(x => x.CustomerId).Distinct().Count();
+        var top = rows.GroupBy(x => x.CustomerId)
+            .Select(g => new { Name = g.First().CustomerName, Amount = g.Sum(x => x.Amount), Late = g.Where(x => x.DueDate < today).Sum(x => x.Amount), Next = g.Min(x => x.DueDate) })
+            .OrderByDescending(x => x.Amount).Take(10).ToList();
+        return new DataAnswer(v.T($"{customers} müşterinin toplam açık borcu {Money(total)}; bunun {Money(overdue)} kadarının vadesi geçmiş.",
+                $"{customers} customers owe {Money(total)} in total; {Money(overdue)} of it is overdue."),
+            top.Select(x => (object)Row(("customer", x.Name), ("amount", x.Amount), ("Geciken", Money(x.Late)), ("Sıradaki vade", x.Next.ToString("d MMMM yyyy", Tr)))).ToList());
+    }
+
+    // ── Yönetici: stok ──────────────────────────────────────────────────────
+
     private async Task<DataAnswer> CriticalStockAsync(AssistantVoice v, CancellationToken ct)
     {
         var query = db.Products.AsNoTracking().Where(x => x.TenantId == TenantId && x.IsActive && x.MinStockLevel > 0 && x.CurrentStock <= x.MinStockLevel);
@@ -329,6 +516,22 @@ public sealed partial class AssistantService
         return rows.Count == 0
             ? new DataAnswer(v.T("Kritik seviyede ürün yok.", "No products are at critical level."), items)
             : new DataAnswer(v.T($"{rows.Count} ürün kritik seviyede ya da altında.", $"{rows.Count} products are at or below critical level."), items);
+    }
+
+    private async Task<DataAnswer> InventoryAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        var result = await reports.GetInventoryAsync(TenantId, ReportRange(range), ct);
+        if (result.IsFailure || result.Value is not { } inv) return new DataAnswer(v.Error(), []);
+        var title = Title(range, v);
+        var text = v.T(
+            $"{inv.ProductCount} ürün var; {inv.CriticalCount} tanesi kritik seviyede, {inv.OutOfStockCount} tanesi tükenmiş. Stok değeri maliyetle {Money(inv.StockValueAtCost)}, satış fiyatıyla {Money(inv.StockValueAtSale)}. {title} ürün satışı {Money(inv.SoldAmount)} (kâr {Money(inv.SoldProfit)}).",
+            $"{inv.ProductCount} products; {inv.CriticalCount} critical, {inv.OutOfStockCount} out of stock. Stock value {Money(inv.StockValueAtCost)} at cost, {Money(inv.StockValueAtSale)} at sale price. {title}: product sales {Money(inv.SoldAmount)} (profit {Money(inv.SoldProfit)}).");
+        var items = inv.Products.Where(x => x.SoldQuantity > 0).OrderByDescending(x => x.SoldAmount).Take(10)
+            .Select(x => (object)Row(("product", x.Name), ("Satılan", x.SoldQuantity), ("amount", x.SoldAmount), ("stock", x.CurrentStock))).ToList();
+        if (items.Count == 0)
+            items = inv.Products.OrderBy(x => x.CurrentStock).Take(10)
+                .Select(x => (object)Row(("product", x.Name), ("stock", x.CurrentStock), ("min", x.MinStockLevel))).ToList();
+        return new DataAnswer(text, items);
     }
 
     private async Task<DataAnswer> WaitlistAsync(AssistantVoice v, CancellationToken ct)
@@ -350,34 +553,201 @@ public sealed partial class AssistantService
             : new DataAnswer(v.T($"Bekleme listesinde {rows.Count} kişi var.", $"{rows.Count} people are on the waitlist."), items);
     }
 
-    private async Task<DataAnswer> TopStaffAsync(AssistantVoice v, CancellationToken ct)
+    // ── Yönetici: personel, hizmet, şube ────────────────────────────────────
+
+    private async Task<DataAnswer> TopStaffAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
     {
-        var local = LocalNow;
-        var start = DayStartUtc(new DateTime(local.Year, local.Month, 1));
-        // Personel adı şifreli kolon: SQL'de gruplanamaz; ayın tamamlanan randevuları çekilip bellekte gruplanır.
-        var done = await Appointments().Where(x => x.StartUtc >= start && x.Status == AppointmentStatus.Completed)
-            .Select(x => new { x.StaffMemberId, Staff = x.StaffMember!.FullName, x.Price }).Take(20000).ToListAsync(ct);
-        var rows = done.GroupBy(x => x.StaffMemberId)
-            .Select(g => new { Name = g.First().Staff, Count = g.Count(), Revenue = g.Sum(x => x.Price) })
-            .OrderByDescending(x => x.Count).Take(5).ToList();
-        if (rows.Count == 0) return new DataAnswer(v.T("Bu ay tamamlanmış randevu yok.", "No completed appointments this month."), []);
+        var result = await reports.GetStaffAsync(TenantId, ReportRange(range), ct);
+        if (result.IsFailure || result.Value is not { } report) return new DataAnswer(v.Error(), []);
+        var title = Title(range, v);
+        var rows = report.Rows.Where(x => x.AppointmentCount > 0 || x.SalesAmount > 0 || x.ServiceRevenue > 0)
+            .OrderByDescending(x => x.CompletedCount).ThenByDescending(x => x.ServiceRevenue).ToList();
+        if (rows.Count == 0) return new DataAnswer(v.T($"{title}: personel için tamamlanmış randevu ya da satış yok.", $"{title}: no completed appointments or sales for staff."), []);
         var top = rows[0];
-        return new DataAnswer(v.T($"Bu ay en çok çalışan {top.Name}: {top.Count} tamamlanan randevu.",
-                $"Busiest this month: {top.Name} with {top.Count} completed appointments."),
-            rows.Select(x => (object)new { staff = x.Name, completed = x.Count, revenue = x.Revenue }).ToList());
+        var byRevenue = rows.OrderByDescending(x => x.ServiceRevenue + x.SalesAmount).First();
+        var text = v.T($"{title} en çok çalışan {top.StaffName}: {top.CompletedCount} tamamlanan randevu."
+                + (byRevenue.StaffMemberId != top.StaffMemberId ? $" En çok ciro yapan {byRevenue.StaffName} ({Money(byRevenue.ServiceRevenue + byRevenue.SalesAmount)})." : $" Cirosu {Money(top.ServiceRevenue + top.SalesAmount)}.")
+                + $" Toplam {report.TotalCompleted} tamamlanan randevu, hizmet cirosu {Money(report.TotalServiceRevenue)}.",
+            $"{title}: busiest is {top.StaffName} with {top.CompletedCount} completed appointments. Total {report.TotalCompleted} completed, service revenue {Money(report.TotalServiceRevenue)}.");
+        return new DataAnswer(text, rows.Take(10).Select(x => (object)Row(
+            ("staff", x.StaffName), ("completed", x.CompletedCount), ("revenue", x.ServiceRevenue), ("Satış", Money(x.SalesAmount)),
+            ("Prim", Money(x.CommissionEarned)), ("Puan", x.RatingCount > 0 ? x.AverageRating.ToString("0.0", Tr) : "—"))).ToList());
     }
 
-    private async Task<DataAnswer> NoShowsAsync(AssistantVoice v, CancellationToken ct)
+    private async Task<DataAnswer> TopServicesAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
     {
-        var since = DateTime.UtcNow.AddDays(-30);
-        var missed = await Appointments().Where(x => x.Status == AppointmentStatus.NoShow && x.StartUtc >= since)
+        var result = await reports.GetCatalogAsync(TenantId, ReportRange(range), ct);
+        if (result.IsFailure || result.Value is not { } catalog) return new DataAnswer(v.Error(), []);
+        var title = Title(range, v);
+        var services = catalog.Services.Where(x => x.SessionsInPeriod > 0 || x.SoldCount > 0)
+            .OrderByDescending(x => x.SessionsInPeriod + x.SoldCount).ThenByDescending(x => x.SessionRevenue + x.GrossAmount).ToList();
+        var packages = catalog.Packages.Where(x => x.SoldCount > 0).OrderByDescending(x => x.SoldCount).ThenByDescending(x => x.GrossAmount).ToList();
+        if (services.Count == 0 && packages.Count == 0)
+            return new DataAnswer(v.T($"{title}: satılan ya da yapılan hizmet/paket yok.", $"{title}: no services or packages sold or performed."), []);
+        var parts = new List<string>();
+        if (services.Count > 0) parts.Add(v.T($"en çok yapılan hizmet {services[0].Name} ({services[0].SessionsInPeriod + services[0].SoldCount} kez)",
+            $"top service {services[0].Name} ({services[0].SessionsInPeriod + services[0].SoldCount} times)"));
+        if (packages.Count > 0) parts.Add(v.T($"en çok satan paket {packages[0].Name} ({packages[0].SoldCount} adet, {Money(packages[0].GrossAmount)})",
+            $"top package {packages[0].Name} ({packages[0].SoldCount} sold, {Money(packages[0].GrossAmount)})"));
+        var items = services.Take(8).Select(x => (object)Row(("service", x.Name), ("Tür", v.T("Hizmet", "Service")), ("count", x.SessionsInPeriod + x.SoldCount), ("amount", x.SessionRevenue + x.GrossAmount)))
+            .Concat(packages.Take(5).Select(x => (object)Row(("service", x.Name), ("Tür", v.T("Paket", "Package")), ("count", x.SoldCount), ("amount", x.GrossAmount))))
+            .ToList();
+        return new DataAnswer(v.T($"{title} " + string.Join("; ", parts) + ".", $"{title}: " + string.Join("; ", parts) + "."), items);
+    }
+
+    private async Task<DataAnswer> BranchesAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        var result = await reports.GetBranchesAsync(TenantId, ReportRange(range), ct);
+        if (result.IsFailure || result.Value is not { } report) return new DataAnswer(v.Error(), []);
+        var title = Title(range, v);
+        var rows = report.Rows.OrderByDescending(x => x.Income).ToList();
+        if (rows.Count == 0) return new DataAnswer(v.T("Şube bulunamadı.", "No branches found."), []);
+        var scoped = report.ScopedToSingleBranch
+            ? v.T(" (Üst menüde tek şube seçili olduğu için yalnız o şube.)", " (Only the branch selected in the top menu.)") : string.Empty;
+        var text = v.T($"{title} en çok gelir {rows[0].BranchName} şubesinde: {Money(rows[0].Income)}. Tüm şubeler: gelir {Money(report.TotalIncome)}, gider {Money(report.TotalExpense)}, net {Money(report.TotalNet)}.{scoped}",
+            $"{title}: top branch {rows[0].BranchName} with {Money(rows[0].Income)}. All branches: income {Money(report.TotalIncome)}, expenses {Money(report.TotalExpense)}, net {Money(report.TotalNet)}.{scoped}");
+        return new DataAnswer(text, rows.Select(x => (object)Row(
+            ("Şube", x.BranchName), ("income", x.Income), ("Gider", Money(x.Expense)), ("Net", Money(x.Net)), ("Randevu", x.AppointmentCount), ("Yeni müşteri", x.NewCustomerCount))).ToList());
+    }
+
+    // ── Yönetici: müşteriler ────────────────────────────────────────────────
+
+    private IQueryable<Customer> ScopedCustomers()
+    {
+        var query = db.Customers.AsNoTracking().Where(x => x.TenantId == TenantId);
+        if (ScopeBranch is Guid branch) query = query.Where(x => x.BranchId == branch);
+        return query;
+    }
+
+    private async Task<DataAnswer> NewCustomersAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        var start = Utc(range.From);
+        var end = Utc(range.To);
+        var (prevFrom, prevTo) = range.Previous();
+        var prevStart = Utc(prevFrom);
+        var prevEnd = Utc(prevTo);
+        var rows = await ScopedCustomers().Where(x => x.CreatedAtUtc >= start && x.CreatedAtUtc < end)
+            .OrderByDescending(x => x.CreatedAtUtc).Select(x => new { x.FullName, x.CreatedAtUtc }).Take(5000).ToListAsync(ct);
+        var previous = await ScopedCustomers().CountAsync(x => x.CreatedAtUtc >= prevStart && x.CreatedAtUtc < prevEnd, ct);
+        var title = Title(range, v);
+        if (rows.Count == 0) return new DataAnswer(v.T($"{title}: yeni müşteri kaydı yok.", $"{title}: no new customers."), []);
+        return new DataAnswer(v.T($"{title} {rows.Count} yeni müşteri kaydedildi.", $"{title}: {rows.Count} new customers.") + Change(rows.Count, previous, v),
+            rows.Take(15).Select(x => (object)new { customer = x.FullName, date = ShortDay(x.CreatedAtUtc) }).ToList());
+    }
+
+    private async Task<DataAnswer> CustomerCountAsync(AssistantVoice v, CancellationToken ct)
+    {
+        var total = await ScopedCustomers().CountAsync(ct);
+        var vip = await ScopedCustomers().CountAsync(x => x.IsVip, ct);
+        var blacklisted = await ScopedCustomers().CountAsync(x => x.IsBlacklisted, ct);
+        var since = DateTime.UtcNow.AddDays(-90);
+        var active = await Appointments().Where(x => x.StartUtc >= since && x.Status != AppointmentStatus.Cancelled)
+            .Select(x => x.CustomerId).Distinct().CountAsync(ct);
+        var monthStart = Utc(MonthRange.From);
+        var newThisMonth = await ScopedCustomers().CountAsync(x => x.CreatedAtUtc >= monthStart, ct);
+        return new DataAnswer(v.T($"Toplam {total} kayıtlı müşteri var; son 90 günde {active} müşteri randevuya geldi. {vip} VIP, {blacklisted} kara listede; bu ay {newThisMonth} yeni kayıt.",
+                $"{total} customers in total; {active} visited in the last 90 days. {vip} VIP, {blacklisted} blacklisted; {newThisMonth} new this month."),
+            [
+                Row(("Kalem", v.T("Toplam müşteri", "Total")), ("count", total)),
+                Row(("Kalem", v.T("Son 90 günde gelen", "Active (90 days)")), ("count", active)),
+                Row(("Kalem", "VIP"), ("count", vip)),
+                Row(("Kalem", v.T("Kara liste", "Blacklisted")), ("count", blacklisted)),
+                Row(("Kalem", v.T("Bu ay yeni", "New this month")), ("count", newThisMonth)),
+            ]);
+    }
+
+    private async Task<DataAnswer> TopCustomersAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        var result = await reports.GetCustomersAsync(TenantId, ReportRange(range, compare: false), ct);
+        if (result.IsFailure || result.Value is not { } report) return new DataAnswer(v.Error(), []);
+        var title = Title(range, v);
+        var rows = report.TopCustomers.Take(10).ToList();
+        if (rows.Count == 0) return new DataAnswer(v.T($"{title}: harcaması olan müşteri yok.", $"{title}: no customer spending."), []);
+        return new DataAnswer(v.T($"{title} en çok harcayan müşteri {rows[0].FullName}: {Money(rows[0].Spent)} ({rows[0].VisitCount} ziyaret).",
+                $"{title}: top customer {rows[0].FullName} with {Money(rows[0].Spent)} ({rows[0].VisitCount} visits)."),
+            rows.Select(x => (object)Row(("customer", x.FullName), ("amount", x.Spent), ("Ziyaret", x.VisitCount), ("Borç", Money(x.Debt)),
+                ("last", x.LastVisitUtc is DateTime last ? ShortDay(last) : "—"))).ToList());
+    }
+
+    private async Task<DataAnswer> PassiveCustomersAsync(AssistantVoice v, CancellationToken ct)
+    {
+        var result = await customerService.GetPassiveCustomersAsync(TenantId, ct);
+        if (result.IsFailure || result.Value is not { } list)
+            return new DataAnswer(result.IsFailure && result.Error.Code == "Conflict" ? v.NotInPlan() : v.Error(), []);
+        var rows = list.Items.Where(x => ScopeBranch is not Guid branch || x.BranchId == branch).OrderByDescending(x => x.DaysSinceActivity).ToList();
+        if (rows.Count == 0) return new DataAnswer(v.T($"{list.ThresholdDays} günden uzun süredir gelmeyen müşteri yok.", $"No customers inactive for more than {list.ThresholdDays} days."), []);
+        return new DataAnswer(v.T($"{rows.Count} müşteri {list.ThresholdDays} günden uzun süredir gelmiyor.", $"{rows.Count} customers haven't visited for over {list.ThresholdDays} days."),
+            rows.Take(15).Select(x => (object)Row(("customer", x.FullName), ("last", x.LastActivityUtc is DateTime last ? ShortDay(last) : "—"), ("Gün", x.DaysSinceActivity))).ToList());
+    }
+
+    private async Task<DataAnswer> BirthdaysAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        // Yalnız ay-gün eşleşir; dönem en fazla bir yıl. Ad şifreli olduğundan doğum tarihi olanlar çekilip bellekte süzülür.
+        var days = Enumerable.Range(0, (int)Math.Min(366, Math.Max(1, (range.To - range.From).TotalDays)))
+            .Select(i => range.From.AddDays(i)).ToList();
+        var wanted = days.Select(d => (d.Month, d.Day)).ToHashSet();
+        var people = await ScopedCustomers().Where(x => x.BirthDate != null)
+            .Select(x => new { x.FullName, x.BirthDate }).Take(50000).ToListAsync(ct);
+        var rows = people.Where(x => wanted.Contains((x.BirthDate!.Value.Month, x.BirthDate.Value.Day)))
+            .Select(x => new { x.FullName, Date = days.First(d => d.Month == x.BirthDate!.Value.Month && d.Day == x.BirthDate.Value.Day) })
+            .OrderBy(x => x.Date).ToList();
+        var title = Title(range, v);
+        if (rows.Count == 0) return new DataAnswer(v.T($"{title}: doğum günü olan müşteri yok.", $"{title}: no customer birthdays."), []);
+        return new DataAnswer(v.T($"{title} {rows.Count} müşterinin doğum günü var.", $"{title}: {rows.Count} customer birthdays."),
+            rows.Take(30).Select(x => (object)new { customer = x.FullName, date = x.Date.ToString("d MMMM dddd", Tr) }).ToList());
+    }
+
+    private async Task<DataAnswer> NoShowsAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        var start = Utc(range.From);
+        var end = Utc(range.To);
+        var missed = await Appointments().Where(x => x.Status == AppointmentStatus.NoShow && x.StartUtc >= start && x.StartUtc < end)
             .Select(x => new { x.CustomerId, Customer = x.Customer!.FullName, x.StartUtc }).Take(5000).ToListAsync(ct);
+        var title = Title(range, v);
         var rows = missed.GroupBy(x => x.CustomerId)
             .Select(g => new { Name = g.First().Customer, Count = g.Count(), Last = g.Max(x => x.StartUtc) })
             .OrderByDescending(x => x.Count).ThenByDescending(x => x.Last).Take(15).ToList();
-        if (rows.Count == 0) return new DataAnswer(v.T("Son 30 günde gelmeyen müşteri yok.", "No no-shows in the last 30 days."), []);
-        return new DataAnswer(v.T($"Son 30 günde {rows.Count} müşteri randevusuna gelmedi.", $"{rows.Count} customers missed appointments in the last 30 days."),
+        if (rows.Count == 0) return new DataAnswer(v.T($"{title}: randevusuna gelmeyen müşteri yok.", $"{title}: no no-shows."), []);
+        return new DataAnswer(v.T($"{title} {missed.Count} randevuya gelinmedi ({missed.Select(x => x.CustomerId).Distinct().Count()} müşteri).",
+                $"{title}: {missed.Count} no-shows ({missed.Select(x => x.CustomerId).Distinct().Count()} customers)."),
             rows.Select(x => (object)new { customer = x.Name, count = x.Count, last = Day(x.Last) }).ToList());
+    }
+
+    private async Task<DataAnswer> CancellationsAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        var start = Utc(range.From);
+        var end = Utc(range.To);
+        var all = await Appointments().Where(x => x.StartUtc >= start && x.StartUtc < end)
+            .Select(x => new { x.Status, x.StartUtc, Customer = x.Customer!.FullName, Service = x.ServiceDefinition!.Name, x.CancellationReason })
+            .Take(20000).ToListAsync(ct);
+        var cancelled = all.Where(x => x.Status == AppointmentStatus.Cancelled).OrderByDescending(x => x.StartUtc).ToList();
+        var title = Title(range, v);
+        if (cancelled.Count == 0) return new DataAnswer(v.T($"{title}: iptal edilen randevu yok.", $"{title}: no cancelled appointments."), []);
+        var rate = Math.Round(cancelled.Count * 100m / all.Count, 0);
+        return new DataAnswer(v.T($"{title} {cancelled.Count} randevu iptal edildi (tüm randevuların %{rate}'i).",
+                $"{title}: {cancelled.Count} appointments were cancelled ({rate}% of all)."),
+            cancelled.Take(15).Select(x => (object)Row(("when", $"{ShortDay(x.StartUtc)} {Clock(x.StartUtc)}"), ("customer", x.Customer), ("service", x.Service),
+                ("Neden", string.IsNullOrWhiteSpace(x.CancellationReason) ? "—" : x.CancellationReason))).ToList());
+    }
+
+    private async Task<DataAnswer> BusiestTimesAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        var start = Utc(range.From);
+        var end = Utc(range.To);
+        var times = await Appointments().Where(x => x.StartUtc >= start && x.StartUtc < end && x.Status != AppointmentStatus.Cancelled)
+            .Select(x => x.StartUtc).Take(50000).ToListAsync(ct);
+        var title = Title(range, v);
+        if (times.Count == 0) return new DataAnswer(v.T($"{title}: randevu yok, yoğunluk hesaplanamadı.", $"{title}: no appointments to analyse."), []);
+        var local = times.Select(t => t + TurkeyOffset).ToList();
+        var byDay = local.GroupBy(t => t.DayOfWeek).OrderByDescending(g => g.Count()).ToList();
+        var byHour = local.GroupBy(t => t.Hour).OrderByDescending(g => g.Count()).ToList();
+        string DayName(DayOfWeek d) => Tr.DateTimeFormat.GetDayName(d);
+        var quietest = byDay.Count > 1 ? v.T($" En sakin gün {DayName(byDay[^1].Key)}.", "") : string.Empty;
+        var text = v.T($"{title} en yoğun gün {DayName(byDay[0].Key)} ({byDay[0].Count()} randevu), en yoğun saat {byHour[0].Key:00}:00–{byHour[0].Key + 1:00}:00 ({byHour[0].Count()} randevu).{quietest}",
+            $"{title}: busiest day {byDay[0].Key} ({byDay[0].Count()}), busiest hour {byHour[0].Key:00}:00 ({byHour[0].Count()}).");
+        var items = byDay.Select(g => (object)Row(("day", DayName(g.Key)), ("count", g.Count()),
+            ("En yoğun saat", $"{g.GroupBy(t => t.Hour).OrderByDescending(h => h.Count()).First().Key:00}:00"))).ToList();
+        return new DataAnswer(text, items);
     }
 
     // ── Müşteri ─────────────────────────────────────────────────────────────
@@ -394,6 +764,23 @@ public sealed partial class AssistantService
         var when = $"{(v.English ? DayEn(next.StartUtc) : Day(next.StartUtc))} {Clock(next.StartUtc)}";
         return new DataAnswer(v.T($"Yaklaşan randevunuz {when}: {next.Service}.", $"Your upcoming appointment is {when}: {next.Service}."),
             [new { when, service = next.Service, staff = next.Staff }]);
+    }
+
+    /// <summary>Müşterinin KENDİ randevuları, sorduğu gün/dönemde ("yarın randevum var mı", "aralıktaki randevularım").</summary>
+    private async Task<DataAnswer> CustomerAppointmentsAsync(AssistantDateRange range, AssistantVoice v, CancellationToken ct)
+    {
+        if (currentUser.CustomerId is not Guid customerId) return new DataAnswer(v.OutOfPortal(), []);
+        var start = Utc(range.From);
+        var end = Utc(range.To);
+        var rows = await db.Appointments.AsNoTracking()
+            .Where(x => x.TenantId == TenantId && x.CustomerId == customerId && x.Status != AppointmentStatus.Draft && x.StartUtc >= start && x.StartUtc < end)
+            .OrderBy(x => x.StartUtc).Take(50)
+            .Select(x => new { x.StartUtc, Service = x.ServiceDefinition!.Name, x.Status }).ToListAsync(ct);
+        var title = Title(range, v);
+        return rows.Count == 0
+            ? new DataAnswer(v.T($"{title}: randevunuz yok.", $"{title}: you have no appointments."), [])
+            : new DataAnswer(v.T($"{title}: {rows.Count} randevunuz var.", $"{title}: you have {rows.Count} appointments."),
+                rows.Select(x => (object)new { when = $"{Day(x.StartUtc)} {Clock(x.StartUtc)}", service = x.Service, status = StatusTr(x.Status) }).ToList());
     }
 
     private async Task<DataAnswer> CustomerSessionsAsync(AssistantVoice v, CancellationToken ct)
@@ -431,7 +818,7 @@ public sealed partial class AssistantService
         {
             var rule = AssistantIntentCatalog.RuleFor(intent)!;
             if (!rule.Portals.Contains(portal) || !HasAny(active, rule.FeatureKeys) || !Granted(portal, rule.StaffPermission)) return;
-            lines.Add((await DataAsync(intent, AssistantPeriod.Today, portal, v, ct)).Text);
+            lines.Add((await DataAsync(intent, null, portal, v, ct)).Text);
         }
         switch (portal)
         {

@@ -45,8 +45,13 @@ public sealed class AssistantHelpService(
         {
             nameWords = await PersonNameWordsAsync(query, cancellationToken);
             var masked = AssistantPrivacy.Mask(query, nameWords);
-            var picked = await matcher.PickArticleAsync(masked,
-                visible.Select(item => (item.Id, options.English ? item.TitleEn : item.TitleTr)).ToList(), cancellationToken);
+            var choices = options.DataChoices ?? [];
+            var list = choices.Select(choice => (choice.Id, "VERİ: " + choice.Description))
+                .Concat(visible.Select(item => (item.Id, options.English ? item.TitleEn : item.TitleTr)))
+                .ToList();
+            var picked = await matcher.PickArticleAsync(masked, list, cancellationToken);
+            if (picked is not null && choices.FirstOrDefault(choice => choice.Id == picked) is { } data)
+                return new AssistantHelpAnswer(AssistantHelpOutcome.Data, portal, null, "ai", null, data.Intent);
             if (picked is not null && visible.FirstOrDefault(item => item.Id == picked) is { } aiArticle)
                 return Found(portal, aiArticle, "ai");
         }

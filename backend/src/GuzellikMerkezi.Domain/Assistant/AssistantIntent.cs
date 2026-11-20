@@ -1,9 +1,11 @@
 namespace GuzellikMerkezi.Domain.Assistant;
 
 /// <summary>
-/// Maydi'nin anladığı niyetler. Veri niyetleri kural motoruyla çözülür ve veritabanından SAYIYLA cevaplanır;
-/// yapay zekâ veri UYDURMAZ (veri cevapları buluta hiç gitmez). Aynı niyet portala göre kapsam değiştirir:
-/// "bugünkü randevular" personelde kendi randevuları, yöneticide şubenin/kurumun randevularıdır.
+/// Maydi'nin anladığı niyetler. Veri niyetleri kural motoruyla (anlaşılamazsa yapay zekâ sınıflandırmasıyla)
+/// çözülür ve veritabanından SAYIYLA cevaplanır; yapay zekâ veri UYDURMAZ ve rakam görmez (veri cevapları buluta
+/// hiç gitmez). Aynı niyet portala göre kapsam değiştirir: "bugünkü randevular" personelde kendi randevuları,
+/// yöneticide şubenin/kurumun randevularıdır. Dönem (bugün, geçen ay, ocak…) <see cref="AssistantDateParser"/> ile
+/// sorudan çıkarılır; yoksa niyetin varsayılan dönemi kullanılır.
 /// </summary>
 public enum AssistantIntent
 {
@@ -18,6 +20,7 @@ public enum AssistantIntent
     /// <summary>Güzellik/sağlık tavsiyesi ("hangi işlem bana uygun") — verilmez, uzmana yönlendirilir.</summary>
     BeautyAdvice = 6,
 
+    /// <summary>Randevular (adı tarihî: yalnız bugün değil, sorulan her gün/dönem).</summary>
     AppointmentsToday = 20,
     NextAppointment = 21,
     WeekSchedule = 22,
@@ -25,13 +28,30 @@ public enum AssistantIntent
     MyRating = 24,
     PendingApprovals = 25,
     FreeSlots = 26,
+    /// <summary>Gelir/ciro/tahsilat (adı tarihî): tahsilat, satış, gider ve net — sorulan dönem için.</summary>
     Revenue = 27,
     OverdueInstallments = 28,
     CriticalStock = 29,
     Waitlist = 30,
+    /// <summary>Personel performansı: tamamlanan randevu, ciro, prim, puan.</summary>
     TopStaff = 31,
     NoShows = 32,
     AppointmentHistory = 33,
+    Expenses = 34,
+    Profit = 35,
+    Sales = 36,
+    Receivables = 37,
+    TopServices = 38,
+    Branches = 39,
+    NewCustomers = 40,
+    CustomerCount = 41,
+    TopCustomers = 42,
+    PassiveCustomers = 43,
+    Birthdays = 44,
+    Cancellations = 45,
+    BusiestTimes = 46,
+    Inventory = 47,
+    PaymentMethods = 48,
 }
 
 /// <summary>Bir veri niyetinin kimlere ve hangi koşulda açık olduğu.</summary>
@@ -39,49 +59,76 @@ public enum AssistantIntent
 /// <param name="FeatureKeys">Paket kapısı (en az biri); boş = her pakette.</param>
 /// <param name="StaffPermission">Personelin sayfa izni (web menüsündeki permissionKey ile aynı).</param>
 /// <param name="Route">Cevap kartındaki "Sayfayı aç" bağlantısı (portal → rota).</param>
+/// <param name="Description">Yapay zekâ sınıflandırmasında niyetin tarifi (Türkçe, kısa).</param>
 public sealed record AssistantIntentRule(
     AssistantIntent Intent,
     IReadOnlyList<string> Portals,
     IReadOnlyList<string> FeatureKeys,
     string? StaffPermission,
-    IReadOnlyDictionary<string, string> Route);
+    IReadOnlyDictionary<string, string> Route,
+    string Description = "");
 
 public static class AssistantIntentCatalog
 {
     private const string O = AssistantPortals.Owner, B = AssistantPortals.Branch, S = AssistantPortals.Staff, C = AssistantPortals.Customer;
+    private const string Reports = "/panel/raporlar";
 
-    private static AssistantIntentRule Rule(AssistantIntent intent, string[] portals, string[]? features = null, string? permission = null, params (string Portal, string Route)[] routes) =>
-        new(intent, portals, features ?? [], permission, routes.ToDictionary(item => item.Portal, item => item.Route));
+    private static AssistantIntentRule Rule(AssistantIntent intent, string description, string[] portals, string[]? features = null, string? permission = null, params (string Portal, string Route)[] routes) =>
+        new(intent, portals, features ?? [], permission, routes.ToDictionary(item => item.Portal, item => item.Route), description);
+
+    private static (string, string)[] Manager(string route) => [(O, route), (B, route)];
 
     public static readonly IReadOnlyList<AssistantIntentRule> DataRules =
     [
-        Rule(AssistantIntent.AppointmentsToday, [O, B, S], permission: Permissions.Appointments,
-            routes: [(O, "/panel/randevular"), (B, "/panel/randevular"), (S, "/ekip/randevular")]),
-        Rule(AssistantIntent.NextAppointment, [S, C], permission: Permissions.Appointments,
+        Rule(AssistantIntent.AppointmentsToday, "Belirli bir gün ya da dönemdeki randevular (bugün, yarın, dün, bu hafta, ocakta kaç randevu; kim gelecek)",
+            [O, B, S, C], permission: Permissions.Appointments,
+            routes: [(O, "/panel/randevular"), (B, "/panel/randevular"), (S, "/ekip/randevular"), (C, "/randevu")]),
+        Rule(AssistantIntent.NextAppointment, "Sıradaki / yaklaşan randevu, sıradaki müşteri", [S, C], permission: Permissions.Appointments,
             routes: [(S, "/ekip/randevular"), (C, "/randevu")]),
-        Rule(AssistantIntent.WeekSchedule, [O, B, S], permission: Permissions.Appointments,
+        Rule(AssistantIntent.WeekSchedule, "Bu haftanın gün gün randevu programı", [O, B, S], permission: Permissions.Appointments,
             routes: [(O, "/panel/randevular"), (B, "/panel/randevular"), (S, "/ekip/randevular")]),
-        Rule(AssistantIntent.RemainingSessions, [S, C], permission: Permissions.Services,
+        Rule(AssistantIntent.RemainingSessions, "Paketlerde kalan seans sayısı", [S, C], permission: Permissions.Services,
             routes: [(S, "/ekip/seanslar"), (C, "/randevu")]),
-        Rule(AssistantIntent.MyRating, [S], routes: [(S, "/ekip")]),
-        Rule(AssistantIntent.PendingApprovals, [O, B, S], [FeatureCatalog.ApprovalWorkflow],
+        Rule(AssistantIntent.MyRating, "Personelin kendi yıldız puanı", [S], routes: [(S, "/ekip")]),
+        Rule(AssistantIntent.PendingApprovals, "Onay bekleyen işlemler / taslaklar", [O, B, S], [FeatureCatalog.ApprovalWorkflow],
             routes: [(O, "/panel/onaylar"), (B, "/panel/onaylar"), (S, "/ekip")]),
-        Rule(AssistantIntent.FreeSlots, [O, B], routes: [(O, "/panel/randevular"), (B, "/panel/randevular")]),
-        // Ciro yalnız finans yetkisi olanlara: bu üründe yalnız yönetici rolleri (personelde ciro sorusu yok).
-        Rule(AssistantIntent.Revenue, [O, B], routes: [(O, "/panel/kasa"), (B, "/panel/kasa")]),
-        Rule(AssistantIntent.OverdueInstallments, [O, B], routes: [(O, "/panel/on-muhasebe"), (B, "/panel/on-muhasebe")]),
-        Rule(AssistantIntent.CriticalStock, [O, B], [FeatureCatalog.StockProducts, FeatureCatalog.StockMovements],
-            routes: [(O, "/panel/stok"), (B, "/panel/stok")]),
-        Rule(AssistantIntent.Waitlist, [O, B], [FeatureCatalog.AppointmentsWaitlist],
-            routes: [(O, "/panel/bekleme-listesi"), (B, "/panel/bekleme-listesi")]),
-        Rule(AssistantIntent.TopStaff, [O, B], routes: [(O, "/panel/personel"), (B, "/panel/personel")]),
-        Rule(AssistantIntent.NoShows, [O, B], routes: [(O, "/panel/musteriler"), (B, "/panel/musteriler")]),
-        Rule(AssistantIntent.AppointmentHistory, [C], routes: [(C, "/randevu")]),
+        Rule(AssistantIntent.FreeSlots, "Bugün personelin boş saatleri", [O, B], routes: Manager("/panel/randevular")),
+        // Finans yalnız yönetici rollerine (personelde ciro sorusu yok).
+        Rule(AssistantIntent.Revenue, "Gelir, ciro, kazanç, tahsilat, kasaya giren para (herhangi bir dönem: bugün, dün, ocak ayı, geçen yıl)",
+            [O, B], routes: Manager("/panel/kasa")),
+        Rule(AssistantIntent.Expenses, "Giderler, masraflar, harcamalar ve kategorileri", [O, B], routes: Manager("/panel/on-muhasebe")),
+        Rule(AssistantIntent.Profit, "Kâr, zarar, net kazanç, kârlılık", [O, B], routes: Manager(Reports)),
+        Rule(AssistantIntent.Sales, "Satış tutarı ve adedi (paket, hizmet, ürün satışları; cironun kaynağı)", [O, B], routes: Manager(Reports)),
+        Rule(AssistantIntent.PaymentMethods, "Ödeme yöntemlerine göre tahsilat (nakit, kart, havale)", [O, B], routes: Manager("/panel/kasa")),
+        Rule(AssistantIntent.OverdueInstallments, "Vadesi geçmiş / geciken taksitler", [O, B], routes: Manager("/panel/on-muhasebe")),
+        Rule(AssistantIntent.Receivables, "Alacaklar, müşterilerin kalan borcu, borçlu müşteriler", [O, B], routes: Manager("/panel/on-muhasebe")),
+        Rule(AssistantIntent.CriticalStock, "Kritik seviyedeki / azalan / biten ürünler", [O, B], [FeatureCatalog.StockProducts, FeatureCatalog.StockMovements],
+            routes: Manager("/panel/stok")),
+        Rule(AssistantIntent.Inventory, "Stok durumu, ürün sayısı, stok değeri, ürün satışları", [O, B], [FeatureCatalog.StockProducts, FeatureCatalog.StockMovements],
+            routes: Manager("/panel/stok")),
+        Rule(AssistantIntent.Waitlist, "Bekleme listesindeki kişiler", [O, B], [FeatureCatalog.AppointmentsWaitlist], routes: Manager("/panel/bekleme-listesi")),
+        Rule(AssistantIntent.TopStaff, "Personel performansı: en çok çalışan, en çok ciro yapan personel, prim/komisyon, puanlar", [O, B],
+            routes: Manager(Reports)),
+        Rule(AssistantIntent.TopServices, "En çok satan / en çok yapılan hizmetler ve paketler", [O, B], routes: Manager(Reports)),
+        Rule(AssistantIntent.Branches, "Şubelerin karşılaştırması (gelir, randevu, müşteri)", [O], [FeatureCatalog.MultiBranch], routes: [(O, Reports)]),
+        Rule(AssistantIntent.NewCustomers, "Yeni kazanılan / kayıt olan müşteri sayısı", [O, B], routes: Manager("/panel/musteriler")),
+        Rule(AssistantIntent.CustomerCount, "Toplam müşteri sayısı, aktif, VIP, kara liste", [O, B], routes: Manager("/panel/musteriler")),
+        Rule(AssistantIntent.TopCustomers, "En çok harcayan / en sadık / en çok gelen müşteriler", [O, B], routes: Manager("/panel/musteriler")),
+        Rule(AssistantIntent.PassiveCustomers, "Uzun süredir gelmeyen (pasif, kayıp) müşteriler", [O, B], [FeatureCatalog.CustomersPassive], routes: Manager("/panel/musteriler")),
+        Rule(AssistantIntent.Birthdays, "Doğum günü olan müşteriler", [O, B], routes: Manager("/panel/musteriler")),
+        Rule(AssistantIntent.NoShows, "Randevusuna gelmeyen müşteriler", [O, B], routes: Manager("/panel/musteriler")),
+        Rule(AssistantIntent.Cancellations, "İptal edilen randevular", [O, B], routes: Manager("/panel/randevular")),
+        Rule(AssistantIntent.BusiestTimes, "En yoğun günler ve saatler", [O, B], routes: Manager(Reports)),
+        Rule(AssistantIntent.AppointmentHistory, "Müşterinin geçmiş randevuları", [C], routes: [(C, "/randevu")]),
     ];
 
     public static AssistantIntentRule? RuleFor(AssistantIntent intent) => DataRules.FirstOrDefault(rule => rule.Intent == intent);
 
     public static bool IsData(AssistantIntent intent) => (int)intent >= 20;
+
+    /// <summary>Yılı yazılmamış bir ayın bu yıla mı (ileriye bakan) yoksa son geçmiş aya mı ait olduğu.</summary>
+    public static bool LooksAhead(AssistantIntent intent) => intent is AssistantIntent.AppointmentsToday or AssistantIntent.NextAppointment
+        or AssistantIntent.WeekSchedule or AssistantIntent.Birthdays or AssistantIntent.FreeSlots;
 
     /// <summary>Portala göre örnek sorular (öneri düğmeleri). Yalnız portalın gerçekten cevaplayabildikleri.</summary>
     public static IReadOnlyList<(string Tr, string En, AssistantIntent Intent)> Suggestions(string portal) => portal switch
@@ -90,6 +137,7 @@ public static class AssistantIntentCatalog
         [
             ("Bugünkü randevularım", "My appointments today", AssistantIntent.AppointmentsToday),
             ("Sıradaki müşterim kim?", "Who is my next customer?", AssistantIntent.NextAppointment),
+            ("Yarınki randevularım", "My appointments tomorrow", AssistantIntent.AppointmentsToday),
             ("Bu haftaki programım", "My schedule this week", AssistantIntent.WeekSchedule),
             ("Paketli müşterilerimin kalan seansı", "Remaining sessions of my package customers", AssistantIntent.RemainingSessions),
             ("Yıldız puanım kaç?", "What is my star rating?", AssistantIntent.MyRating),
@@ -106,14 +154,22 @@ public static class AssistantIntentCatalog
         O or B =>
         [
             ("Bugün kaç randevu var?", "How many appointments today?", AssistantIntent.AppointmentsToday),
+            ("Bugünün geliri ne kadar?", "What is today's revenue?", AssistantIntent.Revenue),
+            ("Bu ayın kârı ne kadar?", "What is this month's profit?", AssistantIntent.Profit),
+            ("Geçen ayın giderleri", "Last month's expenses", AssistantIntent.Expenses),
+            ("En çok satan hizmetler", "Best-selling services", AssistantIntent.TopServices),
+            ("Bu ay en çok çalışan personel", "Busiest staff this month", AssistantIntent.TopStaff),
+            ("Yarınki randevular", "Tomorrow's appointments", AssistantIntent.AppointmentsToday),
             ("Bugün boş saatler", "Free slots today", AssistantIntent.FreeSlots),
             ("Onay bekleyenler", "Pending approvals", AssistantIntent.PendingApprovals),
-            ("Bugünkü ciro", "Today's revenue", AssistantIntent.Revenue),
+            ("Müşterilerin toplam borcu", "Total customer debt", AssistantIntent.Receivables),
             ("Geciken taksitler", "Overdue installments", AssistantIntent.OverdueInstallments),
+            ("Bu ay kaç yeni müşteri geldi?", "How many new customers this month?", AssistantIntent.NewCustomers),
+            ("Uzun süredir gelmeyen müşteriler", "Customers who haven't come in a while", AssistantIntent.PassiveCustomers),
+            ("Bu hafta doğum günü olanlar", "Birthdays this week", AssistantIntent.Birthdays),
+            ("En yoğun saatler", "Busiest hours", AssistantIntent.BusiestTimes),
             ("Kritik stoktaki ürünler", "Products at critical stock", AssistantIntent.CriticalStock),
             ("Bekleme listesi", "Waitlist", AssistantIntent.Waitlist),
-            ("Bu ay en çok çalışan personel", "Busiest staff this month", AssistantIntent.TopStaff),
-            ("Gelmeyen müşteriler", "No-show customers", AssistantIntent.NoShows),
             ("Gün sonu kasa kapanışı nasıl yapılır?", "How do I close the till?", AssistantIntent.HowTo),
         ],
         _ => [],

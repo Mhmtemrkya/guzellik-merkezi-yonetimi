@@ -3,8 +3,9 @@ using System.Text.Json;
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Assistant;
-using GuzellikMerkezi.Application.Features.CashFlow;
+using GuzellikMerkezi.Application.Features.Customers;
 using GuzellikMerkezi.Application.Features.Features;
+using GuzellikMerkezi.Application.Features.Reports;
 using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Assistant;
 using GuzellikMerkezi.Domain.Entities;
@@ -34,7 +35,8 @@ public sealed partial class AssistantService(
     IFeatureService features,
     IAssistantHelpService help,
     IAssistantHelpMatcher matcher,
-    ICashFlowService cashFlow,
+    IReportsService reports,
+    ICustomerService customerService,
     IConfiguration configuration,
     ILogger<AssistantService> logger) : IAssistantService
 {
@@ -240,28 +242,55 @@ public sealed partial class AssistantService(
                 return new Reply("text", voice.AdviceRefused(), parse.Intent, "advice_refused", SuggestionList: Suggest(3));
             case AssistantIntent.HowTo:
             case AssistantIntent.Unknown:
-                return await HelpAsync(message, parse.Intent, context, voice, Suggest, ct);
+                return await HelpAsync(message, parse, portal, active, context, voice, Suggest, ct);
         }
 
-        var rule = AssistantIntentCatalog.RuleFor(parse.Intent)!;
-        if (!rule.Portals.Contains(portal))
-            return new Reply("text", voice.OutOfPortal() + " " + voice.Intro(), parse.Intent, "denied", SuggestionList: Suggest(4));
-        if (!HasAny(active, rule.FeatureKeys))
-            return new Reply("text", voice.NotInPlan(), parse.Intent, "denied", SuggestionList: Suggest(3));
-        if (!Granted(portal, rule.StaffPermission))
-            return new Reply("text", voice.NoPermission(), parse.Intent, "denied", SuggestionList: Suggest(3));
+        return await DataReplyAsync(parse.Intent, parse.Range, portal, active, context, voice, Suggest, "rule", ct);
+    }
 
-        var data = await DataAsync(parse.Intent, parse.Period, portal, voice, ct);
+    private async Task<Reply> DataReplyAsync(AssistantIntent intent, AssistantDateRange? range, string portal, IReadOnlyCollection<string>? active,
+        AssistantClientContext context, AssistantVoice voice, Func<int, List<string>> suggest, string matchedBy, CancellationToken ct)
+    {
+        var rule = AssistantIntentCatalog.RuleFor(intent)!;
+        if (!rule.Portals.Contains(portal))
+            return new Reply("text", voice.OutOfPortal() + " " + voice.Intro(), intent, "denied", SuggestionList: suggest(4), MatchedBy: matchedBy);
+        if (!HasAny(active, rule.FeatureKeys))
+            return new Reply("text", voice.NotInPlan(), intent, "denied", SuggestionList: suggest(3), MatchedBy: matchedBy);
+        if (!Granted(portal, rule.StaffPermission))
+            return new Reply("text", voice.NoPermission(), intent, "denied", SuggestionList: suggest(3), MatchedBy: matchedBy);
+
+        var data = await DataAsync(intent, range, portal, voice, ct);
         var actions = rule.Route.TryGetValue(portal, out var route) && !(context.StoreBuild && route.StartsWith("/panel/paket", StringComparison.Ordinal))
             ? new[] { new AssistantActionDto("navigate", voice.OpenPage(), route) }
             : [];
-        return new Reply("data", data.Text, parse.Intent, "answered", new { intent = parse.Intent.ToString(), items = data.Items }, actions, Suggest(3));
+        object payload = range is null
+            ? new { intent = intent.ToString(), items = data.Items }
+            : new { intent = intent.ToString(), items = data.Items, from = range.From.ToString("yyyy-MM-dd"), to = range.To.AddDays(-1).ToString("yyyy-MM-dd") };
+        return new Reply("data", data.Text, intent, "answered", payload, actions, suggest(3), matchedBy);
     }
 
-    private async Task<Reply> HelpAsync(string message, AssistantIntent intent, AssistantClientContext context, AssistantVoice voice,
-        Func<int, List<string>> suggest, CancellationToken ct)
+    /// <summary>
+    /// Kişinin cevaplanabilir veri niyetleri — kural motoru anlamadığında yapay zekâya sunulur (yalnız tarifleri;
+    /// hiçbir rakam gitmez). Portal, paket ve personel izni dışındakiler listeye hiç girmez.
+    /// </summary>
+    private List<AssistantDataChoice> DataChoicesFor(string portal, IReadOnlyCollection<string>? active) =>
+        AssistantIntentCatalog.DataRules
+            .Where(rule => rule.Portals.Contains(portal) && HasAny(active, rule.FeatureKeys) && Granted(portal, rule.StaffPermission))
+            .Select(rule => new AssistantDataChoice(rule.Intent, rule.Description))
+            .ToList();
+
+    private async Task<Reply> HelpAsync(string message, AssistantParse parse, string portal, IReadOnlyCollection<string>? active,
+        AssistantClientContext context, AssistantVoice voice, Func<int, List<string>> suggest, CancellationToken ct)
     {
-        var answer = await help.AnswerAsync(message, new AssistantHelpOptions(context.English, context.StoreBuild, context.AllowAi), ct);
+        var intent = parse.Intent;
+        // "Nasıl yapılır" sorusu yalnız makaleye gider; anlaşılamayan soru veri de olabilir (ör. "kasaya bugün ne girdi").
+        var choices = intent == AssistantIntent.Unknown ? DataChoicesFor(portal, active) : [];
+        var answer = await help.AnswerAsync(message, new AssistantHelpOptions(context.English, context.StoreBuild, context.AllowAi, choices), ct);
+        if (answer.Outcome == AssistantHelpOutcome.Data && answer.DataIntent is AssistantIntent dataIntent)
+        {
+            var range = AssistantIntentResolver.RangeOf(parse.CorrectedText ?? parse.Folded, dataIntent, LocalNow);
+            return await DataReplyAsync(dataIntent, range, portal, active, context, voice, suggest, answer.MatchedBy, ct);
+        }
         switch (answer.Outcome)
         {
             case AssistantHelpOutcome.Article when answer.Article is { } article:

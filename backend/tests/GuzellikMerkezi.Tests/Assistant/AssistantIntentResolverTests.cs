@@ -73,11 +73,15 @@ public sealed class AssistantIntentResolverTests
         Assert.Equal(AssistantIntent.Unknown, AssistantIntentResolver.Resolve("Türkiye'nin başkenti neresi").Intent);
 
     [Theory]
-    [InlineData("bugünkü ciro", AssistantPeriod.Today)]
-    [InlineData("bu hafta ciro", AssistantPeriod.Week)]
-    [InlineData("bu ayki ciro ne kadar", AssistantPeriod.Month)]
-    public void RevenuePeriod(string message, AssistantPeriod expected) =>
-        Assert.Equal(expected, AssistantIntentResolver.Resolve(message).Period);
+    [InlineData("bugünkü ciro", "2026-11-20", "2026-11-21")]
+    [InlineData("bu hafta ciro", "2026-11-16", "2026-11-23")]
+    [InlineData("bu ayki ciro ne kadar", "2026-11-01", "2026-12-01")]
+    public void RevenueRange(string message, string from, string to)
+    {
+        var range = AssistantIntentResolver.Resolve(message, nowLocal: new DateTime(2026, 11, 20, 14, 0, 0)).Range!;
+        Assert.Equal(DateTime.Parse(from), range.From);
+        Assert.Equal(DateTime.Parse(to), range.To);
+    }
 
     [Fact]
     public void EverySuggestion_ResolvesToItsIntent()

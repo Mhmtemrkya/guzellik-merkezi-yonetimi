@@ -1,7 +1,9 @@
 using GuzellikMerkezi.Application.Abstractions;
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.Assistant;
-using GuzellikMerkezi.Application.Features.CashFlow;
+using GuzellikMerkezi.Application.Features.Customers;
+using GuzellikMerkezi.Application.Features.Reports;
+using GuzellikMerkezi.Infrastructure.Services;
 using GuzellikMerkezi.Application.Features.Features;
 using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Assistant;
@@ -96,12 +98,12 @@ public sealed class AssistantServiceTests : IDisposable
     }
 
     private (AssistantService Service, GuzellikDbContext Db) Build(ICurrentUser user, IReadOnlyCollection<string>? features = null,
-        IAssistantHelpService? help = null, bool enabled = true, ICashFlowService? cash = null, Guid? branchOverride = null)
+        IAssistantHelpService? help = null, bool enabled = true, IReportsService? reports = null, Guid? branchOverride = null)
     {
         var db = Db(user, branchOverride);
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Assistant:Enabled"] = enabled.ToString() }).Build();
         var service = new AssistantService(db, user, new TestTenantContext(user.TenantId, branchOverride ?? user.BranchId, user.IsPlatformAdmin), new FakeFeatures(features),
-            help ?? new FakeHelp(AssistantHelpAnswer.None("owner")), new NoAi(), cash ?? Substitute.For<ICashFlowService>(),
+            help ?? new FakeHelp(AssistantHelpAnswer.None("owner")), new NoAi(), reports ?? new ReportsService(db, user), Substitute.For<ICustomerService>(),
             config, NullLogger<AssistantService>.Instance);
         return (service, db);
     }
@@ -187,10 +189,10 @@ public sealed class AssistantServiceTests : IDisposable
     {
         var reply = (await Build(staffAyse).Service.SendAsync(Ask("bugünkü randevularım"), default)).Value!;
         Assert.Equal("data", reply.Kind);
-        Assert.StartsWith("Bugün 2 randevunuz var", reply.Text);
+        Assert.StartsWith("Bugün: 2 randevunuz var", reply.Text);
         // Saati geçmiş (ama tamamlanmamış) randevu "sırada" sayılmaz — panodaki sayıyla aynı.
         var localTime = DateTime.UtcNow.AddHours(3).TimeOfDay;
-        if (localTime > TimeSpan.FromMinutes(31) && localTime < new TimeSpan(23, 55, 0)) Assert.Contains("1 tanesi sırada", reply.Text);
+        if (localTime > TimeSpan.FromMinutes(31) && localTime < new TimeSpan(23, 55, 0)) Assert.Contains("1 sırada", reply.Text);
         Assert.Equal("/ekip/randevular", Assert.Single(reply.Actions).Route);
     }
 
@@ -198,14 +200,14 @@ public sealed class AssistantServiceTests : IDisposable
     public async Task Owner_SeesWholeInstitution_BranchManager_OwnBranch()
     {
         var all = (await Build(owner).Service.SendAsync(Ask("bugün kaç randevu var"), default)).Value!;
-        Assert.StartsWith("Bugün 3 randevu var", all.Text);
+        Assert.StartsWith("Bugün: 3 randevu var", all.Text);
 
         var branchB = (await Build(new TestCurrentUser(UserRole.BranchManager, Tenant, BranchB)).Service.SendAsync(Ask("bugün kaç randevu var"), default)).Value!;
-        Assert.StartsWith("Bugün 1 randevu var", branchB.Text);
+        Assert.StartsWith("Bugün: 1 randevu var", branchB.Text);
 
         // Kurum sahibi panelde A şubesini seçtiyse (X-Branch-Id → kiracı bağlamı) yalnız o şube sayılır.
         var ownerOnA = (await Build(owner, branchOverride: BranchA).Service.SendAsync(Ask("bugün kaç randevu var"), default)).Value!;
-        Assert.StartsWith("Bugün 2 randevu var", ownerOnA.Text);
+        Assert.StartsWith("Bugün: 2 randevu var", ownerOnA.Text);
     }
 
     [Fact]
@@ -219,21 +221,58 @@ public sealed class AssistantServiceTests : IDisposable
     [Fact]
     public async Task RoleOutOfPortal_IsDenied_RevenueNeverForStaff()
     {
-        var cash = Substitute.For<ICashFlowService>();
-        var reply = (await Build(staffAyse, cash: cash).Service.SendAsync(Ask("bugünkü ciro ne kadar"), default)).Value!;
+        var reports = Substitute.For<IReportsService>();
+        var reply = (await Build(staffAyse, reports: reports).Service.SendAsync(Ask("bugünkü ciro ne kadar"), default)).Value!;
         Assert.Equal("denied", reply.Outcome);
-        await cash.DidNotReceiveWithAnyArgs().SummaryAsync(default, default!, default);
+        await reports.DidNotReceiveWithAnyArgs().GetSummaryAsync(default, default!, default);
+    }
+
+    private static ReportSummaryDto Summary(decimal income, decimal expense, decimal sales, decimal previousIncome = 0) => new(
+        DateTime.UtcNow, DateTime.UtcNow, null, null, "day",
+        [
+            new ReportMetricDto("income", "Toplam Gelir", income, previousIncome, "currency", "3 tahsilat"),
+            new ReportMetricDto("expense", "Toplam Gider", expense, 0, "currency", "1 gider"),
+            new ReportMetricDto("openReceivable", "Toplam Alacak", 250m, 0, "currency", null),
+            new ReportMetricDto("sales", "Toplam Satış Tutarı", sales, 0, "currency", "2 satış"),
+        ],
+        [], [], [new ReportSliceDto("cash", "Nakit", income, 3)], [new ReportSliceDto("rent", "Kira", expense, 1)],
+        [new ReportSliceDto("service", "Hizmet", sales, 2)], [], []);
+
+    [Fact]
+    public async Task Revenue_ComesFromReports_ForTheAskedPeriod()
+    {
+        var reports = Substitute.For<IReportsService>();
+        ReportRangeRequest? asked = null;
+        reports.GetSummaryAsync(Tenant, Arg.Do<ReportRangeRequest>(r => asked = r), Arg.Any<CancellationToken>())
+            .Returns(Result<ReportSummaryDto>.Success(Summary(4500m, 500m, 6000m, previousIncome: 3000m)));
+
+        var reply = (await Build(owner, reports: reports).Service.SendAsync(Ask("bugünün geliri ne"), default)).Value!;
+        Assert.Equal("answered", reply.Outcome);
+        Assert.Contains("4.500,00 ₺", reply.Text);
+        Assert.Contains("net 4.000,00 ₺", reply.Text);
+        Assert.Contains("%50 artış", reply.Text);
+
+        // "ocak ayı gelirlerini göster": sayfaya yönlendirmez, Ocak ayının rakamını söyler.
+        var january = (await Build(owner, reports: reports).Service.SendAsync(Ask("ocak ayı gelirlerini göster"), default)).Value!;
+        Assert.Equal("data", january.Kind);
+        Assert.StartsWith("Ocak", january.Text);
+        var local = asked!.FromUtc.AddHours(3);
+        Assert.Equal((1, 1), (local.Month, local.Day));
+        Assert.Equal((2, 1), (asked.ToUtc.AddHours(3).Month, asked.ToUtc.AddHours(3).Day));
     }
 
     [Fact]
-    public async Task Revenue_ComesFromCashFlowSummary()
+    public async Task Profit_Expenses_Sales_UseSameSummary()
     {
-        var cash = Substitute.For<ICashFlowService>();
-        cash.SummaryAsync(Tenant, Arg.Any<CashFlowFilter>(), Arg.Any<CancellationToken>())
-            .Returns(Result<CashFlowSummaryDto>.Success(new CashFlowSummaryDto(4500m, 500m, 4000m, 3, 1, [])));
-        var reply = (await Build(owner, cash: cash).Service.SendAsync(Ask("bugünkü ciro"), default)).Value!;
-        Assert.Contains("4.500,00 ₺", reply.Text);
-        Assert.Contains("net 4.000,00 ₺", reply.Text);
+        var reports = Substitute.For<IReportsService>();
+        reports.GetSummaryAsync(Tenant, Arg.Any<ReportRangeRequest>(), Arg.Any<CancellationToken>())
+            .Returns(Result<ReportSummaryDto>.Success(Summary(4500m, 500m, 6000m)));
+        var service = Build(owner, reports: reports).Service;
+
+        Assert.Contains("net kâr 4.000,00 ₺", (await service.SendAsync(Ask("geçen ayın kârı ne kadar"), default)).Value!.Text);
+        var expenses = (await service.SendAsync(Ask("bu ay giderlerimiz"), default)).Value!;
+        Assert.Contains("Kira", expenses.Text);
+        Assert.Contains("6.000,00 ₺", (await service.SendAsync(Ask("dün ne kadar satış yaptık"), default)).Value!.Text);
     }
 
     [Fact]
@@ -260,6 +299,18 @@ public sealed class AssistantServiceTests : IDisposable
         var customer = new TestCurrentUser(UserRole.Customer, Tenant);
         var reply = (await Build(customer).Service.SendAsync(Ask("geciken taksitler"), default)).Value!;
         Assert.Equal("denied", reply.Outcome);
+    }
+
+    [Fact]
+    public async Task Customer_AsksOwnAppointments_OrAnAction_IsNotDenied()
+    {
+        var customer = new TestCurrentUser(UserRole.Customer, Tenant);
+        var own = (await Build(customer).Service.SendAsync(Ask("yarın randevum var mı"), default)).Value!;
+        Assert.NotEqual("denied", own.Outcome);
+        Assert.Equal("data", own.Kind);
+        // Yapma isteği yardıma gider (makale yoksa "bilmiyorum"), "bu bilgi panelinizde yok" demez.
+        var action = (await Build(customer).Service.SendAsync(Ask("randevumu iptal etmek istiyorum"), default)).Value!;
+        Assert.NotEqual("denied", action.Outcome);
     }
 
     // ── Kalıcılık, gizlilik, geri bildirim ──────────────────────────────────
@@ -304,14 +355,59 @@ public sealed class AssistantServiceTests : IDisposable
     {
         var briefing = (await Build(staffAyse).Service.GetBriefingAsync(new AssistantClientContext(), default)).Value!;
         Assert.Contains("Maydi", briefing.Greeting);
-        Assert.Contains(briefing.Lines, line => line.StartsWith("Bugün 2 randevunuz var", StringComparison.Ordinal));
+        Assert.Contains(briefing.Lines, line => line.StartsWith("Bugün: 2 randevunuz var", StringComparison.Ordinal));
         Assert.NotEmpty(briefing.Suggestions);
+    }
+
+    [Fact]
+    public async Task AiPickedDataIntent_IsAnsweredFromRecords_WithLocalPeriod()
+    {
+        // Kural motoru anlamıyor; yapay zekâ "veri: randevular" seçiyor. Dönem yine sorudan YEREL çıkarılır.
+        var help = new FakeHelp(new AssistantHelpAnswer(AssistantHelpOutcome.Data, "owner", null, "ai", null, AssistantIntent.AppointmentsToday));
+        var reply = (await Build(owner, help: help).Service.SendAsync(Ask("bugün salona uğrayacak olanların sayısı"), default)).Value!;
+        Assert.Equal("data", reply.Kind);
+        Assert.StartsWith("Bugün: 3 randevu", reply.Text);
+        // Yapay zekâya yalnız kişinin cevaplayabildiği veri niyetleri sunulur (finans yönetici için var).
+        Assert.Contains(help.Options[0].DataChoices!, choice => choice.Intent == AssistantIntent.Revenue);
+
+        var staffHelp = new FakeHelp(AssistantHelpAnswer.None("staff"));
+        await Build(staffAyse, help: staffHelp).Service.SendAsync(Ask("salona uğrayacak olanların sayısı"), default);
+        Assert.DoesNotContain(staffHelp.Options[0].DataChoices!, choice => choice.Intent == AssistantIntent.Revenue);
+        // "Nasıl" sorusunda veri seçeneği sunulmaz.
+        var howHelp = new FakeHelp(AssistantHelpAnswer.None("owner"));
+        await Build(owner, help: howHelp).Service.SendAsync(Ask("randevu nasıl oluşturulur"), default);
+        Assert.Empty(howHelp.Options[0].DataChoices ?? []);
+    }
+
+    [Fact]
+    public async Task Customers_Birthdays_Cancellations_FromRecords()
+    {
+        using (var db = Db(owner))
+        {
+            var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(3));
+            var c = new Customer(Tenant, BranchA, "Selin Kaya", "05320000003");
+            c.UpdateProfile(new DateOnly(1990, today.Month, today.Day), Gender.Female, true, null);
+            db.Customers.Add(c);
+            var first = db.Appointments.First();
+            first.Cancel("Hasta");
+            await db.SaveChangesAsync();
+        }
+        var service = Build(owner).Service;
+        var birthdays = (await service.SendAsync(Ask("bugün doğum günü olan var mı"), default)).Value!;
+        Assert.Contains("1 müşterinin doğum günü", birthdays.Text);
+        Assert.Contains("Selin Kaya", System.Text.Json.JsonSerializer.Serialize(birthdays.Data), StringComparison.Ordinal);
+        var newCustomers = (await service.SendAsync(Ask("bu ay kaç yeni müşteri geldi"), default)).Value!;
+        Assert.Contains("3 yeni müşteri", newCustomers.Text);
+        var cancelled = (await service.SendAsync(Ask("bu ay iptal edilen randevular"), default)).Value!;
+        Assert.Contains("1 randevu iptal edildi", cancelled.Text);
+        var count = (await service.SendAsync(Ask("toplam kaç müşterimiz var"), default)).Value!;
+        Assert.StartsWith("Toplam 3 kayıtlı müşteri", count.Text);
     }
 
     [Fact]
     public async Task English_Context_AnswersInEnglish()
     {
         var reply = (await Build(owner).Service.SendAsync(Ask("bugün kaç randevu var", context: new AssistantClientContext(English: true)), default)).Value!;
-        Assert.StartsWith("3 appointments today", reply.Text);
+        Assert.StartsWith("Today: 3 appointments", reply.Text);
     }
 }
