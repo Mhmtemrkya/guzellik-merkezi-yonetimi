@@ -286,7 +286,7 @@ public sealed class WhatsAppReplyIntentTests
         var harness = await ReplyAsync(database, "wamid.CANCEL", "Gelemeyeceğim");
         Assert.Equal(WhatsAppConfirmationStatus.Declined, (await AppointmentAsync(database, seed.AppointmentId)).CustomerConfirmation);
         await harness.Appointments.Received(1).ChangeStatusAsync(seed.TenantId, seed.AppointmentId,
-            Arg.Is<ChangeAppointmentStatusRequest>(r => r.Status == AppointmentStatus.Cancelled), Arg.Any<CancellationToken>(), Arg.Any<Guid?>());
+            Arg.Is<ChangeAppointmentStatusRequest>(r => r != null && r.Status == AppointmentStatus.Cancelled), Arg.Any<CancellationToken>(), Arg.Any<Guid?>());
     }
 
     /// <summary>"Ertelesek mi?" → erteleme istendi; randevu iptal edilmez.</summary>
@@ -341,7 +341,7 @@ public sealed class WhatsAppReplyIntentTests
         await harness.Notifications.Received(1).NotifyRolesAsync(
             seed.TenantId, Arg.Any<Guid?>(), Arg.Any<IReadOnlyCollection<UserRole>>(),
             AppNotificationType.WhatsAppReply, Arg.Any<AppNotificationSeverity>(),
-            "Müşteri yanıtı kontrol bekliyor", Arg.Is<string>(b => b.Contains("Geç kalacağım")),
+            "Müşteri yanıtı kontrol bekliyor", Arg.Is<string>(b => b != null && b.Contains("Geç kalacağım")),
             Arg.Any<object?>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
