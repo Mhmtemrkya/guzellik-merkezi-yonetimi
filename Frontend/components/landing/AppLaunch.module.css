@@ -1,0 +1,305 @@
+.overlay {
+  position: fixed;
+  z-index: 160;
+  inset: 0;
+  background: rgb(19 23 37 / 64%);
+  backdrop-filter: blur(6px);
+  animation: fade-in 200ms ease-out both;
+}
+
+.dialog {
+  position: fixed;
+  z-index: 161;
+  inset: 50% auto auto 50%;
+  width: min(32.5rem, calc(100% - 1.5rem));
+  max-height: calc(100vh - 1.5rem);
+  max-height: calc(100dvh - max(1.5rem, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+  overflow: auto;
+  overscroll-behavior: contain;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--ba-brand-paper);
+  border-radius: 1.5rem;
+  background: var(--ba-brand-paper);
+  color: var(--ba-brand-ink);
+  box-shadow: 0 24px 80px rgb(13 16 30 / 42%);
+  color-scheme: light;
+  animation: dialog-in 240ms cubic-bezier(.2, .75, .25, 1) both;
+}
+
+.header {
+  display: grid;
+  align-items: center;
+  padding: 1rem clamp(1rem, 5.3vw, 2rem) 1.2rem;
+  background:
+    radial-gradient(ellipse at 80% 0%, rgb(255 194 222 / 50%), transparent 68%),
+    linear-gradient(170deg, var(--ba-brand-blush), var(--ba-brand-paper) 78%);
+}
+
+.art {
+  position: relative;
+  display: grid;
+  width: 6rem;
+  height: 5rem;
+  justify-self: center;
+  place-items: center;
+  isolation: isolate;
+}
+
+.artOrbit {
+  position: absolute;
+  z-index: -1;
+  inset: 15% -7% 14% -7%;
+  transform: rotate(-25deg);
+  border: 1px solid rgb(163 41 91 / 30%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse, var(--ba-brand-paper), rgb(255 194 222 / 11%) 75%);
+  box-shadow: 0 0 1.75rem rgb(163 41 91 / 16%), inset 0 0 1.2rem rgb(255 255 255 / 70%);
+}
+
+.artOrbit::after {
+  position: absolute;
+  inset: 5% 11% auto auto;
+  width: .33rem;
+  height: .33rem;
+  border-radius: 50%;
+  background: var(--ba-brand-paper);
+  box-shadow: 0 0 .45rem var(--ba-brand-paper);
+  content: '';
+}
+
+.art img {
+  width: 5.25rem;
+  height: 5.25rem;
+  object-fit: contain;
+  filter: drop-shadow(0 .4rem .5rem rgb(163 41 91 / 23%));
+}
+
+.title {
+  margin: .4rem 0 0;
+  color: var(--ba-brand-ink);
+  font: 800 clamp(1.85rem, 7.4vw, 2.8rem) / 1.05 var(--font-display, system-ui);
+  letter-spacing: -.055em;
+  text-align: center;
+}
+
+.title:focus {
+  outline: none;
+}
+
+.title em {
+  display: block;
+  color: var(--ba-brand-accent);
+  font-style: normal;
+}
+
+.description {
+  margin: .65rem 0 0;
+  color: var(--ba-brand-muted);
+  font-size: .93rem;
+  line-height: 1.46;
+  text-align: center;
+}
+
+.close {
+  position: absolute;
+  z-index: 1;
+  inset: .625rem .625rem auto auto;
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border: 1px solid rgb(20 36 88 / 24%);
+  border-radius: 50%;
+  background: var(--ba-brand-paper);
+  color: var(--ba-brand-muted);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.options {
+  padding: 0 clamp(1rem, 5.3vw, 2rem) clamp(1.1rem, 4vw, 1.6rem);
+}
+
+.stores {
+  display: grid;
+  width: min(100%, 29rem);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stores[data-compact] {
+  width: 100%;
+}
+
+.store {
+  display: grid;
+  height: 100%;
+  min-height: 5rem;
+  grid-template-rows: auto 2.625rem;
+  align-content: center;
+  gap: .25rem;
+  padding: .52rem clamp(.42rem, 1.7vw, .825rem);
+  border: 1px solid rgb(255 243 249 / 24%);
+  border-radius: .75rem;
+  background: rgb(243 238 226 / 8%);
+  color: var(--ba-brand-paper);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.store:hover {
+  border-color: rgb(255 194 222 / 70%);
+  background: rgb(243 238 226 / 15%);
+}
+
+.close:focus-visible,
+.store:focus-visible {
+  outline: 2px solid #f2aad1;
+  outline-offset: 2px;
+}
+
+.storePlatform {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: .2rem;
+  color: var(--ba-brand-blush);
+  font-size: .73rem;
+  font-weight: 680;
+  letter-spacing: .01em;
+  line-height: 1.3;
+}
+
+.storePlatform svg {
+  flex: none;
+  color: #f2aad1;
+}
+
+.dialog .store {
+  border-color: var(--ba-brand-line);
+  background: var(--ba-brand-paper);
+  box-shadow: 0 1px 2px rgb(20 36 88 / 5%);
+}
+
+.dialog .storePlatform { color: var(--ba-brand-muted); }
+.dialog .storePlatform svg { color: var(--ba-brand-accent); }
+
+.close:hover,
+.dialog .store:hover {
+  border-color: #a95c80;
+  background: #fff3f9;
+}
+
+.dialog :is(.close, .store):focus-visible { outline-color: var(--ba-brand-accent); }
+
+.badgeSlot {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.badgeSlot img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 3.375rem;
+  object-fit: contain;
+}
+
+.windowsBadge {
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: .43rem;
+  padding: .28rem .52rem;
+  border: 1px solid #a6a6a6;
+  border-radius: .43rem;
+  background: #080808;
+  color: #fff;
+  line-height: 1.15;
+}
+
+.windowsBadge small,
+.windowsBadge strong {
+  display: block;
+}
+
+.windowsBadge small {
+  color: #e0e0e0;
+  font-size: .59rem;
+}
+
+.windowsBadge strong {
+  font-size: .72rem;
+  font-weight: 680;
+}
+
+.windowsMark {
+  width: .94rem;
+  height: .94rem;
+  flex: none;
+  background:
+    linear-gradient(#080808, #080808) 50% 0 / 1px 100% no-repeat,
+    linear-gradient(#080808, #080808) 0 50% / 100% 1px no-repeat,
+    #76c5ff;
+}
+
+@media (min-width: 560px) {
+  .header {
+    grid-template-columns: minmax(0, 1fr) 7.25rem;
+    column-gap: .8rem;
+    padding-block: 2rem 1.35rem;
+  }
+
+  .art {
+    width: 6.8rem;
+    height: 6.1rem;
+    grid-area: 1 / 2 / 3;
+    margin: 0;
+  }
+
+  .art img {
+    width: 6.4rem;
+    height: 6.4rem;
+  }
+
+  .title {
+    grid-column: 1;
+    margin-top: 0;
+    font-size: 2.45rem;
+    text-align: left;
+  }
+
+  .description {
+    grid-column: 1;
+    text-align: left;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + .4rem)); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay,
+  .dialog {
+    animation: none;
+  }
+
+  .close,
+  .store {
+    transition: none;
+  }
+}

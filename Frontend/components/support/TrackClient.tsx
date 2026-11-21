@@ -92,20 +92,20 @@ export default function TrackClient() {
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         className="material-light material-thick mx-auto max-w-[540px] rounded-[26px] p-7 sm:p-9"
       >
-        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#FFF0F5] text-[#EF6F94]">
+        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[color:var(--ba-brand-blush)] text-[color:var(--ba-brand-accent)]">
           <Ticket className="h-6 w-6" strokeWidth={1.7} />
         </span>
-        <h1 className="mt-5 text-[22px] font-semibold tracking-[-0.02em] text-[#352432]">Talebinizi görüntüleyin</h1>
-        <p className="on-material mt-2 text-[14px] leading-relaxed text-[#5A4752]">
+        <h1 className="mt-5 text-[22px] font-semibold tracking-[-0.02em] text-[color:var(--ba-brand-ink)]">Talebinizi görüntüleyin</h1>
+        <p className="on-material mt-2 text-[14px] leading-relaxed text-[color:var(--ba-brand-muted)]">
           Talep oluştururken verdiğimiz takip kodunu ve erişim anahtarını girin. İkisi de
           e-postanızdaki bağlantının içinde yer alır.
         </p>
 
         <form onSubmit={submitLookup} className="mt-6">
-          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9A7386]" htmlFor="trk-code">
+          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--ba-brand-muted)]" htmlFor="trk-code">
             Takip kodu
           </label>
-          <div className="flex items-center gap-3 rounded-2xl border border-[#EEDCE4] bg-white px-4 transition-colors focus-within:border-[#EF6F94]">
+          <div className="flex items-center gap-3 rounded-2xl border border-[color:var(--ba-brand-line)] bg-white px-4 transition-colors focus-within:border-[color:var(--ba-brand-accent)]">
             <Ticket className="h-4 w-4 shrink-0 text-[#C85776]/70" strokeWidth={1.7} />
             <input
               id="trk-code"
@@ -113,14 +113,14 @@ export default function TrackClient() {
               value={code}
               onChange={(e) => setCode(e.target.value)}
               placeholder="DST-26-0042"
-              className="min-h-12 w-full bg-transparent font-mono text-[14px] uppercase tracking-[0.04em] text-[#352432] outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-[#B29AA5]"
+              className="min-h-12 w-full bg-transparent font-mono text-[14px] uppercase tracking-[0.04em] text-[color:var(--ba-brand-ink)] outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-[color:var(--ba-brand-muted)]"
             />
           </div>
 
-          <label className="mb-2 mt-4 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9A7386]" htmlFor="trk-token">
+          <label className="mb-2 mt-4 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--ba-brand-muted)]" htmlFor="trk-token">
             Erişim anahtarı
           </label>
-          <div className="flex items-center gap-3 rounded-2xl border border-[#EEDCE4] bg-white px-4 transition-colors focus-within:border-[#EF6F94]">
+          <div className="flex items-center gap-3 rounded-2xl border border-[color:var(--ba-brand-line)] bg-white px-4 transition-colors focus-within:border-[color:var(--ba-brand-accent)]">
             <KeyRound className="h-4 w-4 shrink-0 text-[#C85776]/70" strokeWidth={1.7} />
             <input
               id="trk-token"
@@ -128,7 +128,7 @@ export default function TrackClient() {
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="E-postanızdaki bağlantıda yer alır"
-              className="min-h-12 w-full bg-transparent text-[13px] text-[#352432] outline-none placeholder:text-[#B29AA5]"
+              className="min-h-12 w-full bg-transparent text-[13px] text-[color:var(--ba-brand-ink)] outline-none placeholder:text-[color:var(--ba-brand-muted)]"
             />
           </div>
 
@@ -149,9 +149,9 @@ export default function TrackClient() {
           </button>
         </form>
 
-        <p className="mt-5 text-center text-[12.5px] text-[#7B6470]">
+        <p className="mt-5 text-center text-[12.5px] text-[color:var(--ba-brand-muted)]">
           Bağlantınızı kaybettiniz mi?{' '}
-          <Link href="/destek#talep" className="font-semibold text-[#C85776] hover:underline">
+          <Link href="/destek#talep" className="font-semibold text-[color:var(--ba-brand-accent)] hover:underline">
             Yeni talep oluşturun
           </Link>
         </p>
@@ -176,19 +176,19 @@ export default function TrackClient() {
       </div>
 
       {closed ? (
-        <div className="mt-7 flex items-start gap-2.5 rounded-2xl border border-[#E8E8EC] bg-[#F7F6F6] px-4 py-3.5 text-[12.5px] leading-relaxed text-[#5A4752]">
-          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-[#9A8593]" />
+        <div className="mt-7 flex items-start gap-2.5 rounded-2xl border border-[#E8E8EC] bg-[#F7F6F6] px-4 py-3.5 text-[12.5px] leading-relaxed text-[color:var(--ba-brand-muted)]">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--ba-brand-muted)]" />
           <span>
             Bu talep kapatıldı. Konuyla ilgili yeni bir sorunuz varsa{' '}
-            <Link href="/destek#talep" className="font-semibold text-[#C85776] hover:underline">
+            <Link href="/destek#talep" className="font-semibold text-[color:var(--ba-brand-accent)] hover:underline">
               yeni bir talep oluşturun
             </Link>
             .
           </span>
         </div>
       ) : (
-        <form onSubmit={submitReply} className="mt-7 border-t border-[#EEDCE4] pt-6">
-          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9A7386]" htmlFor="trk-reply">
+        <form onSubmit={submitReply} className="mt-7 border-t border-[color:var(--ba-brand-line)] pt-6">
+          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--ba-brand-muted)]" htmlFor="trk-reply">
             Yanıt yazın
           </label>
           <textarea
@@ -198,11 +198,11 @@ export default function TrackClient() {
             value={reply}
             onChange={(e) => setReply(e.target.value)}
             placeholder="Eklemek istediğiniz bilgi ya da sorunuz…"
-            className="w-full resize-y rounded-2xl border border-[#EEDCE4] bg-white px-4 py-3.5 text-[14px] leading-relaxed text-[#352432] outline-none transition-colors placeholder:text-[#B29AA5] focus:border-[#EF6F94]"
+            className="w-full resize-y rounded-2xl border border-[color:var(--ba-brand-line)] bg-white px-4 py-3.5 text-[14px] leading-relaxed text-[color:var(--ba-brand-ink)] outline-none transition-colors placeholder:text-[color:var(--ba-brand-muted)] focus:border-[color:var(--ba-brand-accent)]"
           />
 
           {ticket.status === 3 && (
-            <p className="mt-2 text-[12px] leading-relaxed text-[#7B6470]">
+            <p className="mt-2 text-[12px] leading-relaxed text-[color:var(--ba-brand-muted)]">
               Bu talep çözüldü olarak işaretlendi. Sorun devam ediyorsa yazmanız yeterli — talep
               yeniden açılır.
             </p>
@@ -218,7 +218,7 @@ export default function TrackClient() {
           <button
             type="submit"
             disabled={sending || reply.trim().length < 2}
-            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[#C85776] px-6 text-[13.5px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[color:var(--ba-brand-accent)] px-6 text-[13.5px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Gönder

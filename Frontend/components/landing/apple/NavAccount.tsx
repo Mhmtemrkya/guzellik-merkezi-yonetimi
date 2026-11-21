@@ -39,14 +39,14 @@ export default function NavAccount() {
         <PressButton
           href="/odeme"
           tone="glass-light"
-          className="relative border border-[#EEC9D7] bg-white px-3 py-1.5 text-[12.5px]"
+          className="relative border border-[color:var(--ba-brand-line)] bg-white px-3 py-1.5 text-[12.5px]"
           ariaLabel="Sepeti aç"
         >
           <ShoppingBag className="h-4 w-4" />
           <span className="hidden sm:inline">Sepet</span>
           <span
             aria-hidden
-            className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#EF6F94] px-1 text-[10px] font-semibold text-white"
+            className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[color:var(--ba-brand-accent)] px-1 text-[10px] font-semibold text-white"
           >
             1
           </span>
@@ -58,7 +58,7 @@ export default function NavAccount() {
           <PressButton
             href="/panel"
             tone="glass-light"
-            className="border border-[#EEC9D7] bg-white px-3.5 py-2 text-[13px]"
+            className="border border-[color:var(--ba-brand-line)] bg-white px-3.5 py-2 text-[13px]"
           >
             <LayoutGrid className="h-4 w-4" />
             <span className="hidden sm:inline">Panel</span>
@@ -67,16 +67,16 @@ export default function NavAccount() {
           {/* Yetkilinin adı — panelde kim olarak açılacağını söyler. */}
           <Link
             href="/panel"
-            className="hidden items-center gap-2 rounded-full border border-[#EEC9D7] bg-white py-1 pl-1 pr-3.5 md:inline-flex"
+            className="hidden items-center gap-2 rounded-full border border-[color:var(--ba-brand-line)] bg-white py-1 pl-1 pr-3.5 md:inline-flex"
             title={user?.email || undefined}
           >
             <span
               aria-hidden
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#FFDCE8] text-[11px] font-semibold text-[#8E3F5B]"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[color:var(--ba-brand-light)] text-[11px] font-semibold text-[color:var(--ba-brand-accent)]"
             >
               {initialsOf(label)}
             </span>
-            <span className="max-w-[16ch] truncate text-[12.5px] font-medium text-[#352432]">{short}</span>
+            <span className="max-w-[16ch] truncate text-[12.5px] font-medium text-[color:var(--ba-brand-ink)]">{short}</span>
           </Link>
         </>
       ) : (

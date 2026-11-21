@@ -1,0 +1,401 @@
+.bookingChapter, .appsChapter {
+  --story-paper: var(--ba-paper, var(--ba-brand-paper));
+  --story-ink: var(--ba-ink, var(--ba-brand-ink));
+  --story-coral: var(--ba-accent, var(--ba-brand-accent));
+  --story-muted: var(--ba-muted, var(--ba-brand-muted));
+  --story-gutter: var(--ba-gutter, 24px);
+  --story-display: var(--ba-display, system-ui);
+  --story-top: calc(var(--ba-header-height, 72px) + 18px);
+  margin-inline: auto;
+}
+
+.bookingChapter {
+  width: min(100% - 2 * var(--story-gutter), 1280px);
+  padding-block: clamp(70px, 9vw, 134px) clamp(69px, 10vw, 147px);
+  color: var(--story-ink);
+}
+
+.bookingHeading {
+  display: grid;
+  min-height: clamp(312px, 45svh, 462px);
+  justify-items: start;
+  align-content: center;
+  gap: 16px;
+  padding-bottom: clamp(32px, 6vw, 70px);
+}
+
+.eyebrow {
+  color: var(--story-coral);
+  font-size: .74rem;
+  font-weight: 800;
+  letter-spacing: .115em;
+  text-transform: uppercase;
+}
+
+.bookingHeading h2, .appsHeading h2 {
+  max-width: 15ch;
+  font-family: var(--story-display);
+  font-size: clamp(3rem, 6.8vw, 7.2rem);
+  font-weight: 800;
+  letter-spacing: -.068em;
+  line-height: .99;
+}
+
+.bookingHeading h2 span { display: block; color: var(--story-coral); }
+
+.lightLink {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  font-size: .94rem;
+  font-weight: 750;
+  text-decoration: underline;
+  text-decoration-color: #d7a8bf;
+  text-underline-offset: 5px;
+}
+
+.lightLink:hover { text-decoration-color: currentColor; }
+
+.bookingTrack {
+  display: grid;
+  grid-template-columns: minmax(0, 1.95fr) minmax(0, 1fr);
+  align-items: start;
+  gap: clamp(28px, 7vw, 96px);
+}
+
+.bookingScene {
+  position: relative;
+  isolation: isolate;
+  min-height: clamp(450px, 67svh, 640px);
+  overflow: hidden;
+  border-radius: clamp(19px, 2.6vw, 36px);
+  background: #d7a8bf;
+  box-shadow: 0 25px 74px -55px #101a36a6;
+}
+
+.bookingImage {
+  z-index: -4;
+  object-fit: cover;
+  object-position: 36% 51%;
+}
+
+.bookingShade, .phoneGuide {
+  position: absolute;
+  pointer-events: none;
+}
+
+.bookingShade {
+  z-index: -3;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 13%, #273a712c 54%, #1424588c 100%),
+    linear-gradient(0deg, #3b252bb2, transparent 50%);
+}
+
+.phoneGuide {
+  z-index: -2;
+  top: 48%;
+  left: 68%;
+  width: 62%;
+  aspect-ratio: 1.25;
+  border: 1px solid #fff3f9ba;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) rotate(-21deg);
+  box-shadow: inset 0 0 54px #ffe7f520;
+}
+
+.phoneGuide::after {
+  position: absolute;
+  inset: 10%;
+  border: 1px dashed #ffe7f588;
+  border-radius: inherit;
+  content: '';
+}
+
+.bookingPhone {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 68%;
+  display: grid;
+  width: min(48%, 243px);
+  min-height: 345px;
+  grid-template-rows: auto 1fr auto;
+  border: 5px solid #273a71;
+  border-radius: 31px;
+  padding: 27px 13px 12px;
+  background: var(--ba-brand-paper);
+  box-shadow: 0 22px 59px #39232d69, inset 0 0 0 1px var(--ba-brand-line);
+  color: var(--story-ink);
+  transform: translate(-50%, -50%) rotate(-7deg);
+}
+
+.phoneCamera {
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  width: 32px;
+  height: 5px;
+  border-radius: 8px;
+  background: var(--ba-brand-ink);
+  transform: translateX(-50%);
+}
+
+.phoneTop { display: flex; min-height: 35px; align-items: center; gap: 5px; font-size: .77rem; font-weight: 800; }
+.phoneTop img { width: 26px; height: 26px; object-fit: contain; }
+.phoneBodies { display: grid; align-items: center; border-top: 1px solid var(--ba-brand-line); }
+.phoneBodies > div { min-width: 0; grid-area: 1 / 1; }
+.phoneBodies small { color: var(--ba-brand-accent); font-size: .67rem; font-weight: 800; }
+.phoneBodies p { margin: 7px 0 16px; font-family: var(--story-display); font-size: 1.32rem; font-weight: 800; letter-spacing: -.045em; line-height: 1.04; }
+.phoneCaption { border-top: 1px solid var(--ba-brand-line); padding-top: 10px; color: var(--ba-brand-muted); font-size: .63rem; font-weight: 700; }
+.slotScreen, .confirmScreen { visibility: hidden; }
+
+.salonSample, .confirmSample, .slotDate {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #f6dce9;
+  border-radius: 9px;
+  padding: 8px 7px;
+  background: var(--ba-brand-blush);
+}
+
+.salonSample svg, .confirmSample svg, .slotDate svg { flex: none; color: var(--ba-brand-accent); }
+.salonSample strong, .confirmSample strong { display: block; font-size: .68rem; line-height: 1.22; }
+.salonSample span, .confirmSample span { display: block; margin-top: 3px; color: var(--ba-brand-muted); font-size: .60rem; line-height: 1.22; }
+.slotDate { font-size: .67rem; font-weight: 750; }
+.slotTimes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 9px; }
+.slotTimes span { display: grid; min-height: 27px; place-items: center; border: 1px solid #f6dce9; border-radius: 5px; font-size: .63rem; font-weight: 750; }
+.slotTimes span:nth-child(2) { border-color: var(--ba-brand-accent); background: var(--ba-brand-accent); color: var(--ba-brand-paper); }
+.confirmSample { background: #ecede0; border-color: #dbdfca; }
+.confirmSample svg { color: #4f5d47; }
+.bookingProgress { display: none; }
+
+.bookingSteps { display: grid; }
+
+.bookingSteps li {
+  display: grid;
+  min-height: clamp(260px, 43svh, 470px);
+  align-content: center;
+  justify-items: start;
+  gap: 13px;
+  border-top: 1px solid #dac7bb;
+  padding-block: 20px;
+}
+
+.bookingSteps li:last-child { border-bottom: 1px solid #dac7bb; }
+.bookingSteps svg { color: var(--story-coral); }
+.bookingSteps h3 { font-family: var(--story-display); font-size: clamp(1.75rem, 3vw, 3.25rem); font-weight: 800; letter-spacing: -.052em; line-height: 1.03; }
+.bookingSteps p { max-width: 33ch; color: var(--story-muted); font-size: clamp(.98rem, 1.39vw, 1.14rem); line-height: 1.63; }
+
+.appsChapter {
+  width: min(100% - 2 * var(--ba-edge, 8px), 1770px);
+  margin-bottom: clamp(35px, 6vw, 83px);
+  border-radius: clamp(19px, 2.6vw, 38px);
+  background: var(--ba-brand-night);
+  color: #fff3f9;
+}
+
+.appsHeading {
+  display: grid;
+  min-height: clamp(340px, 54svh, 560px);
+  justify-items: center;
+  align-content: center;
+  gap: 17px;
+  padding: clamp(40px, 7vw, 84px) var(--story-gutter) clamp(28px, 6vw, 64px);
+  text-align: center;
+}
+
+.appsHeading .eyebrow { color: #f6dce9; }
+.appsHeading h2 span { display: block; color: #f2aad1; }
+.appsHeading > p:last-child { max-width: 43ch; color: #e8dced; font-size: clamp(1rem, 1.5vw, 1.25rem); line-height: 1.63; }
+.appsTrack { padding-inline: clamp(8px, 2.25vw, 32px); padding-bottom: clamp(8px, 2.25vw, 32px); }
+
+.appsPin {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  min-height: clamp(487px, 77svh, 770px);
+  overflow: hidden;
+  grid-template-rows: 1fr auto;
+  border: 1px solid #a95c80;
+  border-radius: clamp(15px, 2.1vw, 30px);
+  background: #a95c80;
+}
+
+.appsImage { z-index: -4; object-fit: cover; object-position: center 51%; }
+.appsShade { position: absolute; z-index: -3; inset: 0; background: linear-gradient(0deg, var(--ba-brand-night) 5%, #28203466 55%, #4030435e 100%); }
+.deviceScene { position: relative; display: grid; align-items: center; justify-items: center; padding: clamp(35px, 8svh, 72px) 0 30px; }
+
+.deviceOrbit {
+  position: absolute;
+  z-index: -1;
+  top: 53%;
+  left: 50%;
+  width: min(83%, 790px);
+  aspect-ratio: 1.52;
+  border: 1px solid #ffc2de94;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) rotate(-12deg);
+}
+
+.deviceOrbit::after { position: absolute; inset: -6%; border: 1px dashed #fff3f974; border-radius: inherit; content: ''; }
+
+.desktop {
+  position: relative;
+  width: min(66%, 625px);
+  border: 8px solid var(--ba-brand-ink);
+  border-radius: 18px;
+  background: var(--ba-brand-paper);
+  box-shadow: 0 26px 80px #180c19a8, inset 0 0 0 1px var(--ba-brand-line);
+  color: var(--story-ink);
+  transform: rotate(-3deg);
+}
+
+.desktopScreen { overflow: hidden; border-radius: 10px; }
+.desktopBar { display: flex; min-height: 45px; align-items: center; gap: 7px; border-bottom: 1px solid var(--ba-brand-line); padding: 7px 14px; background: var(--ba-brand-blush); font-size: .84rem; }
+.desktopBar img { width: 24px; height: 24px; object-fit: contain; }
+.desktopContent { display: grid; grid-template-columns: minmax(89px, .39fr) minmax(0, 1fr); min-height: clamp(172px, 25vw, 280px); }
+.desktopRail { display: grid; align-content: start; gap: 9px; border-right: 1px solid var(--ba-brand-line); padding: 15px 10px; background: var(--ba-brand-blush); color: var(--ba-brand-muted); font-size: .68rem; font-weight: 750; }
+.desktopRail span:first-child { display: flex; align-items: center; gap: 4px; color: var(--ba-brand-accent); }
+.desktopAgenda { min-width: 0; padding: clamp(11px, 2.5vw, 27px); }
+.desktopAgenda > p { font-family: var(--story-display); font-size: clamp(.94rem, 2.1vw, 1.65rem); font-weight: 800; letter-spacing: -.042em; }
+.desktopAgenda small { display: block; margin-top: 9px; color: var(--ba-brand-muted); font-size: .62rem; font-weight: 700; }
+.desktopAppointments { display: grid; margin-top: 9px; border-top: 1px solid var(--ba-brand-line); }
+.desktopAppointments > div { display: flex; min-height: 30px; align-items: center; gap: 10px; border-bottom: 1px solid var(--ba-brand-line); font-size: .72rem; }
+.desktopAppointments time { color: var(--ba-brand-accent); font-weight: 800; }
+.desktopStand { position: absolute; z-index: -1; top: 100%; left: 50%; width: 118%; height: 16px; border-radius: 2px 2px 42% 42%; background: linear-gradient(var(--ba-brand-muted), #273a71 45%, var(--ba-brand-night)); transform: translateX(-50%); }
+
+.devicePhone {
+  position: absolute;
+  right: clamp(24px, 15vw, 245px);
+  bottom: clamp(15px, 6vh, 56px);
+  display: grid;
+  width: clamp(96px, 16%, 163px);
+  min-height: clamp(147px, 19vw, 257px);
+  align-content: start;
+  gap: 6px;
+  border: 5px solid var(--ba-brand-ink);
+  border-radius: 24px;
+  padding: 22px 8px 8px;
+  background: #fff3f9;
+  box-shadow: 0 12px 38px #180c19a6;
+  color: var(--story-ink);
+  transform: rotate(9deg);
+}
+
+.devicePhone > img { width: 29px; height: 29px; object-fit: contain; }
+.devicePhone > p { font-family: var(--story-display); font-size: .83rem; font-weight: 800; }
+.devicePhone small { color: var(--ba-brand-muted); font-size: .55rem; font-weight: 700; }
+.devicePhoneAppointment { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 3px; border: 1px solid #f6dce9; border-radius: 6px; padding: 5px; background: var(--ba-brand-blush); color: var(--ba-brand-accent); font-size: .61rem; }
+.devicePhoneAppointment strong { grid-column: 1 / -1; color: #35282a; }
+
+.appsPlatforms {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid #ffc2de50;
+  margin-inline: clamp(12px, 5vw, 70px);
+  padding-block: clamp(13px, 3vw, 28px);
+}
+
+.appsPlatforms > div, .appsPlatforms > a { display: inline-flex; align-items: center; gap: 7px; color: #fff3f9; font-size: .83rem; font-weight: 750; }
+.appsPlatforms > div:last-child { justify-content: flex-end; }
+.appsPlatforms svg { flex: none; }
+.appsPlatforms > div svg { color: #f6dce9; }
+.appsPlatforms > a { min-height: 44px; justify-content: center; border-radius: 10px; padding: 8px 12px; background: var(--ba-brand-blush); color: var(--ba-brand-ink); white-space: nowrap; }
+.appsPlatforms > a:hover { background: var(--ba-brand-light); }
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) and (animation-range: contain) {
+    .bookingTrack { view-timeline: --customer-booking block; }
+    .bookingImage { animation: booking-drift linear both; animation-timeline: --customer-booking; animation-range: cover; }
+    .phoneGuide { animation: booking-orbit linear both; animation-timeline: --customer-booking; animation-range: cover; }
+    .bookingPhone { animation: booking-phone linear both; animation-timeline: --customer-booking; animation-range: cover; }
+    .phoneBodies > div { visibility: visible; }
+    .discoverScreen { animation: discover-screen linear both; animation-timeline: --customer-booking; animation-range: cover 38% cover 72%; }
+    .slotScreen { animation: slot-screen linear both; animation-timeline: --customer-booking; animation-range: cover 38% cover 72%; }
+    .confirmScreen { animation: confirm-screen linear both; animation-timeline: --customer-booking; animation-range: cover 38% cover 72%; }
+    .bookingProgress { position: absolute; right: 7%; bottom: 20px; left: 7%; z-index: 2; display: block; height: 2px; border-radius: 20px; background: #fff3f960; }
+    .bookingProgress i { display: block; width: 100%; height: 100%; border-radius: inherit; background: #fff3f9; transform-origin: left; animation: booking-progress linear both; animation-timeline: --customer-booking; animation-range: cover 38% cover 72%; }
+    .appsTrack { view-timeline: --customer-apps block; }
+    .appsImage { animation: devices-drift linear both; animation-timeline: --customer-apps; animation-range: cover; }
+    .desktop { animation: desktop-assembly linear both; animation-timeline: --customer-apps; animation-range: cover 14% cover 70%; }
+    .devicePhone { animation: mobile-assembly linear both; animation-timeline: --customer-apps; animation-range: cover 22% cover 83%; }
+    .deviceOrbit { animation: devices-orbit linear both; animation-timeline: --customer-apps; animation-range: cover; }
+
+    @media (min-height: 570px) {
+      .bookingPin, .appsPin { position: sticky; top: var(--story-top); }
+      .appsTrack::after {
+        display: block;
+        height: clamp(234px, 57svh, 585px);
+        content: '';
+      }
+    }
+  }
+}
+
+@keyframes booking-drift { from { transform: scale(1.05) translateX(1%); } to { transform: scale(1.17) translateX(-5%); } }
+@keyframes booking-orbit { from { transform: translate(-50%, -50%) rotate(-29deg) scale(.91); opacity: .3; } to { transform: translate(-50%, -50%) rotate(14deg) scale(1.11); opacity: .92; } }
+@keyframes booking-phone { from { transform: translate(-41%, -44%) rotate(-13deg) scale(.91); } to { transform: translate(-53%, -50%) rotate(-1deg) scale(1.05); } }
+@keyframes discover-screen { 0%, 19% { opacity: 1; transform: none; } 34%, 100% { opacity: 0; transform: translateX(-8%); } }
+@keyframes slot-screen { 0%, 20% { opacity: 0; transform: translateX(8%); } 35%, 61% { opacity: 1; transform: none; } 78%, 100% { opacity: 0; transform: translateX(-8%); } }
+@keyframes confirm-screen { 0%, 63% { opacity: 0; transform: translateX(8%); } 80%, 100% { opacity: 1; transform: none; } }
+@keyframes booking-progress { from { transform: scaleX(.04); } to { transform: scaleX(1); } }
+@keyframes devices-drift { from { transform: scale(1.07) translateY(-2%); } to { transform: scale(1.18) translateY(4%); } }
+@keyframes desktop-assembly { from { transform: translate(-7%, 19%) rotate(-9deg) scale(.92); } to { transform: rotate(-3deg); } }
+@keyframes mobile-assembly { 0%, 12% { transform: translate(23%, 32%) rotate(17deg) scale(.92); opacity: .22; } 75%, 100% { transform: rotate(9deg); opacity: 1; } }
+@keyframes devices-orbit { from { transform: translate(-50%, -50%) rotate(-26deg) scale(.94); opacity: .38; } to { transform: translate(-50%, -50%) rotate(9deg) scale(1.05); opacity: 1; } }
+
+@media (max-width: 800px) {
+  .bookingChapter { padding-block: 58px 72px; }
+  .bookingHeading { min-height: 292px; }
+  .bookingTrack { display: block; }
+  .bookingPin { z-index: 1; padding-bottom: 10px; background: var(--story-paper); }
+  .bookingScene { min-height: clamp(330px, 44svh, 502px); }
+  .bookingSteps li { min-height: clamp(142px, 24svh, 222px); align-content: start; padding-block: 20px 30px; gap: 8px; }
+  .bookingSteps li:first-child { margin-top: 5px; }
+  .bookingSteps li:last-child { align-content: center; }
+  .bookingSteps p { max-width: 45ch; }
+  .bookingPhone { min-height: 272px; }
+  .appsHeading { min-height: 318px; }
+  .appsPin { min-height: clamp(420px, 64svh, 590px); }
+}
+
+@media (max-width: 500px) {
+  .bookingHeading h2, .appsHeading h2 { font-size: clamp(2.6rem, 11.3vw, 4.3rem); }
+  .bookingScene { min-height: clamp(285px, 42svh, 380px); }
+  .bookingImage { object-position: 35% center; }
+  .bookingPhone { left: 65%; width: min(58%, 190px); min-height: 238px; border-width: 4px; border-radius: 22px; padding: 20px 8px 8px; }
+  .phoneTop { min-height: 34px; }
+  .phoneTop img { width: 21px; height: 21px; }
+  .phoneBodies p { font-size: 1rem; margin-bottom: 9px; }
+  .phoneCaption { padding-top: 6px; }
+  .bookingProgress { bottom: 13px; }
+  .desktop { width: 72%; border-width: 5px; margin-left: -12%; }
+  .desktopBar { min-height: 34px; padding: 5px 7px; font-size: .65rem; }
+  .desktopBar img { width: 18px; height: 18px; }
+  .desktopContent { grid-template-columns: minmax(48px, .48fr) minmax(0, 1fr); min-height: 148px; }
+  .desktopRail { font-size: .46rem; padding: 10px 4px; }
+  .desktopRail svg { display: none; }
+  .desktopAgenda { padding: 8px; }
+  .desktopAgenda > p { font-size: .73rem; }
+  .desktopAppointments > div { min-height: 19px; gap: 4px; font-size: .52rem; }
+  .desktopStand { height: 9px; }
+  .devicePhone { right: 7%; bottom: 13%; border-width: 4px; }
+  .devicePhone > p { font-size: .7rem; }
+  .appsPlatforms { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); justify-items: start; column-gap: 9px; row-gap: 8px; padding-bottom: 12px; }
+  .appsPlatforms > a { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+  .appsPlatforms > div:last-child { justify-self: end; }
+  .appsPlatforms > div { font-size: .70rem; }
+  .appsPlatforms > div svg { width: 16px; height: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bookingSteps li { min-height: 142px; }
+}
+
+@media (max-width: 350px) {
+  .devicePhone { right: 11%; }
+}

@@ -85,7 +85,7 @@ export default function HakkimizdaPage() {
         <PaymentBadges className="mt-4" />
       </LegalSection>
 
-      <LegalSection title="İletişim ve künye">
+      <LegalSection title="İletişim ve künye" id="iletisim">
         <LegalFacts
           rows={[
             { label: 'Ticaret unvanı', value: company.legalName },
@@ -95,7 +95,14 @@ export default function HakkimizdaPage() {
               label: 'E-posta',
               value: <MailLink />,
             },
-            { label: 'Telefon', value: company.phone },
+            {
+              label: 'Telefon',
+              value: (
+                <a href={`tel:${company.phone.replace(/\s/g, '')}`} className="font-medium text-[color:var(--ba-brand-accent)] underline underline-offset-2">
+                  {company.phone}
+                </a>
+              ),
+            },
             { label: 'Web sitesi', value: company.website },
             { label: 'Destek saatleri', value: company.supportHours },
           ]}

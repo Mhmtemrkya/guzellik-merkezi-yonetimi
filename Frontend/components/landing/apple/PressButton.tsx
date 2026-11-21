@@ -31,7 +31,7 @@ type Tone = 'primary' | 'primary-bar' | 'glass-dark' | 'glass-light' | 'plain'
 
 const TONE: Record<Tone, string> = {
   primary:
-    'bg-[#EF6F94] text-white shadow-[0_20px_44px_-18px_rgba(239,111,148,0.95)] hover:shadow-[0_28px_56px_-16px_rgba(239,111,148,1)]',
+    'bg-[color:var(--ba-brand-accent)] text-white shadow-[0_20px_44px_-18px_rgba(239,111,148,0.95)] hover:shadow-[0_28px_56px_-16px_rgba(239,111,148,1)]',
   /**
    * ÜST ÇUBUĞUN DOLU DÜĞMESİ — `primary`nin küçük ölçekte çalışan hâli.
    *
@@ -45,12 +45,12 @@ const TONE: Record<Tone, string> = {
    * düğmeyi düz bir renk lekesi olmaktan çıkarır. Marka rengi DEĞİŞMEZ.
    */
   'primary-bar':
-    'bg-[#EF6F94] text-white ring-1 ring-inset ring-white/30 ' +
+    'bg-[color:var(--ba-brand-accent)] text-white ring-1 ring-inset ring-white/30 ' +
     'shadow-[0_1px_2px_rgba(141,40,74,0.24),0_6px_14px_-8px_rgba(141,40,74,0.55)] ' +
-    'hover:bg-[#E85D86] hover:shadow-[0_2px_4px_rgba(141,40,74,0.28),0_10px_20px_-10px_rgba(141,40,74,0.6)]',
+    'hover:bg-[color:var(--ba-brand-accent)] hover:shadow-[0_2px_4px_rgba(141,40,74,0.28),0_10px_20px_-10px_rgba(141,40,74,0.6)]',
   'glass-dark': 'material-dark on-material text-white',
-  'glass-light': 'material-light on-material text-[#4A3A44]',
-  plain: 'text-[#4A3A44] hover:text-[#EF6F94]',
+  'glass-light': 'material-light on-material text-[color:var(--ba-brand-muted)]',
+  plain: 'text-[color:var(--ba-brand-muted)] hover:text-[color:var(--ba-brand-accent)]',
 }
 
 export default function PressButton({

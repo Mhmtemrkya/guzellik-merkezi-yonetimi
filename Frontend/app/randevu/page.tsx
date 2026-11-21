@@ -96,7 +96,7 @@ function upcomingDates(): { value: string; day: string; weekday: string; month: 
 }
 
 const cardCls =
-  'rounded-[28px] border border-[#ead8df]/80 bg-white/92 p-5 shadow-[0_24px_68px_-48px_rgba(142,63,91,0.75)]'
+  'rounded-[28px] border border-[#ebd6e2]/80 bg-white/92 p-5 shadow-[0_24px_68px_-48px_rgba(142,63,91,0.75)]'
 
 export default function CustomerPortalPage() {
   const router = useRouter()
@@ -340,13 +340,13 @@ export default function CustomerPortalPage() {
 
   if (!ready) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#fff7fa]">
+      <main className="grid min-h-screen place-items-center bg-[color:var(--ba-brand-paper)]">
         <div className="flex items-center gap-3 text-[13px] font-semibold text-[#8d7180]">
           <motion.span
             aria-hidden
             animate={{ rotate: 360 }}
             transition={{ duration: 1.1, repeat: Infinity, ease: 'linear' }}
-            className="h-4 w-4 rounded-full border-2 border-[#c85776] border-t-transparent"
+            className="h-4 w-4 rounded-full border-2 border-[color:var(--ba-brand-accent)] border-t-transparent"
           />
           Randevu portalı hazırlanıyor...
         </div>
@@ -355,7 +355,7 @@ export default function CustomerPortalPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#fff7fa] text-[#352432]">
+    <main className="min-h-screen bg-[color:var(--ba-brand-paper)] text-[color:var(--ba-brand-ink)]">
       {/* Üst bar */}
       <header className="sticky top-0 z-40 border-b border-[#e7bfd0]/80 bg-[#fbe7ef]/85 backdrop-blur-2xl">
         <span aria-hidden className="block h-[3px] w-full bg-gradient-to-r from-[#df6688] via-[#f5abc0] to-[#ee789a]" />
@@ -373,15 +373,15 @@ export default function CustomerPortalPage() {
           </a>
           <div className="flex items-center gap-2">
             {profile && (
-              <span className="hidden items-center gap-2 rounded-full border border-[#ead8df] bg-white/80 px-4 py-2 text-[12px] font-semibold text-[#6f4153] sm:inline-flex">
-                <UserRound className="h-3.5 w-3.5 text-[#c85776]" />
+              <span className="hidden items-center gap-2 rounded-full border border-[color:var(--ba-brand-line)] bg-white/80 px-4 py-2 text-[12px] font-semibold text-[#6f4153] sm:inline-flex">
+                <UserRound className="h-3.5 w-3.5 text-[color:var(--ba-brand-accent)]" />
                 {profile.fullName}
               </span>
             )}
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[#ead8df] bg-white/80 px-4 text-[12px] font-bold text-[#6f4153] transition hover:border-[#ef9ab5] hover:text-[#c85776]"
+              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[color:var(--ba-brand-line)] bg-white/80 px-4 text-[12px] font-bold text-[#6f4153] transition hover:border-[#ef9ab5] hover:text-[color:var(--ba-brand-accent)]"
             >
               <LogOut className="h-3.5 w-3.5" />
               Çıkış
@@ -421,16 +421,16 @@ export default function CustomerPortalPage() {
                     disabled={!done || Boolean(created)}
                     className={`flex items-center gap-2 rounded-full border px-3.5 py-2 text-[11px] font-bold transition ${
                       active
-                        ? 'border-[#c85776] bg-[#c85776] text-white shadow-[0_14px_30px_-18px_rgba(200,87,118,0.8)]'
+                        ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-accent)] text-white shadow-[0_14px_30px_-18px_rgba(200,87,118,0.8)]'
                         : done
-                          ? 'border-[#efbfd0] bg-[#fff0f5] text-[#c85776]'
-                          : 'border-[#ead8df] bg-white/70 text-[#9b7b8d]'
+                          ? 'border-[#efbfd0] bg-[color:var(--ba-brand-blush)] text-[color:var(--ba-brand-accent)]'
+                          : 'border-[color:var(--ba-brand-line)] bg-white/70 text-[#9b7b8d]'
                     }`}
                   >
                     {done ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <Icon className="h-3.5 w-3.5" />}
                     {label}
                   </button>
-                  {index < stepMeta.length - 1 && <span className="hidden h-px w-4 bg-[#ead8df] sm:block" />}
+                  {index < stepMeta.length - 1 && <span className="hidden h-px w-4 bg-[color:var(--ba-brand-line)] sm:block" />}
                 </div>
               )
             })}
@@ -497,22 +497,22 @@ export default function CustomerPortalPage() {
                               }}
                               className={`flex items-center justify-between rounded-2xl border p-4 text-left transition ${
                                 active
-                                  ? 'border-[#c85776] bg-[#fff0f5]'
-                                  : 'border-[#ead8df] bg-[#fffafb] hover:border-[#efbfd0] hover:bg-white'
+                                  ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-blush)]'
+                                  : 'border-[color:var(--ba-brand-line)] bg-[#fffafb] hover:border-[#efbfd0] hover:bg-white'
                               }`}
                             >
                               <span className="flex items-center gap-3">
-                                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#fff0f5] text-[#d65f83] ring-1 ring-[#ffd3df]">
+                                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[color:var(--ba-brand-blush)] text-[#d65f83] ring-1 ring-[#ffd3df]">
                                   <MapPin className="h-4.5 w-4.5" />
                                 </span>
                                 <span>
-                                  <span className="block text-[14px] font-bold text-[#2f1724]">{b.name}</span>
+                                  <span className="block text-[14px] font-bold text-[color:var(--ba-brand-ink)]">{b.name}</span>
                                   <span className="mt-0.5 block text-[11px] font-semibold text-[#9b7b8d]">
                                     {b.tenantName} · {b.city}
                                   </span>
                                 </span>
                               </span>
-                              <ArrowRight className="h-4 w-4 text-[#c85776]" />
+                              <ArrowRight className="h-4 w-4 text-[color:var(--ba-brand-accent)]" />
                             </button>
                           )
                         })}
@@ -540,19 +540,19 @@ export default function CustomerPortalPage() {
                               }}
                               className={`rounded-2xl border p-4 text-left transition ${
                                 active
-                                  ? 'border-[#c85776] bg-[#fff0f5]'
-                                  : 'border-[#ead8df] bg-[#fffafb] hover:border-[#efbfd0] hover:bg-white'
+                                  ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-blush)]'
+                                  : 'border-[color:var(--ba-brand-line)] bg-[#fffafb] hover:border-[#efbfd0] hover:bg-white'
                               }`}
                             >
                               <div className="flex items-start justify-between gap-3">
-                                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#fff0f5] text-[#d65f83] ring-1 ring-[#ffd3df]">
+                                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[color:var(--ba-brand-blush)] text-[#d65f83] ring-1 ring-[#ffd3df]">
                                   <WandSparkles className="h-4.5 w-4.5" />
                                 </span>
-                                <span className="rounded-full bg-[#fff7fa] px-2.5 py-1 text-[11px] font-bold text-[#b65f7b] ring-1 ring-[#f0dfe7]">
+                                <span className="rounded-full bg-[color:var(--ba-brand-paper)] px-2.5 py-1 text-[11px] font-bold text-[#b65f7b] ring-1 ring-[#f0dfe7]">
                                   {formatPrice(s.price)}
                                 </span>
                               </div>
-                              <div className="mt-3 text-[14px] font-bold text-[#2f1724]">{s.name}</div>
+                              <div className="mt-3 text-[14px] font-bold text-[color:var(--ba-brand-ink)]">{s.name}</div>
                               <div className="mt-1 flex items-center gap-1.5 text-[11px] font-semibold text-[#9b7b8d]">
                                 <Clock3 className="h-3.5 w-3.5" />
                                 {s.durationMinutes} dk{s.category ? ` · ${s.category}` : ''}
@@ -583,11 +583,11 @@ export default function CustomerPortalPage() {
                               }}
                               className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${
                                 active
-                                  ? 'border-[#c85776] bg-[#fff0f5]'
-                                  : 'border-[#ead8df] bg-[#fffafb] hover:border-[#efbfd0] hover:bg-white'
+                                  ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-blush)]'
+                                  : 'border-[color:var(--ba-brand-line)] bg-[#fffafb] hover:border-[#efbfd0] hover:bg-white'
                               }`}
                             >
-                              <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#f7d0dc] to-[#fff3f7] text-[15px] font-bold text-[#c85776] ring-1 ring-[#efbfd0]">
+                              <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-[#f7d0dc] to-[#fff3f7] text-[15px] font-bold text-[color:var(--ba-brand-accent)] ring-1 ring-[#efbfd0]">
                                 {person.photoUrl ? (
                                   <img src={person.photoUrl} alt={person.fullName} className="h-full w-full object-cover" />
                                 ) : (
@@ -595,7 +595,7 @@ export default function CustomerPortalPage() {
                                 )}
                               </span>
                               <span>
-                                <span className="block text-[14px] font-bold text-[#2f1724]">{person.fullName}</span>
+                                <span className="block text-[14px] font-bold text-[color:var(--ba-brand-ink)]">{person.fullName}</span>
                                 <span className="mt-0.5 block text-[11px] font-semibold text-[#9b7b8d]">
                                   {person.title}
                                   {person.specialties ? ` · ${person.specialties}` : ''}
@@ -624,8 +624,8 @@ export default function CustomerPortalPage() {
                               onClick={() => setDate(d.value)}
                               className={`flex min-w-[64px] shrink-0 flex-col items-center rounded-2xl border px-3 py-2.5 transition ${
                                 active
-                                  ? 'border-[#c85776] bg-[#c85776] text-white'
-                                  : 'border-[#ead8df] bg-[#fffafb] text-[#6f5968] hover:border-[#efbfd0]'
+                                  ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-accent)] text-white'
+                                  : 'border-[color:var(--ba-brand-line)] bg-[#fffafb] text-[#6f5968] hover:border-[#efbfd0]'
                               }`}
                             >
                               <span className="text-[10px] font-bold uppercase">{d.weekday}</span>
@@ -644,7 +644,7 @@ export default function CustomerPortalPage() {
                               aria-hidden
                               animate={{ rotate: 360 }}
                               transition={{ duration: 1.1, repeat: Infinity, ease: 'linear' }}
-                              className="h-3.5 w-3.5 rounded-full border-2 border-[#c85776] border-t-transparent"
+                              className="h-3.5 w-3.5 rounded-full border-2 border-[color:var(--ba-brand-accent)] border-t-transparent"
                             />
                             Uygun saatler getiriliyor...
                           </div>
@@ -662,8 +662,8 @@ export default function CustomerPortalPage() {
                                     !s.available
                                       ? 'cursor-not-allowed border-[#f0e6ea] bg-[#faf4f6] text-[#c9b4bf] line-through'
                                       : active
-                                        ? 'border-[#c85776] bg-[#c85776] text-white shadow-[0_12px_26px_-14px_rgba(200,87,118,0.8)]'
-                                        : 'border-[#ead8df] bg-[#fffafb] text-[#4d3947] hover:border-[#efbfd0] hover:bg-white'
+                                        ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-accent)] text-white shadow-[0_12px_26px_-14px_rgba(200,87,118,0.8)]'
+                                        : 'border-[color:var(--ba-brand-line)] bg-[#fffafb] text-[#4d3947] hover:border-[#efbfd0] hover:bg-white'
                                   }`}
                                 >
                                   {s.start}
@@ -682,7 +682,7 @@ export default function CustomerPortalPage() {
                         <button
                           type="button"
                           onClick={() => goTo(3)}
-                          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#ead8df] bg-white px-5 text-[12.5px] font-bold text-[#6f4153] transition hover:border-[#ef9ab5]"
+                          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[color:var(--ba-brand-line)] bg-white px-5 text-[12.5px] font-bold text-[#6f4153] transition hover:border-[#ef9ab5]"
                         >
                           <ArrowLeft className="h-4 w-4" /> Geri
                         </button>
@@ -713,12 +713,12 @@ export default function CustomerPortalPage() {
                           },
                         ].map(({ label, value, icon: Icon }) => (
                           <div key={label} className="flex items-center gap-3 rounded-2xl border border-[#f0e0e6] bg-[#fffafb] px-4 py-3">
-                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#fff0f5] text-[#d65f83] ring-1 ring-[#ffd3df]">
+                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[color:var(--ba-brand-blush)] text-[#d65f83] ring-1 ring-[#ffd3df]">
                               <Icon className="h-4 w-4" />
                             </span>
                             <span>
                               <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-[#9b7b8d]">{label}</span>
-                              <span className="mt-0.5 block text-[13.5px] font-semibold text-[#2f1724]">{value}</span>
+                              <span className="mt-0.5 block text-[13.5px] font-semibold text-[color:var(--ba-brand-ink)]">{value}</span>
                             </span>
                           </div>
                         ))}
@@ -731,7 +731,7 @@ export default function CustomerPortalPage() {
                             onChange={(e) => setNotes(e.target.value)}
                             rows={2}
                             placeholder="Eklemek istediğiniz bir not var mı?"
-                            className="mt-2 w-full resize-none bg-transparent text-[13px] text-[#352432] outline-none placeholder:text-[#352432]/[0.30]"
+                            className="mt-2 w-full resize-none bg-transparent text-[13px] text-[color:var(--ba-brand-ink)] outline-none placeholder:text-[#142458]/[0.30]"
                           />
                         </div>
                       </div>
@@ -739,7 +739,7 @@ export default function CustomerPortalPage() {
                         <button
                           type="button"
                           onClick={() => goTo(4)}
-                          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#ead8df] bg-white px-5 text-[12.5px] font-bold text-[#6f4153] transition hover:border-[#ef9ab5]"
+                          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[color:var(--ba-brand-line)] bg-white px-5 text-[12.5px] font-bold text-[#6f4153] transition hover:border-[#ef9ab5]"
                         >
                           <ArrowLeft className="h-4 w-4" /> Geri
                         </button>
@@ -768,7 +768,7 @@ export default function CustomerPortalPage() {
                 <ListChecks className="h-4.5 w-4.5 text-[#d65f83]" />
                 Randevularım
               </h2>
-              <span className="rounded-full bg-[#fff0f5] px-3 py-1 text-[11px] font-bold text-[#b65f7b] ring-1 ring-[#ffd3df]">
+              <span className="rounded-full bg-[color:var(--ba-brand-blush)] px-3 py-1 text-[11px] font-bold text-[#b65f7b] ring-1 ring-[#ffd3df]">
                 {appointments.length}
               </span>
             </div>
@@ -794,7 +794,7 @@ export default function CustomerPortalPage() {
                 return (
                   <div key={a.id} className="rounded-2xl border border-[#f0e0e6] bg-[#fffafb] p-3.5">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="text-[13.5px] font-bold text-[#2f1724]">{a.serviceName || 'Hizmet'}</div>
+                      <div className="text-[13.5px] font-bold text-[color:var(--ba-brand-ink)]">{a.serviceName || 'Hizmet'}</div>
                       <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${toneCls}`}>{status.label}</span>
                     </div>
                     <div className="mt-1.5 text-[11.5px] font-semibold text-[#9b7b8d]">
@@ -811,7 +811,7 @@ export default function CustomerPortalPage() {
                           type="button"
                           disabled={busy}
                           onClick={() => (rescheduling ? setRescheduleAppt(null) : openReschedule(a))}
-                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#ead8df] bg-white py-2 text-[11.5px] font-bold text-[#6f4153] transition hover:border-[#ef9ab5] hover:text-[#c85776] disabled:opacity-50"
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-[color:var(--ba-brand-line)] bg-white py-2 text-[11.5px] font-bold text-[#6f4153] transition hover:border-[#ef9ab5] hover:text-[color:var(--ba-brand-accent)] disabled:opacity-50"
                         >
                           <CalendarClock className="h-3.5 w-3.5" />
                           {rescheduling ? 'Vazgeç' : 'Ertele'}
@@ -846,7 +846,7 @@ export default function CustomerPortalPage() {
                           exit={{ opacity: 0, height: 0 }}
                           className="overflow-hidden"
                         >
-                          <div className="mt-3 rounded-xl border border-[#ead8df] bg-white p-3">
+                          <div className="mt-3 rounded-xl border border-[color:var(--ba-brand-line)] bg-white p-3">
                             <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#b65f7b]">
                               <Clock3 className="h-3.5 w-3.5" />
                               Yeni tarih & saat
@@ -862,7 +862,7 @@ export default function CustomerPortalPage() {
                                     className={`flex shrink-0 flex-col items-center rounded-lg border px-2.5 py-1.5 text-[10.5px] font-bold transition ${
                                       active
                                         ? 'border-[#d65f83] bg-[#d65f83] text-white'
-                                        : 'border-[#ead8df] bg-white text-[#6f5968] hover:border-[#ef9ab5]'
+                                        : 'border-[color:var(--ba-brand-line)] bg-white text-[#6f5968] hover:border-[#ef9ab5]'
                                     }`}
                                   >
                                     <span className="opacity-80">{d.weekday}</span>
@@ -879,7 +879,7 @@ export default function CustomerPortalPage() {
                                     aria-hidden
                                     animate={{ rotate: 360 }}
                                     transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                                    className="h-3.5 w-3.5 rounded-full border-2 border-[#c85776] border-t-transparent"
+                                    className="h-3.5 w-3.5 rounded-full border-2 border-[color:var(--ba-brand-accent)] border-t-transparent"
                                   />
                                   Uygun saatler yükleniyor...
                                 </div>
@@ -897,7 +897,7 @@ export default function CustomerPortalPage() {
                                       onClick={() => void handleRescheduleSlot(s.start)}
                                       className={`rounded-lg border px-2.5 py-1.5 text-[11.5px] font-bold transition ${
                                         s.available
-                                          ? 'border-[#ead8df] bg-white text-[#6f4153] hover:border-[#d65f83] hover:bg-[#fff0f5] disabled:opacity-50'
+                                          ? 'border-[color:var(--ba-brand-line)] bg-white text-[#6f4153] hover:border-[#d65f83] hover:bg-[color:var(--ba-brand-blush)] disabled:opacity-50'
                                           : 'cursor-not-allowed border-[#f0e6ea] bg-[#f7eef1] text-[#bda6b0] line-through'
                                       }`}
                                     >

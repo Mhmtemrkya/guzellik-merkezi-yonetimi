@@ -1,0 +1,178 @@
+.gallery {
+  --gallery-paper: var(--ba-brand-paper);
+  --gallery-accent: var(--ba-brand-accent);
+  --gallery-night: var(--ba-brand-night);
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.mosaic, .empty {
+  height: clamp(235px, 67cqi, 430px);
+  min-width: 0;
+  border-radius: clamp(18px, 4cqi, 28px);
+}
+
+.mosaic {
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  gap: 5px;
+  overflow: hidden;
+  background: #f0d8e5;
+}
+
+.cover, .thumbnail {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  overflow: hidden;
+  background: #1d2e61;
+  cursor: zoom-in;
+}
+
+.thumbnail { display: none; }
+.cover:focus-visible, .thumbnail:focus-visible { z-index: 2; outline: 3px solid #ffd4e8; outline-offset: -5px; }
+
+.tileImage, .fullImage {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.tileImage { object-fit: cover; }
+.tileImage[hidden], .fullImage[hidden] { display: none; }
+
+.galleryCount {
+  position: absolute;
+  z-index: 1;
+  right: clamp(10px, 3cqi, 20px);
+  bottom: clamp(10px, 3cqi, 20px);
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #efcedf;
+  border-radius: 11px;
+  padding-inline: 13px;
+  background: var(--gallery-paper);
+  color: var(--gallery-night);
+  font-size: .82rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.galleryCount svg { color: var(--gallery-accent); }
+.photoFallback { color: #f0b7d3; }
+
+.empty {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 16px;
+  border: 1px solid #304580;
+  padding: 22px;
+  background: radial-gradient(ellipse at 65% 35%, #26396f, var(--gallery-night) 74%);
+  color: #f8d9ea;
+  text-align: center;
+}
+
+.empty p { font-size: .89rem; }
+
+.emblem {
+  display: grid;
+  width: clamp(92px, 23cqi, 123px);
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid #cc6c9a;
+  border-radius: 50%;
+  color: #f6b9d7;
+}
+
+.dialog {
+  position: fixed;
+  inset: 0;
+  width: min(1040px, calc(100% - 28px));
+  max-height: calc(100vh - 28px);
+  max-height: calc(100dvh - 28px);
+  margin: auto;
+  overflow: auto;
+  border: 1px solid #425486;
+  border-radius: 20px;
+  padding: 0;
+  background: var(--gallery-night);
+  color: var(--gallery-paper);
+}
+
+.dialog::backdrop { background: rgb(10 17 40 / .86); }
+.lightbox { padding: clamp(11px, 2.4vw, 24px); }
+
+.dialogHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dialogHeader h2 {
+  font-family: var(--font-display, system-ui);
+  font-size: clamp(1rem, 2.7vw, 1.36rem);
+  font-weight: 780;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.dialogHeader p { margin-top: 4px; color: #f2c4dc; font-size: .79rem; }
+
+.viewer {
+  position: relative;
+  display: grid;
+  height: min(65vh, 650px);
+  height: min(65dvh, 650px);
+  min-height: 120px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #0b1329;
+}
+
+.fullImage { object-fit: contain; }
+.controls { display: flex; justify-content: center; gap: 9px; margin-top: 12px; }
+
+.lightboxButton {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  place-items: center;
+  border: 1px solid #56699d;
+  border-radius: 50%;
+  background: #253761;
+  color: var(--gallery-paper);
+  cursor: pointer;
+}
+
+.lightboxButton:focus-visible { outline: 2px solid #ffd4e8; outline-offset: 3px; }
+
+@container (min-width: 480px) {
+  .mosaic[data-tiles='2'], .mosaic[data-tiles='3'] {
+    grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr);
+  }
+
+  .mosaic[data-tiles='3'] { grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .mosaic[data-tiles='3'] .cover { grid-row: 1 / -1; }
+  .thumbnail { display: grid; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .lightboxButton:hover { background: #354d85; }
+  .cover:hover .galleryCount { background: #fae8f2; }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .tileImage { transition: transform 200ms cubic-bezier(.23, 1, .32, 1); }
+  .cover:hover .tileImage, .thumbnail:hover .tileImage { transform: scale(1.035); }
+}

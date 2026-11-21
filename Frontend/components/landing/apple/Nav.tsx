@@ -38,12 +38,14 @@ import { SPRING_MOVE, SPRING_SHEET } from './springs'
  * sayfada paylaşıldığı için burada izlenmesi yanıltıcı olurdu.
  */
 const LINKS: { href: string; label: string; page?: string }[] = [
-  { href: '/#bir-gun', label: 'Bir gün' },
+  { href: '/#bir-gun-sahne', label: 'Bir gün' },
+  { href: '/salonlar', label: 'Salonlar', page: '/salonlar' },
   { href: '/#tur', label: 'Ürün turu' },
   { href: '/moduller', label: 'Modüller', page: '/moduller' },
   { href: '/#nasil', label: 'Nasıl çalışır' },
   { href: '/#fiyat', label: 'Fiyatlandırma' },
   { href: '/destek', label: 'Destek', page: '/destek' },
+  { href: '/iletisim', label: 'İletişim', page: '/iletisim' },
 ]
 
 export default function Nav() {
@@ -103,14 +105,10 @@ export default function Nav() {
           <Link href="/" className="flex shrink-0 items-center gap-2.5">
             {/* Marka rozeti tam renkli ve opaktır; filtreyle beyazlatmak markayı yok eder. */}
             <Image src="/logo.png" alt="" width={36} height={36} priority className="h-9 w-9 object-contain" />
-            <span className="text-[16px] font-semibold tracking-[-0.02em] text-[#352432]">BeautyAsist</span>
+            <span className="text-[16px] font-semibold tracking-[-0.02em] text-[color:var(--ba-brand-ink)]">BeautyAsist</span>
           </Link>
 
-          {/* BAĞLANTILAR ORTADA: `mx-auto` ile iki yandaki blokların arasında ortalanır, böylece
-              sağdaki eylemler büyüyüp küçüldükçe menü sağa sola kaymaz.
-              md'DEN İTİBAREN GÖRÜNÜR: eskiden lg (1024px) şarttı ve 900px'lik bir ekranda
-              logo + üç düğme + hamburger kalıyordu — yer varken menü saklanıyordu. */}
-          <nav className="mx-auto hidden items-center gap-0.5 md:flex">
+          <nav aria-label="Ana menü" className="mx-auto hidden items-center gap-0.5 lg:flex">
             {LINKS.map((l) => {
               const active = l.page ? pathname === l.page : false
               return (
@@ -120,8 +118,8 @@ export default function Nav() {
                   aria-current={active ? 'page' : undefined}
                   className={`on-material rounded-full px-2.5 py-1.5 text-[13px] transition-colors duration-200 lg:px-3 ${
                     active
-                      ? 'bg-[#FFE7EF] font-medium text-[#C2456B]'
-                      : 'text-[#4A3A44] hover:bg-white/70 hover:text-[#C2456B]'
+                      ? 'bg-[color:var(--ba-brand-blush)] font-medium text-[color:var(--ba-brand-accent)]'
+                      : 'text-[color:var(--ba-brand-muted)] hover:bg-white/70 hover:text-[color:var(--ba-brand-accent)]'
                   }`}
                 >
                   {l.label}
@@ -130,17 +128,18 @@ export default function Nav() {
             })}
           </nav>
 
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 md:ml-0">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 lg:ml-0">
             <NavAccount />
 
-            <PressButton
-              tone="glass-light"
-              className="h-9 w-9 border border-[#EEC9D7] bg-white md:hidden"
-              ariaLabel={menuOpen ? 'Menüyü kapat' : 'Menüyü aç'}
+            <button
+              type="button"
+              className="grid h-11 w-11 place-items-center rounded-full border border-[color:var(--ba-brand-line)] bg-white text-[color:var(--ba-brand-ink)] lg:hidden"
+              aria-label={menuOpen ? 'Menüyü kapat' : 'Menüyü aç'}
+              aria-expanded={menuOpen}
               onClick={() => setMenuOpen((v) => !v)}
             >
-              {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-            </PressButton>
+              {menuOpen ? <X className="h-4 w-4" aria-hidden="true" /> : <Menu className="h-4 w-4" aria-hidden="true" />}
+            </button>
           </div>
         </div>
       </div>
@@ -149,11 +148,12 @@ export default function Nav() {
         {menuOpen && (
           <motion.nav
             key="menu"
+            aria-label="Ana menü"
             initial={reduced ? { opacity: 0 } : { opacity: 0, y: -12 }}
             animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
             exit={reduced ? { opacity: 0 } : { opacity: 0, y: -12 }}
             transition={reduced ? SPRING_MOVE : SPRING_SHEET}
-            className="material-light max-h-[calc(100dvh-3.5rem)] w-full overflow-y-auto border-t border-[#F2DFE7] px-5 py-3 shadow-[0_18px_50px_-28px_rgba(60,25,42,0.9)] sm:px-8 md:hidden"
+            className="material-light max-h-[calc(100dvh-3.5rem)] w-full overflow-y-auto border-t border-[color:var(--ba-brand-line)] px-5 py-3 shadow-[0_18px_50px_-28px_rgba(60,25,42,0.9)] sm:px-8 lg:hidden"
           >
             <ul className="space-y-0.5">
               {LINKS.map((l) => {
@@ -166,8 +166,8 @@ export default function Nav() {
                       aria-current={active ? 'page' : undefined}
                       className={`on-material block rounded-xl px-3 py-2.5 text-[14.5px] transition-colors ${
                         active
-                          ? 'bg-[#FFE7EF] font-medium text-[#C2456B]'
-                          : 'text-[#4A3A44] hover:bg-white hover:text-[#C2456B]'
+                          ? 'bg-[color:var(--ba-brand-blush)] font-medium text-[color:var(--ba-brand-accent)]'
+                          : 'text-[color:var(--ba-brand-muted)] hover:bg-white hover:text-[color:var(--ba-brand-accent)]'
                       }`}
                     >
                       {l.label}
@@ -181,11 +181,11 @@ export default function Nav() {
                 "Giriş yap" ile "Nasıl çalışır" aynı şeymiş gibi görünüyordu.
                 OTURUMA DUYARLI: eski liste "Giriş yap"ı KOŞULSUZ ekliyordu, giriş yapmış
                 kullanıcıya da gösteriliyordu. */}
-            <div className="mt-3 grid gap-2 border-t border-[#F2DFE7] pt-3">
+            <div className="mt-3 grid gap-2 border-t border-[color:var(--ba-brand-line)] pt-3">
               <PressButton
                 href="/salonlar"
                 tone="glass-light"
-                className="w-full justify-center border border-[#EEC9D7] bg-white py-2.5 text-[14px]"
+                className="w-full justify-center border border-[color:var(--ba-brand-line)] bg-white py-2.5 text-[14px]"
               >
                 <CalendarHeart className="h-4 w-4" /> Randevu al
               </PressButton>
@@ -199,7 +199,7 @@ export default function Nav() {
                   <PressButton
                     href="/login"
                     tone="glass-light"
-                    className="w-full justify-center border border-[#EEC9D7] bg-white py-2.5 text-[14px]"
+                    className="w-full justify-center border border-[color:var(--ba-brand-line)] bg-white py-2.5 text-[14px]"
                   >
                     Giriş
                   </PressButton>

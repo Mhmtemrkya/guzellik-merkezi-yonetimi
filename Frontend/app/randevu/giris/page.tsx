@@ -38,20 +38,20 @@ const itemVariants: Variants = {
 }
 
 const inputWrap =
-  'flex items-center gap-3 rounded-xl border border-[#ead8df] bg-white px-4 transition-colors focus-within:border-[#e798b4] focus-within:shadow-[0_0_0_4px_rgba(240,170,194,0.18)]'
+  'flex items-center gap-3 rounded-xl border border-[color:var(--ba-brand-line)] bg-white px-4 transition-colors focus-within:border-[#e798b4] focus-within:shadow-[0_0_0_4px_rgba(240,170,194,0.18)]'
 const inputCls =
-  'min-h-12 w-full bg-transparent text-[14px] text-[#352432] outline-none placeholder:text-[#352432]/[0.30]'
-const labelCls = 'mb-2 block text-[10px] font-mono uppercase tracking-[0.22em] text-[#352432]/[0.55]'
+  'min-h-12 w-full bg-transparent text-[14px] text-[color:var(--ba-brand-ink)] outline-none placeholder:text-[#142458]/[0.30]'
+const labelCls = 'mb-2 block text-[10px] font-mono uppercase tracking-[0.22em] text-[#142458]/[0.55]'
 
 function FeatureRow({ icon: Icon, title, desc }: { icon: LucideIcon; title: string; desc: string }) {
   return (
     <motion.div variants={itemVariants} className="flex items-start gap-4">
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[#ead8df] bg-white/80 text-[#c85776] shadow-[0_10px_26px_-18px_rgba(200,87,118,0.55)]">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[color:var(--ba-brand-line)] bg-white/80 text-[color:var(--ba-brand-accent)] shadow-[0_10px_26px_-18px_rgba(200,87,118,0.55)]">
         <Icon className="h-[18px] w-[18px]" strokeWidth={1.5} />
       </span>
       <div>
-        <div className="text-[13px] font-semibold text-[#352432]">{title}</div>
-        <div className="mt-0.5 max-w-xs text-[11.5px] leading-relaxed text-[#352432]/[0.55]">{desc}</div>
+        <div className="text-[13px] font-semibold text-[color:var(--ba-brand-ink)]">{title}</div>
+        <div className="mt-0.5 max-w-xs text-[11.5px] leading-relaxed text-[#142458]/[0.55]">{desc}</div>
       </div>
     </motion.div>
   )
@@ -256,7 +256,7 @@ export default function CustomerLoginPage() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#fbe9f0] text-[#352432]">
+    <main className="relative min-h-screen overflow-hidden bg-[color:var(--ba-brand-blush)] text-[color:var(--ba-brand-ink)]">
       {/* arka plan görseli + dekor — panel girişiyle aynı dil */}
       <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
         <img src="/login-arkaplan.png" alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -286,8 +286,8 @@ export default function CustomerLoginPage() {
                 <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full object-contain" />
               </span>
               <span>
-                <span className="block font-display text-2xl tracking-[-0.02em] text-[#3a1f2c]">BeautyAsist</span>
-                <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-[0.24em] text-[#c85776]/80">
+                <span className="block font-display text-2xl tracking-[-0.02em] text-[color:var(--ba-brand-ink)]">BeautyAsist</span>
+                <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-[0.24em] text-[#a3295b]/80">
                   Online Randevu
                 </span>
               </span>
@@ -295,21 +295,21 @@ export default function CustomerLoginPage() {
 
             <motion.div
               variants={itemVariants}
-              className="mt-12 text-[10px] font-mono uppercase tracking-[0.32em] text-[#c85776]/75"
+              className="mt-12 text-[10px] font-mono uppercase tracking-[0.32em] text-[#a3295b]/75"
             >
               Güzelliğinize ayrılan zaman
             </motion.div>
 
             <motion.h1
               variants={itemVariants}
-              className="mt-4 font-display text-5xl leading-[1.02] tracking-tight text-[#3a1f2c] xl:text-6xl"
+              className="mt-4 font-display text-5xl leading-[1.02] tracking-tight text-[color:var(--ba-brand-ink)] xl:text-6xl"
             >
               Randevunuz,
               <br />
               <span className="beautyasist-text-gradient italic">bir dakikada.</span>
             </motion.h1>
 
-            <motion.p variants={itemVariants} className="mt-6 max-w-sm text-[13px] leading-relaxed text-[#352432]/[0.60]">
+            <motion.p variants={itemVariants} className="mt-6 max-w-sm text-[13px] leading-relaxed text-[#142458]/[0.60]">
               Hizmetinizi, uzmanınızı ve saatinizi seçin; randevunuz anında oluşsun. Şifre gerekmez — bilgilerinizle
               güvenle giriş yapın.
             </motion.p>
@@ -335,7 +335,7 @@ export default function CustomerLoginPage() {
 
           <motion.div
             variants={itemVariants}
-            className="mt-10 flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.22em] text-[#352432]/[0.40]"
+            className="mt-10 flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.22em] text-[#142458]/[0.40]"
           >
             <span>© 2026 BeautyAsist</span>
             <span className="flex items-center gap-2">
@@ -343,7 +343,7 @@ export default function CustomerLoginPage() {
                 aria-hidden
                 animate={{ opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-                className="h-1.5 w-1.5 rounded-full bg-[#c85776]"
+                className="h-1.5 w-1.5 rounded-full bg-[color:var(--ba-brand-accent)]"
               />
               secure.session
             </span>
@@ -359,23 +359,23 @@ export default function CustomerLoginPage() {
         >
           <form
             onSubmit={handleSubmit}
-            className="relative overflow-hidden rounded-[32px] border border-white/80 bg-gradient-to-br from-white/95 via-[#fff7fa]/95 to-[#fff0f5]/95 p-6 shadow-[0_44px_120px_-48px_rgba(120,71,88,0.55)] backdrop-blur-2xl sm:p-10"
+            className="relative overflow-hidden rounded-[32px] border border-white/80 bg-gradient-to-br from-white/95 via-[#fff7fb]/95 to-[#faedf3]/95 p-6 shadow-[0_44px_120px_-48px_rgba(120,71,88,0.55)] backdrop-blur-2xl sm:p-10"
           >
             <span aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-[#f0aac2]/[0.22] blur-3xl" />
             <span aria-hidden className="pointer-events-none absolute -left-20 bottom-0 h-56 w-56 rounded-full bg-[#ffd3df]/[0.20] blur-3xl" />
 
             <div className="relative text-center">
-              <div className="text-[13px] font-medium text-[#c85776]">Hoş geldiniz</div>
-              <h2 className="mt-1.5 flex items-center justify-center gap-3 font-display text-[32px] leading-tight tracking-tight text-[#2f1724] sm:text-[42px]">
+              <div className="text-[13px] font-medium text-[color:var(--ba-brand-accent)]">Hoş geldiniz</div>
+              <h2 className="mt-1.5 flex items-center justify-center gap-3 font-display text-[32px] leading-tight tracking-tight text-[color:var(--ba-brand-ink)] sm:text-[42px]">
                 <Sparkles aria-hidden className="hidden h-4 w-4 text-[#e798b4] sm:block" />
                 Online randevunuzu alın
                 <Sparkles aria-hidden className="hidden h-4 w-4 text-[#e798b4] sm:block" />
               </h2>
-              <p className="mt-2 text-[12px] text-[#352432]/[0.50]">Şifresiz güvenli giriş — bilgileriniz yeterli</p>
+              <p className="mt-2 text-[12px] text-[#142458]/[0.50]">Şifresiz güvenli giriş — bilgileriniz yeterli</p>
             </div>
 
             {/* Giriş / Kayıt sekmesi */}
-            <div className="relative mx-auto mt-7 grid w-full max-w-sm grid-cols-2 rounded-2xl border border-[#ead8df] bg-white/80 p-1">
+            <div className="relative mx-auto mt-7 grid w-full max-w-sm grid-cols-2 rounded-2xl border border-[color:var(--ba-brand-line)] bg-white/80 p-1">
               {(
                 [
                   { key: 'login', label: 'Giriş Yap', icon: UserRound },
@@ -400,7 +400,7 @@ export default function CustomerLoginPage() {
                       setEmailStage(null)
                     }}
                     className={`relative flex min-h-10 items-center justify-center gap-2 rounded-xl text-[12.5px] font-semibold transition-colors ${
-                      active ? 'text-white' : 'text-[#352432]/[0.55] hover:text-[#c85776]'
+                      active ? 'text-white' : 'text-[#142458]/[0.55] hover:text-[color:var(--ba-brand-accent)]'
                     }`}
                   >
                     {active && (
@@ -423,7 +423,7 @@ export default function CustomerLoginPage() {
               <div>
                 <label className={labelCls}>Ad Soyad</label>
                 <div className={inputWrap}>
-                  <UserRound className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                  <UserRound className="h-4 w-4 shrink-0 text-[#a3295b]/70" strokeWidth={1.6} />
                   <input
                     type="text"
                     value={fullName}
@@ -438,7 +438,7 @@ export default function CustomerLoginPage() {
               <div>
                 <label className={labelCls}>Telefon</label>
                 <div className={inputWrap}>
-                  <Phone className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                  <Phone className="h-4 w-4 shrink-0 text-[#a3295b]/70" strokeWidth={1.6} />
                   <input
                     type="tel"
                     value={phone}
@@ -463,7 +463,7 @@ export default function CustomerLoginPage() {
                 <div>
                   <label className={labelCls}>E-posta</label>
                   <div className={inputWrap}>
-                    <Mail className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                    <Mail className="h-4 w-4 shrink-0 text-[#a3295b]/70" strokeWidth={1.6} />
                     <input
                       type="email"
                       value={email}
@@ -473,19 +473,19 @@ export default function CustomerLoginPage() {
                       autoComplete="email"
                     />
                   </div>
-                  <p className="mt-2 text-[11.5px] text-[#352432]/[0.55]">
+                  <p className="mt-2 text-[11.5px] text-[#142458]/[0.55]">
                     Kurumunuzda kayıtlı e-posta adresiniz. Kod bu adrese gönderilir.
                   </p>
                 </div>
               )}
 
-              <div className="flex items-start gap-3 rounded-2xl border border-[#ead8df] bg-white/70 px-4 py-3">
+              <div className="flex items-start gap-3 rounded-2xl border border-[color:var(--ba-brand-line)] bg-white/70 px-4 py-3">
                 {mode === 'register' && !emailStage && phoneStageLikely ? (
-                  <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-[#c85776]" strokeWidth={1.7} />
+                  <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--ba-brand-accent)]" strokeWidth={1.7} />
                 ) : (
-                  <Mail className="mt-0.5 h-4 w-4 shrink-0 text-[#c85776]" strokeWidth={1.7} />
+                  <Mail className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--ba-brand-accent)]" strokeWidth={1.7} />
                 )}
-                <p className="text-[12px] leading-relaxed text-[#352432]/[0.65]">
+                <p className="text-[12px] leading-relaxed text-[#142458]/[0.65]">
                   {mode === 'login'
                     ? 'Doğrulama kodu kayıtlı e-posta adresinize gönderilecek.'
                     : emailStage
@@ -512,7 +512,7 @@ export default function CustomerLoginPage() {
                             günü kampanyalarında kullanılır (App Store 5.1.1(v)). */}
                         <label className={labelCls}>Doğum Tarihi (isteğe bağlı)</label>
                         <div className={inputWrap}>
-                          <CalendarDays className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                          <CalendarDays className="h-4 w-4 shrink-0 text-[#a3295b]/70" strokeWidth={1.6} />
                           <input
                             type="date"
                             value={birthDate}
@@ -536,14 +536,14 @@ export default function CustomerLoginPage() {
                                 onClick={() => setGender(option.value)}
                                 className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-[12.5px] font-medium transition-colors ${
                                   active
-                                    ? 'border-[#c85776] bg-[#fff0f5] text-[#2f1724] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
-                                    : 'border-[#ead8df] bg-white/80 text-[#352432]/[0.70] hover:border-[#e798b4]'
+                                    ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-blush)] text-[color:var(--ba-brand-ink)] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
+                                    : 'border-[color:var(--ba-brand-line)] bg-white/80 text-[#142458]/[0.70] hover:border-[#e798b4]'
                                 }`}
                               >
                                 {option.label}
                                 <span
                                   className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors ${
-                                    active ? 'border-[#c85776] bg-[#c85776]' : 'border-[#ead8df]'
+                                    active ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-accent)]' : 'border-[color:var(--ba-brand-line)]'
                                   }`}
                                 >
                                   {active && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
@@ -557,7 +557,7 @@ export default function CustomerLoginPage() {
                         {/* ZORUNLU: giriş kodu bu adrese gidecek (bkz. validateIdentity). */}
                         <label className={labelCls}>E-posta</label>
                         <div className={inputWrap}>
-                          <Mail className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                          <Mail className="h-4 w-4 shrink-0 text-[#a3295b]/70" strokeWidth={1.6} />
                           <input
                             type="email"
                             value={email}
@@ -567,7 +567,7 @@ export default function CustomerLoginPage() {
                             autoComplete="email"
                           />
                         </div>
-                        <p className="mt-2 text-[11.5px] text-[#352432]/[0.55]">
+                        <p className="mt-2 text-[11.5px] text-[#142458]/[0.55]">
                           Bir sonraki girişinizde doğrulama kodu bu adrese gönderilecek.
                         </p>
                       </div>
@@ -578,7 +578,7 @@ export default function CustomerLoginPage() {
                         "onay verildi" yazıyordu. Onay hukuki bir beyandır: alınmadan üretilemez.
                         Sunucu da ayrıca doğrular; bu kutu tek kapı değildir.
                       */}
-                      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[#ead8df] bg-white/80 p-4 transition-colors hover:border-[#e798b4]">
+                      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[color:var(--ba-brand-line)] bg-white/80 p-4 transition-colors hover:border-[#e798b4]">
                         <input
                           type="checkbox"
                           checked={kvkkConsent}
@@ -586,15 +586,15 @@ export default function CustomerLoginPage() {
                             setKvkkConsent(e.target.checked)
                             setError('')
                           }}
-                          className="mt-0.5 h-4 w-4 shrink-0 accent-[#c85776]"
+                          className="mt-0.5 h-4 w-4 shrink-0 accent-[color:var(--ba-brand-accent)]"
                         />
-                        <span className="text-[12px] leading-relaxed text-[#352432]/[0.70]">
+                        <span className="text-[12px] leading-relaxed text-[#142458]/[0.70]">
                           <a
                             href="/gizlilik"
                             target="_blank"
                             rel="noreferrer"
                             onClick={(e) => e.stopPropagation()}
-                            className="font-semibold text-[#c85776] underline underline-offset-2"
+                            className="font-semibold text-[color:var(--ba-brand-accent)] underline underline-offset-2"
                           >
                             KVKK aydınlatma metnini
                           </a>{' '}
@@ -616,12 +616,12 @@ export default function CustomerLoginPage() {
                     exit={{ opacity: 0, height: 0 }}
                     className="overflow-hidden"
                   >
-                    <div className="rounded-2xl border border-[#e798b4]/50 bg-[#fff0f5]/70 p-4">
-                      <div className="text-[12px] leading-relaxed text-[#352432]/[0.70]">{otpInfo}</div>
+                    <div className="rounded-2xl border border-[#e798b4]/50 bg-[#faedf3]/70 p-4">
+                      <div className="text-[12px] leading-relaxed text-[#142458]/[0.70]">{otpInfo}</div>
                       <div className="mt-3">
                         <label className={labelCls}>Doğrulama Kodu</label>
                         <div className={inputWrap}>
-                          <Check className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                          <Check className="h-4 w-4 shrink-0 text-[#a3295b]/70" strokeWidth={1.6} />
                           <input
                             type="text"
                             inputMode="numeric"
@@ -635,10 +635,10 @@ export default function CustomerLoginPage() {
                         </div>
                       </div>
                       <div className="mt-2 flex items-center justify-between text-[11px]">
-                        <button type="button" onClick={() => { setOtpStage('idle'); setError('') }} className="text-[#9d7386] hover:text-[#c85776]">
+                        <button type="button" onClick={() => { setOtpStage('idle'); setError('') }} className="text-[#9d7386] hover:text-[color:var(--ba-brand-accent)]">
                           ← Bilgilerle giriş yap
                         </button>
-                        <button type="button" disabled={loading} onClick={() => void handleOtpRequest()} className="font-semibold text-[#c85776] hover:underline disabled:opacity-50">
+                        <button type="button" disabled={loading} onClick={() => void handleOtpRequest()} className="font-semibold text-[color:var(--ba-brand-accent)] hover:underline disabled:opacity-50">
                           Kodu tekrar gönder
                         </button>
                       </div>
@@ -695,8 +695,8 @@ export default function CustomerLoginPage() {
               {/* Ayrı "WhatsApp kodu ile giriş" butonu kaldırıldı: kod artık ALTERNATİF değil,
                   tek yol. Ana buton önce kodu gönderir, sonra doğrular. Kanalı kullanıcı seçer. */}
 
-              <p className="flex items-center justify-center gap-2 pt-1 text-center text-[11px] text-[#352432]/[0.45]">
-                <Lock className="h-3.5 w-3.5 text-[#c85776]/70" strokeWidth={1.6} />
+              <p className="flex items-center justify-center gap-2 pt-1 text-center text-[11px] text-[#142458]/[0.45]">
+                <Lock className="h-3.5 w-3.5 text-[#a3295b]/70" strokeWidth={1.6} />
                 {otpStage === 'code'
                   ? 'Güvenliğiniz için size gönderilen doğrulama kodunu girmeniz gerekir.'
                   : mode === 'login'

@@ -1,0 +1,168 @@
+.header {
+  position: sticky;
+  z-index: 40;
+  top: 0;
+  border-bottom: 1px solid var(--ba-brand-line, #ebd6e2);
+  background: var(--ba-brand-paper, #fff7fb);
+  color: var(--ba-brand-ink, #142458);
+}
+
+.inner,
+.detailInner {
+  display: grid;
+  width: min(100% - 2 * clamp(20px, 6vw, 96px), 1520px);
+  min-height: 71px;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  margin-inline: auto;
+}
+
+.brand {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 44px;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-display, system-ui, sans-serif);
+  font-size: 1.13rem;
+  font-weight: 800;
+  letter-spacing: -.055em;
+  line-height: 1;
+}
+
+.brand img { flex: none; object-fit: contain; }
+
+.menu {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: clamp(15px, 2.3vw, 43px);
+}
+
+.menu a,
+.bookings {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 7px;
+  font-size: .875rem;
+  font-weight: 680;
+  white-space: nowrap;
+}
+
+.menu a { color: var(--ba-brand-muted, #5d536a); }
+.menu a:hover,
+.menu a[aria-current='page'] { color: var(--ba-brand-accent, #a3295b); text-decoration: underline; text-underline-offset: 6px; }
+
+.bookings {
+  justify-self: end;
+  border: 1px solid var(--ba-brand-line, #ebd6e2);
+  border-radius: 10px;
+  padding-inline: 12px;
+  color: var(--ba-brand-accent, #a3295b);
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.bookings:hover { border-color: var(--ba-brand-pink, #cf477c); background: var(--ba-brand-blush, #faedf3); }
+
+.header :is(a, button):focus-visible { outline: 2px solid var(--ba-brand-accent, #a3295b); outline-offset: 3px; }
+
+.back {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 44px;
+  align-items: center;
+  gap: 4px;
+  color: var(--ba-brand-ink, #142458);
+  font-size: .875rem;
+  font-weight: 680;
+  white-space: nowrap;
+}
+
+.back:hover { color: var(--ba-brand-accent, #a3295b); text-decoration: underline; text-underline-offset: 5px; }
+
+.detailActions {
+  position: relative;
+  display: flex;
+  justify-self: end;
+  gap: 6px;
+}
+
+.detailAction {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--ba-brand-line, #ebd6e2);
+  border-radius: 10px;
+  color: var(--ba-brand-ink, #142458);
+  cursor: pointer;
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease;
+}
+
+.detailAction:hover,
+.detailAction[aria-pressed='true'] {
+  border-color: var(--ba-brand-pink, #cf477c);
+  background: var(--ba-brand-blush, #faedf3);
+  color: var(--ba-brand-accent, #a3295b);
+}
+
+.detailAction[aria-pressed='true'] svg { fill: currentColor; }
+
+.shareStatus {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: max-content;
+  max-width: min(240px, calc(100vw - 40px));
+  border: 1px solid var(--ba-brand-line, #ebd6e2);
+  border-radius: 9px;
+  padding: 7px 10px;
+  background: var(--ba-brand-surface, #fff);
+  color: var(--ba-brand-ink, #142458);
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.shareStatus:empty { border-width: 0; padding: 0; }
+
+@media (max-width: 880px) {
+  .inner {
+    min-height: 93px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 10px;
+    padding-top: 4px;
+  }
+
+  .menu {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: space-between;
+    gap: 0 6px;
+    border-top: 1px solid var(--ba-brand-line, #ebd6e2);
+  }
+}
+
+@media (max-width: 420px) {
+  .menu { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .menu a { justify-content: center; }
+  .menu a, .bookings { font-size: .8rem; }
+  .detailInner { min-height: 63px; gap: 8px; }
+  .detailActions { gap: 4px; }
+  .back { font-size: .8rem; }
+}
+
+@media (max-width: 350px) {
+  .inner, .detailInner { width: calc(100% - 24px); }
+  .brand { gap: 2px; font-size: 1.02rem; }
+  .brand img { width: 36px; height: 36px; }
+  .bookings { gap: 5px; padding-inline: 8px; }
+  .menu a { font-size: .75rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bookings, .detailAction { transition: none; }
+}

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
-import Nav from '@/components/landing/apple/Nav'
+import PublicNavbar from '@/components/public/PublicNavbar'
 import TrackClient from '@/components/support/TrackClient'
 
 export const metadata: Metadata = {
@@ -27,8 +27,8 @@ export const metadata: Metadata = {
  */
 export default function SupportTrackPage() {
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-[#FFF7FA] text-[#352432] antialiased">
-      <Nav />
+    <div className="min-h-screen bg-[color:var(--ba-brand-paper)] text-[color:var(--ba-brand-ink)] antialiased">
+      <PublicNavbar />
       <main className="mx-auto max-w-[900px] px-5 py-12 sm:px-8 sm:py-16">
         <Suspense fallback={<div className="h-64 animate-pulse rounded-[26px] bg-white/60" />}>
           <TrackClient />

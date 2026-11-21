@@ -8,6 +8,7 @@ import {
   Loader2, Mail, Phone, Rocket, Ticket, UserCog, type LucideIcon,
 } from 'lucide-react'
 import { createSupportTicket, type SupportCategory, type SupportTicketCreated } from '@/lib/supportApi'
+import { company } from '@/lib/legal/company'
 
 /**
  * DESTEK FORMU — tanıtım sayfasındaki `/destek` sayfasının kalbi.
@@ -55,9 +56,9 @@ const fade: Variants = {
   exit: { opacity: 0, y: -8, transition: { duration: 0.2 } },
 }
 
-const labelCls = 'mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9A7386]'
+const labelCls = 'mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--ba-brand-muted)]'
 const fieldCls =
-  'min-h-12 w-full rounded-2xl border border-[#EEDCE4] bg-white px-4 text-[14px] text-[#352432] outline-none transition-colors placeholder:text-[#B29AA5] focus:border-[#EF6F94] focus:shadow-[0_0_0_4px_rgba(239,111,148,0.12)]'
+  'min-h-12 w-full rounded-xl border border-[color:var(--ba-brand-line)] bg-white px-4 text-base text-[color:var(--ba-brand-ink)] outline-none transition-colors placeholder:text-[color:var(--ba-brand-muted)] focus:border-[color:var(--ba-brand-accent)] focus:ring-2 focus:ring-[color:var(--ba-brand-light)] sm:text-[14px]'
 
 export default function SupportForm({ signedIn = false }: { signedIn?: boolean }) {
   const [category, setCategory] = useState<SupportCategory>(1)
@@ -117,34 +118,34 @@ export default function SupportForm({ signedIn = false }: { signedIn?: boolean }
   if (created) {
     const trackHref = relativeTrackHref(created)
     return (
-      <motion.div variants={fade} initial="hidden" animate="visible" className="material-light material-thick rounded-[26px] p-7 sm:p-9">
+      <motion.div variants={fade} initial="hidden" animate="visible" className="rounded-[22px] border border-[color:var(--ba-brand-line)] bg-white p-5 sm:p-9">
         <span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
           <Check className="h-6 w-6" strokeWidth={2.2} />
         </span>
-        <h2 className="mt-5 text-[22px] font-semibold tracking-[-0.02em] text-[#352432]">Talebiniz bize ulaştı.</h2>
-        <p className="on-material mt-2 text-[14px] leading-relaxed text-[#5A4752]">
+        <h2 className="mt-5 text-[22px] font-semibold tracking-[-0.02em] text-[color:var(--ba-brand-ink)]">Talebiniz bize ulaştı.</h2>
+        <p className="on-material mt-2 text-[14px] leading-relaxed text-[color:var(--ba-brand-muted)]">
           Takip kodunuzu e-postanıza da gönderdik. Ekibimiz en kısa sürede yanıt yazacak.
         </p>
 
-        <div className="mt-6 rounded-2xl border border-[#EEDCE4] bg-white p-5">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#9A7386]">Takip kodunuz</div>
-          <div className="mt-1.5 font-mono text-[26px] font-bold tracking-[0.04em] text-[#C85776]">{created.code}</div>
-          <p className="mt-3 text-[12.5px] leading-relaxed text-[#6B5661]">
+        <div className="mt-6 rounded-2xl border border-[color:var(--ba-brand-line)] bg-white p-5">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--ba-brand-muted)]">Takip kodunuz</div>
+          <div className="mt-1.5 font-mono text-[26px] font-bold tracking-[0.04em] text-[color:var(--ba-brand-accent)]">{created.code}</div>
+          <p className="mt-3 text-[12.5px] leading-relaxed text-[color:var(--ba-brand-muted)]">
             Talebinizi görüntülemek ve yanıt yazmak için aşağıdaki bağlantıyı kullanın.
-            <b className="text-[#352432]"> Bu bağlantı size özeldir; saklayın ve paylaşmayın.</b>
+            <b className="text-[color:var(--ba-brand-ink)]"> Bu bağlantı size özeldir; saklayın ve paylaşmayın.</b>
           </p>
 
           <div className="mt-4 flex flex-wrap gap-2.5">
             <Link
               href={trackHref}
-              className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[#C85776] px-5 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
+              className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[color:var(--ba-brand-accent)] px-5 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
             >
               <Ticket className="h-4 w-4" /> Talebimi görüntüle
             </Link>
             <button
               type="button"
               onClick={() => void copyLink()}
-              className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-[#EEDCE4] bg-white px-5 text-[13px] font-medium text-[#4A3A44] transition-colors hover:border-[#EF6F94]"
+              className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-[color:var(--ba-brand-line)] bg-white px-5 text-[13px] font-medium text-[color:var(--ba-brand-muted)] transition-colors hover:border-[color:var(--ba-brand-accent)]"
             >
               {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
               {copied ? 'Kopyalandı' : 'Bağlantıyı kopyala'}
@@ -159,7 +160,7 @@ export default function SupportForm({ signedIn = false }: { signedIn?: boolean }
             setSubject('')
             setMessage('')
           }}
-          className="mt-5 text-[13px] font-medium text-[#C85776] transition-colors hover:text-[#A23F5C]"
+          className="mt-5 text-[13px] font-medium text-[color:var(--ba-brand-accent)] transition-colors hover:text-[color:var(--ba-brand-accent)]"
         >
           Başka bir talep oluştur
         </button>
@@ -169,9 +170,9 @@ export default function SupportForm({ signedIn = false }: { signedIn?: boolean }
 
   // ---------------------------------------------------------------- FORM
   return (
-    <form onSubmit={submit} className="material-light material-thick rounded-[26px] p-7 sm:p-9">
-      <div>
-        <label className={labelCls}>Konu hangisi?</label>
+    <form onSubmit={submit} className="rounded-[22px] border border-[color:var(--ba-brand-line)] bg-white p-4 sm:p-8">
+      <fieldset className="min-w-0">
+        <legend className={labelCls}>Konu hangisi?</legend>
         <div className="grid gap-2.5 sm:grid-cols-2">
           {CATEGORIES.map(({ key, label, hint, icon: Icon }) => {
             const active = category === key
@@ -184,23 +185,23 @@ export default function SupportForm({ signedIn = false }: { signedIn?: boolean }
                 aria-pressed={active}
                 className={`flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-left transition-colors ${
                   active
-                    ? 'border-[#EF6F94] bg-[#FFF0F5] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
-                    : 'border-[#EEDCE4] bg-white hover:border-[#F2A8C0]'
+                    ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-blush)] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
+                    : 'border-[color:var(--ba-brand-line)] bg-white hover:border-[color:var(--ba-brand-pink)]'
                 }`}
               >
                 <Icon
-                  className={`mt-0.5 h-4 w-4 shrink-0 ${active ? 'text-[#C85776]' : 'text-[#B29AA5]'}`}
+                  className={`mt-0.5 h-4 w-4 shrink-0 ${active ? 'text-[color:var(--ba-brand-accent)]' : 'text-[color:var(--ba-brand-muted)]'}`}
                   strokeWidth={1.8}
                 />
                 <span className="min-w-0">
-                  <span className="block text-[13.5px] font-semibold text-[#352432]">{label}</span>
-                  <span className="mt-0.5 block text-[11.5px] leading-relaxed text-[#7B6470]">{hint}</span>
+                  <span className="block text-[13.5px] font-semibold text-[color:var(--ba-brand-ink)]">{label}</span>
+                  <span className="mt-0.5 block text-[11.5px] leading-relaxed text-[color:var(--ba-brand-muted)]">{hint}</span>
                 </span>
               </motion.button>
             )
           })}
         </div>
-      </div>
+      </fieldset>
 
       <div className="mt-6">
         <label className={labelCls} htmlFor="sup-subject">
@@ -230,7 +231,7 @@ export default function SupportForm({ signedIn = false }: { signedIn?: boolean }
           className={`${fieldCls} min-h-[150px] resize-y py-3.5 leading-relaxed`}
           placeholder="Adım adım ne yaptığınızı ve ne beklediğinizi yazarsanız çok daha hızlı çözeriz. Varsa hata mesajını da ekleyin."
         />
-        <div className="mt-1.5 text-right text-[11px] text-[#B29AA5]">{message.length}/4000</div>
+        <div className="mt-1.5 text-right text-[11px] text-[color:var(--ba-brand-muted)]">{message.length}/4000</div>
       </div>
 
       {/* KİMLİK — yalnız oturumsuz ziyaretçiye sorulur. Giriş yapmış kullanıcıda bu alanlar
@@ -267,7 +268,7 @@ export default function SupportForm({ signedIn = false }: { signedIn?: boolean }
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls} htmlFor="sup-phone">
-              Telefon <span className="font-normal normal-case tracking-normal text-[#B29AA5]">(isteğe bağlı)</span>
+              Telefon <span className="font-normal normal-case tracking-normal text-[color:var(--ba-brand-muted)]">(isteğe bağlı)</span>
             </label>
             <input
               id="sup-phone"
@@ -281,8 +282,8 @@ export default function SupportForm({ signedIn = false }: { signedIn?: boolean }
           </div>
         </div>
       ) : (
-        <div className="mt-5 flex items-start gap-2.5 rounded-2xl border border-[#EEDCE4] bg-white px-4 py-3.5 text-[12.5px] leading-relaxed text-[#5A4752]">
-          <Mail className="mt-0.5 h-4 w-4 shrink-0 text-[#C85776]" />
+        <div className="mt-5 flex items-start gap-2.5 rounded-2xl border border-[color:var(--ba-brand-line)] bg-white px-4 py-3.5 text-[12.5px] leading-relaxed text-[color:var(--ba-brand-muted)]">
+          <Mail className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--ba-brand-accent)]" />
           <span>
             Giriş yaptığınız için talep <b>kurumunuza bağlanır</b> ve yanıt hesap e-postanıza
             gelir. Panelinizden de takip edebilirsiniz.
@@ -297,6 +298,7 @@ export default function SupportForm({ signedIn = false }: { signedIn?: boolean }
             initial="hidden"
             animate="visible"
             exit="exit"
+            role="alert"
             className="mt-5 flex items-start gap-2.5 rounded-2xl border border-rose-300/60 bg-rose-50 px-4 py-3 text-[12.5px] leading-relaxed text-rose-700"
           >
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -308,16 +310,16 @@ export default function SupportForm({ signedIn = false }: { signedIn?: boolean }
       <button
         type="submit"
         disabled={loading}
-        className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#E798B4] via-[#D4789A] to-[#B75A7E] text-[14px] font-semibold text-white shadow-[0_16px_36px_-16px_rgba(183,90,126,0.75)] transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[color:var(--ba-brand-accent)] text-[14px] font-semibold text-white transition-colors hover:bg-[color:var(--ba-brand-ink)] disabled:opacity-60"
       >
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
         {loading ? 'Gönderiliyor' : 'Talebi gönder'}
       </button>
 
-      <p className="mt-3.5 text-center text-[11.5px] leading-relaxed text-[#8A7280]">
+      <p className="mt-3.5 text-center text-[11.5px] leading-relaxed text-[color:var(--ba-brand-muted)]">
         Ortalama ilk yanıt süremiz birkaç saattir. Acil durumlarda{' '}
-        <a href="tel:+908502428425" className="inline-flex items-center gap-1 font-semibold text-[#C85776] hover:underline">
-          <Phone className="h-3 w-3" /> +90 850 242 84 25
+        <a href={`tel:${company.phone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1 font-semibold text-[color:var(--ba-brand-accent)] hover:underline">
+          <Phone className="h-3 w-3" aria-hidden="true" /> {company.phone}
         </a>
       </p>
     </form>

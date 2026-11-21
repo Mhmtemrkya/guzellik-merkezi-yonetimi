@@ -59,7 +59,7 @@ const roleMetas: RoleMeta[] = [
     desc: 'Personel, müşteri, paket, taksit, randevu, kasa ve raporların tam yönetimi. Rol atama ve onay yetkisi.',
     icon: Building2,
     href: '/panel',
-    cardClass: 'from-[#f7c6d6] via-[#f0aac2] to-[#e798b4] text-[#3a1f2c]',
+    cardClass: 'from-[#f7c6d6] via-[#f0aac2] to-[#e798b4] text-[color:var(--ba-brand-ink)]',
   },
   {
     role: 'BranchManager',
@@ -149,10 +149,10 @@ const itemVariants: Variants = {
 }
 
 const inputWrap =
-  'flex items-center gap-3 rounded-xl border border-[#ead8df] bg-white px-4 transition-colors focus-within:border-[#e798b4] focus-within:shadow-[0_0_0_4px_rgba(240,170,194,0.18)]'
+  'flex items-center gap-3 rounded-xl border border-[color:var(--ba-brand-line)] bg-white px-4 transition-colors focus-within:border-[#e798b4] focus-within:shadow-[0_0_0_4px_rgba(240,170,194,0.18)]'
 const inputCls =
-  'min-h-12 w-full bg-transparent text-[14px] text-[#352432] outline-none placeholder:text-[#352432]/[0.30]'
-const labelCls = 'mb-2 block text-[10px] font-mono uppercase tracking-[0.22em] text-[#352432]/[0.55]'
+  'min-h-12 w-full bg-transparent text-[14px] text-[color:var(--ba-brand-ink)] outline-none placeholder:text-[#142458]/[0.30]'
+const labelCls = 'mb-2 block text-[10px] font-mono uppercase tracking-[0.22em] text-[#142458]/[0.55]'
 
 interface ScopeChoice {
   institution: Institution
@@ -203,19 +203,19 @@ function ScopePickerDialog({
   return (
     <Dialog open={scope !== null} onOpenChange={(open) => { if (!open) onCancel() }}>
       <DialogContent
-        className="overflow-hidden rounded-[28px] border border-[#ead8df]/[0.90] bg-gradient-to-br from-white via-[#fff7fa] to-[#fff0f5] p-0 text-[#352432] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl"
+        className="overflow-hidden rounded-[28px] border border-[#ebd6e2]/[0.90] bg-gradient-to-br from-white via-[color:var(--ba-brand-paper)] to-[color:var(--ba-brand-blush)] p-0 text-[color:var(--ba-brand-ink)] shadow-[0_34px_120px_-58px_rgba(120,71,88,0.72)] backdrop-blur-2xl"
         style={{ width: 'min(94vw, 520px)', maxWidth: 'min(94vw, 520px)' }}
       >
         <div className="relative p-6 sm:p-7">
           <div className="flex items-start gap-3.5">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#efbfd0]/[0.80] bg-white text-[#c85776] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#efbfd0]/[0.80] bg-white text-[color:var(--ba-brand-accent)] shadow-[0_14px_34px_-24px_rgba(200,87,118,0.8)]">
               <MapPin className="h-4 w-4" strokeWidth={1.6} />
             </span>
             <div className="min-w-0 flex-1">
               <DialogTitle className="font-display text-2xl tracking-tight">
                 {tenants.length > 1 ? 'Kurum ve şube seçin' : 'Şube seçin'}
               </DialogTitle>
-              <DialogDescription className="mt-1.5 text-[12px] leading-relaxed text-[#352432]/[0.60]">
+              <DialogDescription className="mt-1.5 text-[12px] leading-relaxed text-[#142458]/[0.60]">
                 Hesabınız birden fazla {tenants.length > 1 ? 'kuruma' : 'şubeye'} bağlı. Seçiminizi
                 yapın, girişiniz hemen tamamlansın.
               </DialogDescription>
@@ -236,19 +236,19 @@ function ScopePickerDialog({
                         onClick={() => pickInstitution(t)}
                         className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors ${
                           active
-                            ? 'border-[#c85776] bg-[#fff0f5] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
-                            : 'border-[#ead8df] bg-white/80 hover:border-[#e798b4]'
+                            ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-blush)] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
+                            : 'border-[color:var(--ba-brand-line)] bg-white/80 hover:border-[#e798b4]'
                         }`}
                       >
                         <span>
-                          <span className="block text-[13.5px] font-semibold text-[#2f1724]">{t.name}</span>
-                          <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.45]">
+                          <span className="block text-[13.5px] font-semibold text-[color:var(--ba-brand-ink)]">{t.name}</span>
+                          <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-widest text-[#142458]/[0.45]">
                             {t.plan} · {t.branches.length} şube · {tenantStatusLabel(t.status)}
                           </span>
                         </span>
                         <span
                           className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors ${
-                            active ? 'border-[#c85776] bg-[#c85776]' : 'border-[#ead8df]'
+                            active ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-accent)]' : 'border-[color:var(--ba-brand-line)]'
                           }`}
                         >
                           {active && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
@@ -272,25 +272,25 @@ function ScopePickerDialog({
                       onClick={() => setBranchId(b.id)}
                       className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors ${
                         active
-                          ? 'border-[#c85776] bg-[#fff0f5] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
-                          : 'border-[#ead8df] bg-white/80 hover:border-[#e798b4]'
+                          ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-blush)] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
+                          : 'border-[color:var(--ba-brand-line)] bg-white/80 hover:border-[#e798b4]'
                       }`}
                     >
                       <span className="flex items-center gap-2.5">
                         <MapPin
-                          className={`h-4 w-4 ${active ? 'text-[#c85776]' : 'text-[#352432]/[0.35]'}`}
+                          className={`h-4 w-4 ${active ? 'text-[color:var(--ba-brand-accent)]' : 'text-[#142458]/[0.35]'}`}
                           strokeWidth={1.6}
                         />
                         <span>
-                          <span className="block text-[13px] font-medium text-[#2f1724]">{b.name}</span>
-                          <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.40]">
+                          <span className="block text-[13px] font-medium text-[color:var(--ba-brand-ink)]">{b.name}</span>
+                          <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-widest text-[#142458]/[0.40]">
                             {b.city}
                           </span>
                         </span>
                       </span>
                       <span
                         className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors ${
-                          active ? 'border-[#c85776] bg-[#c85776]' : 'border-[#ead8df]'
+                          active ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-accent)]' : 'border-[color:var(--ba-brand-line)]'
                         }`}
                       >
                         {active && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
@@ -306,7 +306,7 @@ function ScopePickerDialog({
             <button
               type="button"
               onClick={onCancel}
-              className="rounded-2xl border border-[#ead8df] bg-white px-4 py-3 text-[12px] font-medium text-[#352432]/[0.70] transition-colors hover:border-[#efbfd0]"
+              className="rounded-2xl border border-[color:var(--ba-brand-line)] bg-white px-4 py-3 text-[12px] font-medium text-[#142458]/[0.70] transition-colors hover:border-[#efbfd0]"
             >
               Vazgeç
             </button>
@@ -328,12 +328,12 @@ function ScopePickerDialog({
 function FeatureRow({ icon: Icon, title, desc }: { icon: LucideIcon; title: string; desc: string }) {
   return (
     <motion.div variants={itemVariants} className="flex items-start gap-4">
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[#ead8df] bg-white/80 text-[#c85776] shadow-[0_10px_26px_-18px_rgba(200,87,118,0.55)]">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[color:var(--ba-brand-line)] bg-white/80 text-[color:var(--ba-brand-accent)] shadow-[0_10px_26px_-18px_rgba(200,87,118,0.55)]">
         <Icon className="h-[18px] w-[18px]" strokeWidth={1.5} />
       </span>
       <div>
-        <div className="text-[13px] font-semibold text-[#352432]">{title}</div>
-        <div className="mt-0.5 max-w-xs text-[11.5px] leading-relaxed text-[#352432]/[0.55]">{desc}</div>
+        <div className="text-[13px] font-semibold text-[color:var(--ba-brand-ink)]">{title}</div>
+        <div className="mt-0.5 max-w-xs text-[11.5px] leading-relaxed text-[#142458]/[0.55]">{desc}</div>
       </div>
     </motion.div>
   )
@@ -649,7 +649,7 @@ export default function LoginPage() {
   const RoleIcon = detectedMeta?.icon
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#fbe9f0] text-[#352432]">
+    <main className="relative min-h-screen overflow-hidden bg-[color:var(--ba-brand-blush)] text-[color:var(--ba-brand-ink)]">
       {/* arka plan görseli + dekor */}
       <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
         <img
@@ -683,8 +683,8 @@ export default function LoginPage() {
                 <img src="/logo.png" alt="BeautyAsist logosu" className="h-full w-full object-contain" />
               </span>
               <span>
-                <span className="block font-display text-2xl tracking-[-0.02em] text-[#3a1f2c]">BeautyAsist</span>
-                <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-[0.24em] text-[#c85776]/80">
+                <span className="block font-display text-2xl tracking-[-0.02em] text-[color:var(--ba-brand-ink)]">BeautyAsist</span>
+                <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-[0.24em] text-[#a3295b]/80">
                   Beauty &amp; Wellness Technology
                 </span>
               </span>
@@ -692,21 +692,21 @@ export default function LoginPage() {
 
             <motion.div
               variants={itemVariants}
-              className="mt-12 text-[10px] font-mono uppercase tracking-[0.32em] text-[#c85776]/75"
+              className="mt-12 text-[10px] font-mono uppercase tracking-[0.32em] text-[#a3295b]/75"
             >
               Güzelliği yönetmenin en zarif hali
             </motion.div>
 
             <motion.h1
               variants={itemVariants}
-              className="mt-4 font-display text-5xl leading-[1.02] tracking-tight text-[#3a1f2c] xl:text-6xl"
+              className="mt-4 font-display text-5xl leading-[1.02] tracking-tight text-[color:var(--ba-brand-ink)] xl:text-6xl"
             >
               Tek giriş,
               <br />
               <span className="beautyasist-text-gradient italic">tüm paneller.</span>
             </motion.h1>
 
-            <motion.p variants={itemVariants} className="mt-6 max-w-sm text-[13px] leading-relaxed text-[#352432]/[0.60]">
+            <motion.p variants={itemVariants} className="mt-6 max-w-sm text-[13px] leading-relaxed text-[#142458]/[0.60]">
               BeautyAsist ile kurumunuzun tüm süreçlerini tek platformda yönetin. Güvenli, hızlı ve role özel deneyimle
               fark yaratın.
             </motion.p>
@@ -731,23 +731,23 @@ export default function LoginPage() {
 
             <motion.div
               variants={itemVariants}
-              className="mt-10 flex items-center gap-4 rounded-2xl border border-[#ead8df] bg-white/70 px-4 py-3.5 backdrop-blur"
+              className="mt-10 flex items-center gap-4 rounded-2xl border border-[color:var(--ba-brand-line)] bg-white/70 px-4 py-3.5 backdrop-blur"
             >
-              <span className="grid h-9 w-9 place-items-center rounded-xl border border-[#ead8df] bg-white text-[#c85776]">
+              <span className="grid h-9 w-9 place-items-center rounded-xl border border-[color:var(--ba-brand-line)] bg-white text-[color:var(--ba-brand-accent)]">
                 <Lock className="h-4 w-4" strokeWidth={1.6} />
               </span>
               <div className="flex-1">
-                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.2em] text-[#352432]/[0.60]">
+                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.2em] text-[#142458]/[0.60]">
                   <span>Güvenli oturum</span>
                   <span>Süre: 30 dk</span>
                 </div>
                 <div className="mt-2 flex items-center gap-3">
-                  <span className="text-[10px] text-[#352432]/[0.45]">Uçtan uca şifreleme ile korunur</span>
+                  <span className="text-[10px] text-[#142458]/[0.45]">Uçtan uca şifreleme ile korunur</span>
                   <span className="relative h-1 flex-1 overflow-hidden rounded-full bg-[#f0aac2]/[0.25]">
                     <motion.span
                       animate={{ x: ['-100%', '120%'] }}
                       transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-                      className="absolute inset-y-0 w-1/2 rounded-full bg-gradient-to-r from-[#f0aac2] to-[#c85776]"
+                      className="absolute inset-y-0 w-1/2 rounded-full bg-gradient-to-r from-[#f0aac2] to-[color:var(--ba-brand-accent)]"
                     />
                   </span>
                 </div>
@@ -757,7 +757,7 @@ export default function LoginPage() {
 
           <motion.div
             variants={itemVariants}
-            className="mt-10 flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.22em] text-[#352432]/[0.40]"
+            className="mt-10 flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.22em] text-[#142458]/[0.40]"
           >
             <span>© 2026 BeautyAsist</span>
             <span className="flex items-center gap-2">
@@ -765,7 +765,7 @@ export default function LoginPage() {
                 aria-hidden
                 animate={{ opacity: [0.4, 1, 0.4] }}
                 transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-                className="h-1.5 w-1.5 rounded-full bg-[#c85776]"
+                className="h-1.5 w-1.5 rounded-full bg-[color:var(--ba-brand-accent)]"
               />
               secure.session
             </span>
@@ -781,7 +781,7 @@ export default function LoginPage() {
         >
           <form
             onSubmit={handleLogin}
-            className="relative overflow-hidden rounded-[32px] border border-white/80 bg-gradient-to-br from-white/95 via-[#fff7fa]/95 to-[#fff0f5]/95 p-6 shadow-[0_44px_120px_-48px_rgba(120,71,88,0.55)] backdrop-blur-2xl sm:p-10"
+            className="relative overflow-hidden rounded-[32px] border border-white/80 bg-gradient-to-br from-white/95 via-[#fff7fb]/95 to-[#faedf3]/95 p-6 shadow-[0_44px_120px_-48px_rgba(120,71,88,0.55)] backdrop-blur-2xl sm:p-10"
           >
             <span aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-[#f0aac2]/[0.22] blur-3xl" />
             <span aria-hidden className="pointer-events-none absolute -left-20 bottom-0 h-56 w-56 rounded-full bg-[#ffd3df]/[0.20] blur-3xl" />
@@ -794,24 +794,24 @@ export default function LoginPage() {
             {pending ? (
               <div className="relative">
                 <div className="text-center">
-                  <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-[#ead8df] bg-white text-[#c85776] shadow-[0_10px_26px_-18px_rgba(200,87,118,0.55)]">
+                  <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-[color:var(--ba-brand-line)] bg-white text-[color:var(--ba-brand-accent)] shadow-[0_10px_26px_-18px_rgba(200,87,118,0.55)]">
                     <ShieldCheck className="h-6 w-6" strokeWidth={1.5} />
                   </div>
-                  <h2 className="mt-5 font-display text-[27px] leading-tight text-[#2f1724] sm:text-[32px]">
+                  <h2 className="mt-5 font-display text-[27px] leading-tight text-[color:var(--ba-brand-ink)] sm:text-[32px]">
                     Girişi doğrulayın
                   </h2>
-                  <p className="mx-auto mt-2 max-w-sm text-[13px] leading-relaxed text-[#352432]/[0.60]">
-                    6 haneli kodu <b className="text-[#2f1724]">{pending.maskedEmail}</b> adresine gönderdik.
+                  <p className="mx-auto mt-2 max-w-sm text-[13px] leading-relaxed text-[#142458]/[0.60]">
+                    6 haneli kodu <b className="text-[color:var(--ba-brand-ink)]">{pending.maskedEmail}</b> adresine gönderdik.
                     Kod 10 dakika geçerlidir.
                   </p>
                 </div>
 
                 <div className="mx-auto mt-7 max-w-sm">
-                  <label className="mb-2 block text-[10px] font-mono uppercase tracking-[0.22em] text-[#352432]/[0.55]">
+                  <label className="mb-2 block text-[10px] font-mono uppercase tracking-[0.22em] text-[#142458]/[0.55]">
                     Doğrulama Kodu
                   </label>
-                  <div className="flex items-center gap-3 rounded-xl border border-[#ead8df] bg-white px-4 transition-colors focus-within:border-[#e798b4] focus-within:shadow-[0_0_0_4px_rgba(240,170,194,0.18)]">
-                    <KeyRound className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                  <div className="flex items-center gap-3 rounded-xl border border-[color:var(--ba-brand-line)] bg-white px-4 transition-colors focus-within:border-[#e798b4] focus-within:shadow-[0_0_0_4px_rgba(240,170,194,0.18)]">
+                    <KeyRound className="h-4 w-4 shrink-0 text-[#a3295b]/70" strokeWidth={1.6} />
                     <input
                       type="text"
                       inputMode="numeric"
@@ -825,7 +825,7 @@ export default function LoginPage() {
                         if (next.length === 6) void submitOtp(next)
                       }}
                       placeholder="000000"
-                      className="min-h-12 w-full bg-transparent text-center text-[22px] font-semibold tracking-[0.5em] text-[#352432] outline-none placeholder:text-[#352432]/[0.25]"
+                      className="min-h-12 w-full bg-transparent text-center text-[22px] font-semibold tracking-[0.5em] text-[color:var(--ba-brand-ink)] outline-none placeholder:text-[#142458]/[0.25]"
                     />
                   </div>
                   {pending.devCode && (
@@ -857,7 +857,7 @@ export default function LoginPage() {
                       setOtpCode('')
                       setError('')
                     }}
-                    className="mt-3 w-full text-center text-[12px] text-[#9d7386] transition-colors hover:text-[#c85776] disabled:opacity-50"
+                    className="mt-3 w-full text-center text-[12px] text-[#9d7386] transition-colors hover:text-[color:var(--ba-brand-accent)] disabled:opacity-50"
                   >
                     ← Farklı hesapla giriş yap
                   </button>
@@ -866,20 +866,20 @@ export default function LoginPage() {
             ) : (
             <>
             <div className="relative text-center">
-              <div className="text-[13px] font-medium text-[#c85776]">Hoş geldiniz</div>
-              <h2 className="mt-1.5 flex items-center justify-center gap-3 font-display text-[32px] leading-tight tracking-tight text-[#2f1724] sm:text-[42px]">
+              <div className="text-[13px] font-medium text-[color:var(--ba-brand-accent)]">Hoş geldiniz</div>
+              <h2 className="mt-1.5 flex items-center justify-center gap-3 font-display text-[32px] leading-tight tracking-tight text-[color:var(--ba-brand-ink)] sm:text-[42px]">
                 <Sparkles aria-hidden className="hidden h-4 w-4 text-[#e798b4] sm:block" />
                 Hangi panelde devam edeceksiniz?
                 <Sparkles aria-hidden className="hidden h-4 w-4 text-[#e798b4] sm:block" />
               </h2>
-              <p className="mt-2 text-[12px] text-[#352432]/[0.50]">Tek oturum ile rol bazlı erişim</p>
+              <p className="mt-2 text-[12px] text-[#142458]/[0.50]">Tek oturum ile rol bazlı erişim</p>
             </div>
 
             <div className="relative mt-8 space-y-5">
               <div>
                 <label className={labelCls}>E-posta / Kullanıcı adı</label>
                 <div className={inputWrap}>
-                  <Mail className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                  <Mail className="h-4 w-4 shrink-0 text-[#a3295b]/70" strokeWidth={1.6} />
                   <input
                     type="email"
                     value={email}
@@ -894,7 +894,7 @@ export default function LoginPage() {
               <div>
                 <label className={labelCls}>Şifre</label>
                 <div className={inputWrap}>
-                  <Lock className="h-4 w-4 shrink-0 text-[#c85776]/70" strokeWidth={1.6} />
+                  <Lock className="h-4 w-4 shrink-0 text-[#a3295b]/70" strokeWidth={1.6} />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
@@ -907,7 +907,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
-                    className="text-[#352432]/[0.35] transition-colors hover:text-[#c85776]"
+                    className="text-[#142458]/[0.35] transition-colors hover:text-[color:var(--ba-brand-accent)]"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -918,11 +918,11 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setRemember((v) => !v)}
-                  className="flex items-center gap-2 text-[#352432]/[0.65] transition-colors hover:text-[#352432]"
+                  className="flex items-center gap-2 text-[#142458]/[0.65] transition-colors hover:text-[color:var(--ba-brand-ink)]"
                 >
                   <span
                     className={`grid h-[18px] w-[18px] place-items-center rounded-md border transition-colors ${
-                      remember ? 'border-[#c85776] bg-[#c85776]' : 'border-[#ead8df] bg-white'
+                      remember ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-accent)]' : 'border-[color:var(--ba-brand-line)] bg-white'
                     }`}
                   >
                     {remember && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
@@ -932,7 +932,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setForgotOpen(true)}
-                  className="text-[#c85776] transition-colors hover:text-[#a23f5c]"
+                  className="text-[color:var(--ba-brand-accent)] transition-colors hover:text-[color:var(--ba-brand-accent)]"
                 >
                   Şifremi unuttum?
                 </button>
@@ -951,12 +951,12 @@ export default function LoginPage() {
                   >
                     <div className="space-y-4 pt-1">
                       {scopeLoading ? (
-                        <div className="flex items-center gap-3 rounded-2xl border border-[#ead8df] bg-white/80 px-4 py-3.5 text-[12px] text-[#352432]/[0.60]">
+                        <div className="flex items-center gap-3 rounded-2xl border border-[color:var(--ba-brand-line)] bg-white/80 px-4 py-3.5 text-[12px] text-[#142458]/[0.60]">
                           <motion.span
                             aria-hidden
                             animate={{ rotate: 360 }}
                             transition={{ duration: 1.1, repeat: Infinity, ease: 'linear' }}
-                            className="h-3.5 w-3.5 rounded-full border-2 border-[#c85776] border-t-transparent"
+                            className="h-3.5 w-3.5 rounded-full border-2 border-[color:var(--ba-brand-accent)] border-t-transparent"
                           />
                           Hesabınız tanınıyor, erişim kapsamı hazırlanıyor...
                         </div>
@@ -984,22 +984,22 @@ export default function LoginPage() {
                                       onClick={() => chooseInstitution(institution)}
                                       className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors ${
                                         active
-                                          ? 'border-[#c85776] bg-[#fff0f5] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
-                                          : 'border-[#ead8df] bg-white/80 hover:border-[#e798b4]'
+                                          ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-blush)] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
+                                          : 'border-[color:var(--ba-brand-line)] bg-white/80 hover:border-[#e798b4]'
                                       }`}
                                     >
                                       <span>
-                                        <span className="block text-[13.5px] font-semibold text-[#2f1724]">
+                                        <span className="block text-[13.5px] font-semibold text-[color:var(--ba-brand-ink)]">
                                           {institution.name}
                                         </span>
-                                        <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.45]">
+                                        <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-widest text-[#142458]/[0.45]">
                                           {institution.plan} · {institution.branches.length} şube ·{' '}
                                           {tenantStatusLabel(institution.status)}
                                         </span>
                                       </span>
                                       <span
                                         className={`grid h-5 w-5 place-items-center rounded-full border transition-colors ${
-                                          active ? 'border-[#c85776] bg-[#c85776]' : 'border-[#ead8df]'
+                                          active ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-accent)]' : 'border-[color:var(--ba-brand-line)]'
                                         }`}
                                       >
                                         {active && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
@@ -1033,27 +1033,27 @@ export default function LoginPage() {
                                         onClick={() => setBranchId(branch.id)}
                                         className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors ${
                                           active
-                                            ? 'border-[#c85776] bg-[#fff0f5] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
-                                            : 'border-[#ead8df] bg-white/80 hover:border-[#e798b4]'
+                                            ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-blush)] shadow-[0_12px_30px_-22px_rgba(200,87,118,0.6)]'
+                                            : 'border-[color:var(--ba-brand-line)] bg-white/80 hover:border-[#e798b4]'
                                         }`}
                                       >
                                         <span className="flex items-center gap-2.5">
                                           <MapPin
-                                            className={`h-4 w-4 ${active ? 'text-[#c85776]' : 'text-[#352432]/[0.35]'}`}
+                                            className={`h-4 w-4 ${active ? 'text-[color:var(--ba-brand-accent)]' : 'text-[#142458]/[0.35]'}`}
                                             strokeWidth={1.6}
                                           />
                                           <span>
-                                            <span className="block text-[13px] font-medium text-[#2f1724]">
+                                            <span className="block text-[13px] font-medium text-[color:var(--ba-brand-ink)]">
                                               {branch.name}
                                             </span>
-                                            <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-widest text-[#352432]/[0.40]">
+                                            <span className="mt-0.5 block text-[10px] font-mono uppercase tracking-widest text-[#142458]/[0.40]">
                                               {branch.city}
                                             </span>
                                           </span>
                                         </span>
                                         <span
                                           className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-colors ${
-                                            active ? 'border-[#c85776] bg-[#c85776]' : 'border-[#ead8df]'
+                                            active ? 'border-[color:var(--ba-brand-accent)] bg-[color:var(--ba-brand-accent)]' : 'border-[color:var(--ba-brand-line)]'
                                           }`}
                                         >
                                           {active && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
@@ -1202,16 +1202,16 @@ export default function LoginPage() {
                 </span>
               </motion.button>
 
-              <p className="flex items-center justify-center gap-2 pt-1 text-center text-[11px] text-[#352432]/[0.45]">
-                <ShieldCheck className="h-3.5 w-3.5 text-[#c85776]/70" strokeWidth={1.6} />
+              <p className="flex items-center justify-center gap-2 pt-1 text-center text-[11px] text-[#142458]/[0.45]">
+                <ShieldCheck className="h-3.5 w-3.5 text-[#a3295b]/70" strokeWidth={1.6} />
                 Giriş sonrası yetkinize göre ilgili panele yönlendirileceksiniz.
               </p>
 
               {/* KAYIT YOLU: bu ekranda hiç yoktu. Paket seçip giriş ekranına düşen ama henüz
                   hesabı olmayan ziyaretçi buradan 14 günlük denemeye geçer. */}
-              <p className="pt-1 text-center text-[12.5px] text-[#352432]/[0.65]">
+              <p className="pt-1 text-center text-[12.5px] text-[#142458]/[0.65]">
                 Hesabınız yok mu?{' '}
-                <Link href="/kayit" className="font-semibold text-[#c85776] underline-offset-4 hover:underline">
+                <Link href="/kayit" className="font-semibold text-[color:var(--ba-brand-accent)] underline-offset-4 hover:underline">
                   Ücretsiz kayıt olun
                 </Link>
               </p>
