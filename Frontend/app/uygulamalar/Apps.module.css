@@ -1,0 +1,200 @@
+/* ===========================================================================================================
+   /uygulamalar — 22 Kas 2026. Renkli hero (süzülen tablet + telefon), platform kartları, web kartı.
+   Ton: `data-tone`. Hareket (animate): açılışta sıralı belirme, cihazlar hafifçe süzülür (tanıtım yüzeyi),
+   kaydırınca bir kez belirme, hover yalnız ince işaretçide; azaltılmış harekette konum değişmez.
+   =========================================================================================================== */
+
+.page {
+  --ink: var(--ba-brand-ink, #142458);
+  --night: var(--ba-brand-night, #101a36);
+  --accent: var(--ba-brand-accent, #a3295b);
+  --muted: var(--ba-brand-muted, #5d536a);
+  --line: var(--ba-brand-line, #ebd6e2);
+  --paper: var(--ba-brand-paper, #fff7fb);
+  --gutter: clamp(16px, 5vw, 76px);
+  --ease: cubic-bezier(.23, 1, .32, 1);
+  --tone: #e0457b;
+  --tone-ink: #a3295b;
+  --tone-soft: #ffe4ef;
+  min-height: 100vh;
+  padding-bottom: clamp(24px, 5vw, 64px);
+  background: var(--paper);
+  color: var(--ink);
+}
+.page [data-tone='pink'] { --tone: #e0457b; --tone-ink: #a3295b; --tone-soft: #ffe4ef; }
+.page [data-tone='green'] { --tone: #10b981; --tone-ink: #047857; --tone-soft: #dcf7ec; }
+.page [data-tone='violet'] { --tone: #8b5cf6; --tone-ink: #5b34c7; --tone-soft: #efe8ff; }
+.page [data-tone='blue'] { --tone: #3b82f6; --tone-ink: #1d4fb8; --tone-soft: #e3eeff; }
+.page [data-tone='amber'] { --tone: #f59e0b; --tone-ink: #9a4a00; --tone-soft: #fff1d6; }
+
+.page a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.wide { width: calc(100% - 2 * var(--gutter)); margin-inline: auto; }
+.eyebrow { display: inline-flex; align-items: center; gap: 7px; color: var(--accent); font-size: .74rem; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+.page h1, .page h2 { font-family: var(--font-display, system-ui, sans-serif); font-weight: 800; letter-spacing: -.06em; line-height: 1.02; }
+.page h1 span, .page h2 span {
+  background: linear-gradient(95deg, #c2185b 5%, #a3295b 40%, #6d3fd6 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.page h2 { margin-top: 10px; font-size: clamp(2.1rem, 4.4vw, 4.2rem); }
+
+/* --- Hero ---------------------------------------------------------------------------------------------------- */
+.hero {
+  display: grid;
+  width: calc(100% - 2 * clamp(8px, 1.8vw, 30px));
+  min-height: clamp(520px, 70svh, 700px);
+  margin-inline: auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  align-items: center;
+  overflow: hidden;
+  border-radius: clamp(18px, 2.5vw, 35px);
+  background:
+    radial-gradient(ellipse 50% 60% at 100% 0%, #cf477c66, transparent 70%),
+    radial-gradient(ellipse 50% 60% at 70% 100%, #6d3fd666, transparent 70%),
+    radial-gradient(ellipse 40% 50% at 0% 100%, #3b82f644, transparent 70%),
+    var(--night);
+  color: #fff7fb;
+}
+.heroCopy { display: grid; justify-items: start; padding: clamp(28px, 6vw, 90px) clamp(22px, 5vw, 80px); }
+.hero .eyebrow { color: #ffc2de; }
+.hero h1 { margin-top: 12px; font-size: clamp(2.8rem, 6.2vw, 6.6rem); }
+.hero h1 span { background: linear-gradient(95deg, #ffc2de 5%, #f472b6 45%, #c9b8ff 95%); -webkit-background-clip: text; background-clip: text; }
+.intro { max-width: 52ch; margin-top: 18px; color: #f1e4ef; font-size: clamp(.98rem, 1.35vw, 1.14rem); line-height: 1.65; }
+.platformChips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.platformChips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--tone) 55%, transparent);
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: color-mix(in srgb, var(--tone) 18%, transparent);
+  color: #fff;
+  font-size: .82rem;
+  font-weight: 700;
+}
+.platformChips svg { color: color-mix(in srgb, var(--tone) 60%, #fff); }
+
+.heroArt { position: relative; height: 100%; min-height: 380px; }
+.glow { position: absolute; inset: 15% 10%; border-radius: 50%; background: radial-gradient(circle, #f472b655, transparent 65%); filter: blur(10px); }
+.tablet, .phone { position: absolute; overflow: hidden; border: 1px solid #ffffff33; box-shadow: 0 40px 80px -30px #050a1f; }
+.tablet { top: 14%; right: 6%; width: 72%; aspect-ratio: 4 / 3; border-radius: 26px; rotate: 4deg; }
+.phone { bottom: 10%; left: 6%; width: 32%; aspect-ratio: 9 / 18; border-radius: 30px; rotate: -7deg; }
+.tablet img, .phone img { object-fit: cover; }
+.sync {
+  position: absolute;
+  right: 14%;
+  bottom: 12%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #ffffff3d;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: #ffffff1f;
+  color: #fff;
+  font-size: .88rem;
+  font-weight: 750;
+  backdrop-filter: blur(12px);
+}
+
+/* --- Platform kartları -------------------------------------------------------------------------------------- */
+.platforms { margin-top: clamp(56px, 8vw, 110px); }
+.sectionHead { margin-bottom: clamp(18px, 3vw, 32px); }
+.cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.card {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 10px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--tone) 24%, var(--line));
+  border-radius: 24px;
+  padding: clamp(20px, 2.4vw, 28px);
+  background: linear-gradient(170deg, color-mix(in srgb, var(--tone-soft) 85%, #fff), #fff 60%);
+}
+.card::after { position: absolute; right: -60px; bottom: -60px; width: 180px; aspect-ratio: 1; border: 22px solid color-mix(in srgb, var(--tone) 12%, transparent); border-radius: 50%; content: ''; pointer-events: none; }
+.card > * { position: relative; z-index: 1; }
+.cardTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cardIcon { display: grid; width: 56px; height: 56px; place-items: center; border-radius: 17px; background: linear-gradient(135deg, var(--tone), var(--tone-ink)); color: #fff; box-shadow: 0 14px 26px -12px var(--tone); }
+.device { border-radius: 999px; padding: 4px 10px; background: #fff; color: var(--tone-ink); font-size: .72rem; font-weight: 800; }
+.card h3 { margin-top: 6px; font-family: var(--font-display, system-ui, sans-serif); font-size: clamp(1.35rem, 1.9vw, 1.7rem); font-weight: 800; letter-spacing: -.04em; }
+.card p { color: var(--muted); font-size: .92rem; line-height: 1.55; }
+.badge, .download { display: inline-flex; width: fit-content; min-height: 48px; align-items: center; gap: 10px; margin-top: 8px; }
+.badge img { display: block; width: auto; height: 42px; }
+.badge svg { color: var(--tone-ink); }
+.download { border-radius: 12px; padding: 0 16px; background: linear-gradient(135deg, var(--tone), var(--tone-ink)); color: #fff; font-size: .9rem; font-weight: 760; }
+
+/* --- Web kartı ---------------------------------------------------------------------------------------------- */
+.sync2 { margin-top: clamp(40px, 6vw, 80px); }
+.webCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(16px, 3vw, 36px);
+  border-radius: clamp(20px, 3vw, 32px);
+  padding: clamp(22px, 4.5vw, 56px);
+  background: linear-gradient(135deg, #ffe9f2, #f1eaff 60%, #e7f0ff);
+}
+.webIcon { display: grid; width: 72px; height: 72px; place-items: center; border-radius: 22px; background: linear-gradient(135deg, #f59e0b, #c2410c); color: #fff; box-shadow: 0 16px 30px -12px #f59e0b; }
+.webCard h2 { font-size: clamp(1.8rem, 3.4vw, 3.2rem); }
+.webCard p:not(.eyebrow) { max-width: 56ch; margin-top: 8px; color: var(--muted); line-height: 1.6; }
+.webActions { display: grid; gap: 8px; }
+.webActions a { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 11px; padding: 8px 16px; font-size: .88rem; font-weight: 760; white-space: nowrap; }
+.primary { background: var(--accent); color: #fff7fb; }
+.primary:hover { background: #872149; }
+.secondary { border-color: #d5a7be !important; background: #fff9fc; color: var(--accent); }
+
+@media (max-width: 1100px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 820px) {
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .heroArt { min-height: 320px; }
+  .webCard { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) { .cards { grid-template-columns: minmax(0, 1fr); } }
+
+/* --- Hareket ------------------------------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  .heroCopy > * { animation: rise 560ms var(--ease) both; }
+  .heroCopy > :nth-child(2) { animation-delay: 60ms; }
+  .heroCopy > :nth-child(3) { animation-delay: 120ms; }
+  .heroCopy > :nth-child(4) { animation-delay: 180ms; }
+  .platformChips li { animation: rise 480ms var(--ease) both; }
+  .platformChips li:nth-child(2) { animation-delay: 240ms; }
+  .platformChips li:nth-child(3) { animation-delay: 280ms; }
+  .platformChips li:nth-child(4) { animation-delay: 320ms; }
+  .platformChips li:nth-child(5) { animation-delay: 360ms; }
+  .platformChips li:first-child { animation-delay: 200ms; }
+
+  .tablet { animation: device-in 800ms var(--ease) 120ms both, bob 5s cubic-bezier(.37, 0, .63, 1) 1s infinite alternate; }
+  .phone { animation: device-in 800ms var(--ease) 260ms both, bob 4.2s cubic-bezier(.37, 0, .63, 1) 1.2s infinite alternate-reverse; }
+  .sync { animation: rise 600ms var(--ease) 520ms both; }
+  .sync svg { animation: spin 6s linear infinite; }
+
+  .page [data-reveal] {
+    transition:
+      opacity 520ms var(--ease) var(--reveal-delay, 0ms),
+      translate 620ms var(--ease) var(--reveal-delay, 0ms),
+      transform 220ms var(--ease),
+      box-shadow 220ms ease;
+  }
+  .page[data-reveal-ready] [data-reveal]:not([data-visible]) { opacity: 0; translate: 0 22px; }
+  .cards > :nth-child(2) { --reveal-delay: 70ms; }
+  .cards > :nth-child(3) { --reveal-delay: 140ms; }
+  .cards > :nth-child(4) { --reveal-delay: 210ms; }
+  .cardIcon { transition: transform 240ms var(--ease); }
+  .badge svg { transition: transform 200ms var(--ease); }
+  .badge, .download, .webActions a { transition: transform 140ms var(--ease), background-color 160ms ease; }
+  .badge:active, .download:active, .webActions a:active { transform: scale(.97); }
+}
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  .card:hover { transform: translateY(-5px); box-shadow: 0 26px 46px -28px var(--tone-ink); }
+  .card:hover .cardIcon { transform: rotate(-6deg) scale(1.06); }
+  .badge:hover svg { transform: translate(2px, -2px); }
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes device-in { from { opacity: 0; translate: 0 40px; } to { opacity: 1; translate: 0 0; } }
+@keyframes bob { from { transform: translateY(0); } to { transform: translateY(-12px); } }
+@keyframes spin { to { transform: rotate(360deg); } }

@@ -26,7 +26,7 @@ const navigation: { title: string; links: NavLink[] }[] = [
       { label: 'Salonun bir günü', href: '/#bir-gun-sahne', hint: 'Sabahtan gün sonuna akış', icon: Sun, tone: 'amber' },
       { label: 'Maydi ile tanış', href: '/#maydi', hint: 'Yapay zekâ asistanınız', icon: Sparkles, tone: 'sky' },
       { label: 'Fiyatlar', href: '/#fiyat', hint: 'Paketler ve ücretsiz deneme', icon: Tag, tone: 'emerald' },
-      { label: 'Uygulamalar', href: '/#uygulamalar', hint: 'iPhone, Android, Mac, Windows', icon: Smartphone, tone: 'rose' },
+      { label: 'Uygulamalar', href: '/uygulamalar', hint: 'iPhone, Android, Mac, Windows', icon: Smartphone, tone: 'rose' },
     ],
   },
   {

@@ -3,7 +3,7 @@ import { ArrowDownToLine, ArrowUpRight } from 'lucide-react'
 import { windowsInstallerHref } from './windowsInstaller'
 import styles from './AppLaunch.module.css'
 
-const stores = [
+export const stores = [
   {
     platform: 'iPhone ve iPad',
     label: 'BeautyAsist’i App Store’dan indirin',
