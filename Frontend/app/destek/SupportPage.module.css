@@ -14,12 +14,12 @@
 }
 
 .page :is(a, button, input, textarea, summary):focus-visible { outline: 2px solid var(--support-accent); outline-offset: 3px; }
-.page :is(.faq, .request) { scroll-margin-top: 120px; }
-.wide { width: min(calc(100% - 2 * var(--support-gutter)), 1260px); margin-inline: auto; }
+.page :is(.faq, .request) { scroll-margin-top: calc(var(--ba-site-header) + 16px); }
+.wide { width: calc(100% - 2 * var(--support-gutter)); margin-inline: auto; }
 
 .hero {
   position: relative;
-  width: min(calc(100% - 2 * clamp(8px, 1.8vw, 30px)), 1770px);
+  width: calc(100% - 2 * clamp(8px, 1.8vw, 30px));
   margin-inline: auto;
   isolation: isolate;
   overflow: hidden;
@@ -30,7 +30,7 @@
 
 .heroBody {
   display: grid;
-  width: min(calc(100% - 2 * var(--support-gutter)), 1260px);
+  width: calc(100% - 2 * var(--support-gutter));
   min-height: clamp(420px, 59svh, 555px);
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   align-items: center;
@@ -199,10 +199,6 @@
   .heroDescription { grid-area: description; margin-top: 3px; }
   .heroActions { grid-area: actions; margin-top: 9px; }
   .channel a { margin-top: 3px; }
-}
-
-@media (max-width: 420px) {
-  .page :is(.faq, .request) { scroll-margin-top: 155px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

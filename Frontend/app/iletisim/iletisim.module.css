@@ -10,7 +10,7 @@
 }
 
 .main, .footer {
-  width: min(100% - 2 * clamp(16px, 6vw, 88px), 1280px);
+  width: calc(100% - 2 * clamp(16px, 6vw, 88px));
   margin-inline: auto;
 }
 

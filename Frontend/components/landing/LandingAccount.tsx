@@ -1,27 +1,26 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowUpRight, ShoppingBag } from 'lucide-react'
-import { useAuth } from '@/components/dashboard/AuthContext'
+import * as Dialog from '@radix-ui/react-dialog'
+import type { MouseEventHandler } from 'react'
+import { ShoppingBag } from 'lucide-react'
 import { useCart } from '@/lib/cart'
-import styles from '@/app/home.module.css'
+import styles from '@/components/public/MaydiMenu.module.css'
 
-export default function LandingAccount() {
-  const { hydrated, isAuthenticated } = useAuth()
+/**
+ * Menüdeki sepet bağlantısı. "Giriş yap" / "Panelim" 22 Kas 2026'dan beri üst çubuktadır (MaydiMenu).
+ */
+export default function LandingAccount({ onNavigate }: { onNavigate: MouseEventHandler<HTMLAnchorElement> }) {
   const { item } = useCart()
-  const signedIn = hydrated && isAuthenticated
+  if (!item) return null
 
   return (
     <div className={styles.account}>
-      {item && (
-        <Link href="/odeme" className={styles.cartLink} aria-label="Sepeti aç">
-          <ShoppingBag size={17} aria-hidden="true" />
-          <span aria-hidden="true" />
+      <Dialog.Close asChild>
+        <Link href="/odeme" className={styles.accountLink} aria-label="Sepeti aç" onClick={onNavigate}>
+          <ShoppingBag size={17} aria-hidden="true" /> Sepetim
         </Link>
-      )}
-      <Link href={signedIn ? '/panel' : '/login'} className={styles.loginLink}>
-        {signedIn ? 'Panelim' : 'Giriş yap'} <ArrowUpRight size={15} aria-hidden="true" />
-      </Link>
+      </Dialog.Close>
     </div>
   )
 }

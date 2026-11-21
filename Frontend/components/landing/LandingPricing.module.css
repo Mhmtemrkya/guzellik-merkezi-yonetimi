@@ -7,7 +7,7 @@
   --pricing-accent-hover: var(--ba-brand-accent);
   --pricing-display: var(--ba-display, var(--font-display, ui-sans-serif));
   width: calc(100% - 2 * clamp(20px, 4.5vw, 64px));
-  max-width: 1280px;
+  max-width: none;
   margin-inline: auto;
   padding-block: clamp(52px, 7vw, 100px);
   border-top: 1px solid var(--pricing-rule);
@@ -300,3 +300,21 @@
     transition: none;
   }
 }
+
+/* Fiyat kartları (22 Kas 2026, animate): görünüme girerken 60 ms aralı yükselme; fareyle kart hafifçe kalkar. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .planCard { animation: plan-rise cubic-bezier(.23, 1, .32, 1) both; animation-timeline: view(); animation-range: entry 0% entry 55%; }
+    .planList > :nth-child(2) .planCard { animation-range: entry 6% entry 61%; }
+    .planList > :nth-child(3) .planCard { animation-range: entry 12% entry 67%; }
+    .planList > :nth-child(n + 4) .planCard { animation-range: entry 18% entry 73%; }
+  }
+}
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  .planCard { transition: translate 220ms cubic-bezier(.23, 1, .32, 1), box-shadow 220ms ease; }
+  .planCard:hover { translate: 0 -4px; box-shadow: 0 26px 46px -30px #a3295b; }
+}
+@keyframes plan-rise { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Paket(ler) ortada (22 Kas 2026). `safe`: kartlar sığmayıp yatay kaydırıldığında ilk kart kırpılmaz. */
+.planList { justify-content: safe center; }

@@ -1,0 +1,251 @@
+/* ===========================================================================================================
+   Genel menü (MaydiMenu) — 22 Kas 2026 yenilemesi: koyu zeminde renkli karolar (ikon + kısa açıklama),
+   yanda Maydi kartı. Her karonun tonu `data-tone`. Hareket (animate becerisi): perde düğmeden çember olarak
+   açılır, karolar 35 ms arayla belirir; yalnız transform/opacity/clip-path; hover yalnız ince işaretçide.
+   =========================================================================================================== */
+
+/* --- Üst çubuk denetimleri ----------------------------------------------------------------------------------- */
+.controls { display: flex; align-items: center; justify-self: end; gap: 8px; }
+.trigger, .close, .accountLink {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 11px;
+  padding-inline: 12px;
+  font-size: .875rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.trigger { border: 1px solid var(--ba-brand-ink); background: var(--ba-brand-ink); color: #fff; cursor: pointer; }
+.trigger:hover { background: var(--ba-brand-night); }
+.controls :is(a, button):focus-visible { outline: 2px solid var(--ba-brand-accent); outline-offset: 3px; }
+.brand img, .trigger svg, .close svg, .accountLink svg { flex: none; }
+
+/* Üst çubukta "Giriş yap" / "Panelim" (22 Kas 2026). Girişten sonra marka pembesiyle dolar. */
+.navAccount {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--ba-brand-line);
+  border-radius: 11px;
+  padding-inline: 13px;
+  background: var(--ba-brand-surface, #fff);
+  color: var(--ba-brand-ink);
+  font-size: .875rem;
+  font-weight: 750;
+  white-space: nowrap;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+.navAccount svg { flex: none; }
+.navAccount:hover { border-color: var(--ba-brand-pink); background: var(--ba-brand-blush); color: var(--ba-brand-accent); }
+.navAccount[data-signed-in] { border-color: var(--ba-brand-accent); background: var(--ba-brand-accent); color: #fff; }
+.navAccount[data-signed-in]:hover { background: #872149; color: #fff; }
+
+/* --- Perde --------------------------------------------------------------------------------------------------- */
+.overlay { position: fixed; z-index: 200; inset: 0; background: #101a36b3; }
+.dialog {
+  position: fixed;
+  z-index: 201;
+  inset: 0;
+  height: 100dvh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-top: calc(var(--ba-site-header) + env(safe-area-inset-top, 0px) + 8px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background:
+    radial-gradient(ellipse 60% 45% at 100% 0%, #cf477c3d, transparent 70%),
+    radial-gradient(ellipse 55% 40% at 0% 100%, #7c6cf02e, transparent 70%),
+    var(--ba-brand-night);
+  color: var(--ba-brand-paper);
+  color-scheme: dark;
+}
+.dialog :is(a, button):focus-visible { outline: 2px solid var(--ba-brand-light); outline-offset: 4px; }
+.dialogHeader {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  border-bottom: 1px solid #fff7fb24;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: color-mix(in srgb, var(--ba-brand-night) 86%, transparent);
+  backdrop-filter: blur(14px);
+}
+.headerInner, .frame { width: calc(100% - 2 * clamp(16px, 6vw, 86px)); margin-inline: auto; }
+.headerInner { display: flex; min-height: calc(var(--ba-site-header) - 1px); align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: inline-flex; min-height: 44px; align-items: center; gap: 4px; font-family: var(--font-display, system-ui, sans-serif); font-size: 1.15rem; font-weight: 800; letter-spacing: -.05em; }
+.close { border: 1px solid #fff7fb45; color: var(--ba-brand-paper); cursor: pointer; }
+.close:hover, .accountLink:hover { border-color: var(--ba-brand-light); background: #fff7fb14; }
+.frame { padding-block: clamp(22px, 3.6vw, 52px) clamp(24px, 4vw, 55px); }
+.title {
+  width: fit-content;
+  margin-bottom: clamp(16px, 2.6vw, 34px);
+  background: linear-gradient(100deg, #fff7fb 10%, #ffc2de 55%, #c9b8ff 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font: 800 clamp(2.6rem, 6vw, 5.2rem) / .98 var(--font-display, system-ui, sans-serif);
+  letter-spacing: -.065em;
+}
+
+/* --- Gövde: solda karo grupları, sağda Maydi ------------------------------------------------------------------ */
+.body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 360px); align-items: start; gap: clamp(20px, 3.5vw, 48px); }
+.navigation { display: grid; gap: clamp(18px, 2.6vw, 30px); }
+.group h3 { margin-bottom: 10px; color: var(--ba-brand-light); font-size: .76rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 10px; }
+.tiles [data-tone='pink'] { --tone: #f472b6; --tone-deep: #be185d; }
+.tiles [data-tone='violet'] { --tone: #a78bfa; --tone-deep: #6d28d9; }
+.tiles [data-tone='amber'] { --tone: #fbbf24; --tone-deep: #b45309; }
+.tiles [data-tone='sky'] { --tone: #60a5fa; --tone-deep: #1d4ed8; }
+.tiles [data-tone='emerald'] { --tone: #34d399; --tone-deep: #047857; }
+.tiles [data-tone='rose'] { --tone: #fb7185; --tone-deep: #be123c; }
+
+.tile {
+  position: relative;
+  display: grid;
+  min-height: 76px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  border: 1px solid #fff7fb1f;
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: linear-gradient(140deg, #ffffff10, #ffffff05);
+}
+.tile::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: radial-gradient(ellipse 70% 120% at 0% 50%, color-mix(in srgb, var(--tone) 26%, transparent), transparent 70%);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+}
+.tile > * { position: relative; z-index: 1; }
+.tileIcon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--tone), var(--tone-deep));
+  color: #fff;
+  box-shadow: 0 10px 20px -10px var(--tone);
+}
+.tileText { display: grid; gap: 2px; min-width: 0; }
+.tileText strong { font-family: var(--font-display, system-ui, sans-serif); font-size: 1.02rem; font-weight: 780; letter-spacing: -.02em; line-height: 1.2; }
+.tileText small { overflow: hidden; color: #e7dcef; font-size: .78rem; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.tileArrow { color: #e9c4de; }
+.tile[aria-current='page'] { border-color: var(--tone); background: linear-gradient(140deg, color-mix(in srgb, var(--tone) 22%, transparent), #ffffff08); }
+.tile[aria-current='page']::before { opacity: 1; }
+
+/* --- Maydi --------------------------------------------------------------------------------------------------- */
+.maydi {
+  position: sticky;
+  top: calc(var(--ba-site-header) + 24px);
+  isolation: isolate;
+  display: grid;
+  min-height: 360px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid #f6c2df;
+  border-radius: clamp(18px, 2.4vw, 28px);
+  padding: clamp(16px, 2.4vw, 28px);
+  background: radial-gradient(ellipse at 65% 33%, #fff4fb, transparent 57%), linear-gradient(140deg, #f5acd5, #fce0ee 52%, #c9c9f4);
+  color: var(--ba-brand-ink);
+}
+.maydiArt { position: relative; display: grid; min-width: 0; place-items: center; }
+.maydiArt img { z-index: 1; width: clamp(126px, 15vw, 210px); height: auto; margin-block: -12px; filter: drop-shadow(0 13px 14px #734b9650); }
+.maydiArt::before {
+  position: absolute;
+  width: min(84%, 260px);
+  aspect-ratio: 1;
+  border: 1px solid #a05d9640;
+  border-radius: 50%;
+  box-shadow: 0 0 0 14px #a05d9612;
+  content: '';
+}
+.maydiCopy { z-index: 1; display: grid; gap: 5px; }
+.maydiCopy strong { font: 800 clamp(1.5rem, 2.6vw, 2.3rem) / 1.1 var(--font-display, system-ui, sans-serif); letter-spacing: -.055em; }
+.maydiCopy > span { color: #503f62; font-size: clamp(.8rem, 1.1vw, .92rem); }
+
+.session, .account { display: flex; flex-wrap: wrap; gap: 8px; }
+.session { margin-top: clamp(18px, 2.6vw, 30px); }
+.accountLink { border: 1px solid #fff7fb40; color: var(--ba-brand-paper); }
+
+@media (max-width: 860px) {
+  .body { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .maydi { position: static; grid-row: 1; min-height: 124px; grid-template: auto / minmax(0, 1fr) minmax(0, 105px); align-items: center; }
+  .maydiCopy { grid-column: 1; grid-row: 1; }
+  .maydiArt { grid-column: 2; grid-row: 1; }
+  .maydiArt img { width: 92px; margin-block: -22px; }
+  .maydiArt::before { width: 82px; box-shadow: 0 0 0 6px #a05d9612; }
+}
+
+@media (max-width: 420px) {
+  .controls { gap: 3px; }
+  .trigger, .navAccount { gap: 4px; padding-inline: 8px; font-size: .8rem; }
+  .trigger svg { width: 16px; }
+  .tile { min-height: 64px; padding: 10px 12px; }
+  .tileIcon { width: 38px; height: 38px; }
+}
+
+/* --- Hareket ------------------------------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  .trigger, .close, .navAccount {
+    transition: transform 140ms cubic-bezier(.23, 1, .32, 1), background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+  }
+  .trigger:active, .close:active, .navAccount:active, .tile:active { transform: scale(.97); }
+  .close svg, .tileArrow, .tileIcon { transition: transform 220ms cubic-bezier(.23, 1, .32, 1); }
+  .tile { transition: transform 140ms cubic-bezier(.23, 1, .32, 1), border-color 200ms ease, background-color 200ms ease; }
+  .tile::before { transition: opacity 220ms ease; }
+
+  .overlay[data-state='open'] { animation: fadeIn 260ms cubic-bezier(.23, 1, .32, 1) both; }
+  .overlay[data-state='closed'] { animation: fadeOut 220ms cubic-bezier(.23, 1, .32, 1) both; }
+  .dialog[data-state='open'] { animation: curtainOpen 460ms cubic-bezier(.23, 1, .32, 1) both; }
+  .dialog[data-state='closed'] { animation: curtainClose 260ms cubic-bezier(.77, 0, .175, 1) both; pointer-events: none; }
+
+  /* Sıralı belirme: başlık, grup başlıkları, karolar (35 ms arayla; `--i` karonun sırası), Maydi ve oturum. */
+  .dialog[data-state='open'] :is(.title, .group h3, .session) { animation: itemIn 380ms cubic-bezier(.23, 1, .32, 1) 120ms both; }
+  .dialog[data-state='open'] .group + .group h3 { animation-delay: 200ms; }
+  .dialog[data-state='open'] .tiles > li { animation: tileIn 420ms cubic-bezier(.23, 1, .32, 1) both; animation-delay: calc(160ms + var(--i, 0) * 35ms); }
+  .dialog[data-state='open'] .maydi { animation: cardIn 540ms cubic-bezier(.23, 1, .32, 1) 200ms both; }
+  .dialog[data-state='open'] .session { animation-delay: 420ms; }
+
+  /* Maydi hafifçe süzülür (menü ara sıra açılır; süs yalnız burada). */
+  .maydiArt img { animation: float 3.6s cubic-bezier(.37, 0, .63, 1) 700ms infinite alternate; }
+}
+
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  .tile:hover { border-color: color-mix(in srgb, var(--tone) 70%, transparent); }
+  .tile:hover::before { opacity: 1; }
+  .tile:hover .tileIcon { transform: rotate(-6deg) scale(1.06); }
+  .tile:hover .tileArrow { transform: translate(3px, -3px); }
+  .close:hover svg { transform: rotate(90deg); }
+}
+
+/* Azaltılmış hareket: konum değişmez, yalnız soluklaşma (anlamayı destekler). */
+@media (prefers-reduced-motion: reduce) {
+  .overlay[data-state='open'], .dialog[data-state='open'] { animation: fadeIn 160ms ease both; }
+  .overlay[data-state='closed'], .dialog[data-state='closed'] { animation: fadeOut 120ms ease both; }
+  .tile:hover { border-color: var(--tone); }
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes curtainOpen {
+  from { clip-path: circle(0% at var(--menu-x, calc(100% - 56px)) var(--menu-y, 36px)); }
+  to { clip-path: circle(150% at var(--menu-x, calc(100% - 56px)) var(--menu-y, 36px)); }
+}
+@keyframes curtainClose {
+  from { clip-path: circle(150% at var(--menu-x, calc(100% - 56px)) var(--menu-y, 36px)); }
+  to { clip-path: circle(0% at var(--menu-x, calc(100% - 56px)) var(--menu-y, 36px)); }
+}
+@keyframes itemIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes tileIn { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes cardIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes float { from { transform: translateY(0); } to { transform: translateY(-7px); } }

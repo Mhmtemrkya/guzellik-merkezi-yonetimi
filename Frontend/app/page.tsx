@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import AppLaunchDialog, { AppLaunchTrigger } from '@/components/landing/AppLaunchDialog'
 import CustomerStory from '@/components/landing/CustomerStory'
-import LandingAccount from '@/components/landing/LandingAccount'
+import MotionReel from '@/components/landing/MotionReel'
 import LandingPricing from '@/components/landing/LandingPricing'
 import MaydiMotion from '@/components/landing/MaydiMotion'
 import SalonDay from '@/components/landing/SalonDay'
@@ -15,6 +15,7 @@ import StoreLinks from '@/components/landing/StoreLinks'
 import StudioSequence from '@/components/landing/StudioSequence'
 import { FieldNotes, GettingStarted, LandingQuestions, StudioCapabilities } from '@/components/landing/StudioEditorial'
 import PaymentBadges from '@/components/legal/PaymentBadges'
+import MaydiMenu from '@/components/public/MaydiMenu'
 import { fetchPublicPlans } from '@/lib/landingPlans'
 import { legalLinks } from '@/lib/legal/company'
 import styles from './home.module.css'
@@ -25,13 +26,6 @@ export const metadata: Metadata = {
 }
 
 export const revalidate = 300
-
-const homeLinks = [
-  { href: '#bir-gun-sahne', label: 'Bir gün' },
-  { href: '#tur', label: 'Ürün' },
-  { href: '#maydi', label: 'Maydi' },
-  { href: '#fiyat', label: 'Fiyatlar' },
-]
 
 const operations = [
   { title: 'Randevu ve takvim', description: 'Uzman, oda ve saatleri aynı takvimde planlayın.', icon: CalendarDays },
@@ -53,14 +47,7 @@ function Header() {
     <header className={styles.header}>
       <div className={styles.headerInner}>
         <Brand />
-        <nav className={styles.navigation} aria-label="Ana menü">
-          {homeLinks.map(({ href, label }) => <a key={href} href={href}>{label}</a>)}
-          <Link href="/salonlar">Salonlar</Link>
-          <Link href="/destek">Destek</Link>
-          <Link href="/iletisim">İletişim</Link>
-          <AppLaunchTrigger className={styles.navDownload}><Download size={15} aria-hidden="true" /> Uygulamalar</AppLaunchTrigger>
-        </nav>
-        <LandingAccount />
+        <MaydiMenu />
       </div>
       <div className={styles.pageProgress} aria-hidden="true" />
     </header>
@@ -216,6 +203,7 @@ export default async function HomePage() {
       <Header />
       <main id="ana-icerik" tabIndex={-1}>
         <Hero />
+        <MotionReel />
         <FieldNotes />
         <SalonDay />
         <Product />

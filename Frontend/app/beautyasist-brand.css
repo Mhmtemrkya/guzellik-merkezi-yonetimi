@@ -9,4 +9,9 @@
   --ba-brand-accent: #a3295b;
   --ba-brand-pink: #cf477c;
   --ba-brand-light: #ffc2de;
+  --ba-site-header: 72px;
+}
+
+@media (max-width: 420px) {
+  :root { --ba-site-header: 64px; }
 }

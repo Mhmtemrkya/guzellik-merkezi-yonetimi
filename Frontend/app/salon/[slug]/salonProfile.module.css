@@ -8,7 +8,7 @@
 
 .profile :where(a, button):focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
 .profile section[id] { scroll-margin-top: 90px; }
-.frame, .footer { width: min(calc(100% - 2 * var(--profile-gutter)), 1340px); margin-inline: auto; }
+.frame, .footer { width: calc(100% - 2 * var(--profile-gutter)); margin-inline: auto; }
 
 .hero {
   display: grid;

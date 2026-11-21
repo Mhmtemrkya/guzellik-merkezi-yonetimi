@@ -18,7 +18,7 @@
 
 .hero, .footer {
   position: relative;
-  width: min(100% - 2 * var(--salon-edge), 1770px);
+  width: calc(100% - 2 * var(--salon-edge));
   margin-inline: auto;
   border-radius: clamp(18px, 2.3vw, 34px);
 }
@@ -42,7 +42,7 @@
 
 .heroBody {
   display: flex;
-  width: min(100% - 2 * clamp(22px, 5.6vw, 88px), 1280px);
+  width: calc(100% - 2 * clamp(22px, 5.6vw, 88px));
   min-height: clamp(405px, 61svh, 570px);
   margin-inline: auto;
   padding-block: clamp(40px, 7vw, 103px) clamp(24px, 4vw, 55px);
@@ -152,12 +152,12 @@
 .facetNote { margin-top: 8px; font-size: .8rem; color: #fff3f9; }
 
 .results, .guide {
-  width: min(100% - 2 * var(--salon-gutter), 1280px);
+  width: calc(100% - 2 * var(--salon-gutter));
   margin-inline: auto;
 }
 
 .results { padding-block: clamp(35px, 6.2vw, 88px) clamp(39px, 7vw, 103px); }
-.results, .categoryAnchor { scroll-margin-top: 108px; }
+.results, .categoryAnchor { scroll-margin-top: calc(var(--ba-site-header) + 16px); }
 
 .categories {
   display: flex;
@@ -264,10 +264,6 @@
   .categories button { flex: none; }
   .resultState { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
   .resultState > button { grid-column: 2; }
-}
-
-@media (max-width: 420px) {
-  .results, .categoryAnchor { scroll-margin-top: 155px; }
 }
 
 @media (max-width: 350px) {

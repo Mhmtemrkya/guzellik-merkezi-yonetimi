@@ -10,7 +10,7 @@
 }
 
 .bookingChapter {
-  width: min(100% - 2 * var(--story-gutter), 1280px);
+  width: calc(100% - 2 * var(--story-gutter));
   padding-block: clamp(70px, 9vw, 134px) clamp(69px, 10vw, 147px);
   color: var(--story-ink);
 }
@@ -189,7 +189,7 @@
 .bookingSteps p { max-width: 33ch; color: var(--story-muted); font-size: clamp(.98rem, 1.39vw, 1.14rem); line-height: 1.63; }
 
 .appsChapter {
-  width: min(100% - 2 * var(--ba-edge, 8px), 1770px);
+  width: calc(100% - 2 * var(--ba-edge, 8px));
   margin-bottom: clamp(35px, 6vw, 83px);
   border-radius: clamp(19px, 2.6vw, 38px);
   background: var(--ba-brand-night);

@@ -1,5 +1,5 @@
 .notes, .capabilities, .setup, .faq {
-  width: min(100% - 2 * var(--ba-gutter, 24px), 1280px);
+  width: calc(100% - 2 * var(--ba-gutter, 24px));
   margin-inline: auto;
   color: var(--ba-ink, var(--ba-brand-ink));
 }
@@ -187,3 +187,19 @@
 @media (prefers-reduced-motion: reduce) {
   .questions summary svg { transition: none; }
 }
+
+/* Kaydırınca belirme (22 Kas 2026, animate): özellik kartları ve kurulum adımları görünüme girdikçe yükselir. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .capability, .steps > li, .setupCopy {
+      animation: editorial-rise cubic-bezier(.23, 1, .32, 1) both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 60%;
+    }
+    .steps > li:nth-child(2) { animation-range: entry 8% entry 68%; }
+    .steps > li:nth-child(3) { animation-range: entry 16% entry 76%; }
+    .capabilityVisual > * { animation: editorial-zoom cubic-bezier(.23, 1, .32, 1) both; animation-timeline: view(); animation-range: entry 10% cover 40%; }
+  }
+}
+@keyframes editorial-rise { from { opacity: 0; transform: translateY(34px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes editorial-zoom { from { opacity: 0; transform: translateY(18px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }

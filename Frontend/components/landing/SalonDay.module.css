@@ -9,7 +9,7 @@
 
 .intro {
   display: grid;
-  max-width: 1280px;
+  max-width: none;
   grid-template-columns: minmax(0, 1fr) minmax(230px, .43fr);
   align-items: end;
   gap: 18px 34px;
@@ -42,7 +42,7 @@
   line-height: 1.55;
 }
 
-.track { max-width: 1700px; margin-inline: auto; }
+.track { max-width: none; margin-inline: auto; }
 .track[data-motion] { min-height: calc(var(--day-screen) + clamp(1450px, 216svh, 2420px)); }
 
 .screen {

@@ -1,20 +1,10 @@
 'use client'
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { CalendarDays, ChevronLeft, Heart, Share2 } from 'lucide-react'
-import { getCustomerSession } from '@/lib/customerPortalApi'
+import { ChevronLeft, Heart, Share2 } from 'lucide-react'
+import MaydiMenu from './MaydiMenu'
 import styles from './PublicNavbar.module.css'
-
-const MENU = [
-  { label: 'Salonlar', href: '/salonlar' },
-  { label: 'Hizmetler', href: '/salonlar#kategoriler' },
-  { label: 'İşletmeler', href: '/#fiyat' },
-  { label: 'Hakkımızda', href: '/hakkimizda' },
-  { label: 'Destek', href: '/destek' },
-  { label: 'İletişim', href: '/iletisim' },
-]
 
 /**
  * Salon keşfinde ana navigasyon, salon profilinde geri dönüş ve paylaşım.
@@ -26,19 +16,13 @@ export default function PublicNavbar({
   variant?: 'list' | 'detail'
   favorite?: { active: boolean; onToggle: () => void }
 }) {
-  const pathname = usePathname()
-  const [hasSession, setHasSession] = useState(false)
   const [shareStatus, setShareStatus] = useState('')
-
-  useEffect(() => setHasSession(Boolean(getCustomerSession())), [])
 
   useEffect(() => {
     if (!shareStatus) return
     const timeout = window.setTimeout(() => setShareStatus(''), 3500)
     return () => window.clearTimeout(timeout)
   }, [shareStatus])
-
-  const bookingsHref = hasSession ? '/randevu' : `/randevu/giris?next=${encodeURIComponent(pathname || '/salonlar')}`
 
   const share = async (): Promise<void> => {
     const url = window.location.href
@@ -105,21 +89,7 @@ export default function PublicNavbar({
           <Image src="/logo.png" alt="" width={41} height={41} />
           <span>BeautyAsist</span>
         </Link>
-        <nav className={styles.menu} aria-label="Ana menü">
-          {MENU.map(({ href, label }) => (
-            <Link
-              key={href}
-              href={href}
-              aria-current={href === pathname ? 'page' : undefined}
-            >
-              {label}
-            </Link>
-          ))}
-        </nav>
-        <Link href={bookingsHref} className={styles.bookings}>
-          <CalendarDays size={16} aria-hidden="true" />
-          Randevularım
-        </Link>
+        <MaydiMenu />
       </div>
     </header>
   )

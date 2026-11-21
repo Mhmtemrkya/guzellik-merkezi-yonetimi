@@ -8,7 +8,6 @@
   --ba-display: var(--font-display, system-ui, sans-serif);
   --ba-gutter: clamp(20px, 6vw, 96px);
   --ba-edge: clamp(8px, 1.8vw, 30px);
-  --ba-header-height: 72px;
   min-height: 100vh;
   padding-bottom: var(--ba-edge);
   background: var(--ba-paper);
@@ -20,16 +19,16 @@
   outline-offset: 4px;
 }
 
-.home [id] { scroll-margin-top: calc(var(--ba-header-height) + 16px); }
+.home [id] { scroll-margin-top: calc(var(--ba-site-header) + 16px); }
 .home main:focus { outline: none; }
 
 .frame {
-  width: min(100% - 2 * var(--ba-gutter), 1280px);
+  width: calc(100% - 2 * var(--ba-gutter));
   margin-inline: auto;
 }
 
 .sceneFrame {
-  width: min(100% - 2 * var(--ba-edge), 1770px);
+  width: calc(100% - 2 * var(--ba-edge));
   margin-inline: auto;
 }
 
@@ -58,10 +57,10 @@
 
 .headerInner {
   display: grid;
-  width: min(100% - 2 * var(--ba-gutter), 1520px);
-  min-height: var(--ba-header-height);
+  width: calc(100% - 2 * var(--ba-gutter));
+  min-height: var(--ba-site-header);
   margin: auto;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
 }
@@ -81,43 +80,12 @@
 
 .brand img { width: 41px; height: 41px; object-fit: contain; }
 
-.navigation, .account { display: flex; align-items: center; }
-.navigation { gap: clamp(15px, 2.3vw, 43px); }
-.account { justify-self: end; gap: 8px; }
-
-.navigation a, .navDownload, .loginLink, .cartLink {
-  display: inline-flex;
-  min-height: 44px;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  font-size: .875rem;
-  font-weight: 680;
-  white-space: nowrap;
-  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease;
-}
-
-.navigation a { color: var(--ba-brand-muted); }
-.navigation a:hover { color: var(--ba-accent); text-decoration: underline; text-underline-offset: 6px; }
-.navDownload {
-  border: 1px solid #d7a8bf;
-  border-radius: 10px;
-  padding-inline: 11px;
-  color: var(--ba-brand-accent);
-  cursor: pointer;
-}
-.navDownload:hover { background: var(--ba-brand-blush); border-color: #a95c80; }
-.loginLink, .cartLink { border: 1px solid var(--ba-rule); border-radius: 10px; padding-inline: 12px; }
-.loginLink:hover, .cartLink:hover { border-color: #a95c80; background: var(--ba-brand-blush); }
-.cartLink { position: relative; width: 44px; }
-.cartLink span { position: absolute; top: 9px; right: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--ba-accent); }
-
 .heroScene {
   position: relative;
   display: grid;
   isolation: isolate;
   align-items: end;
-  min-height: clamp(570px, calc(91svh - var(--ba-header-height)), 880px);
+  min-height: clamp(570px, calc(91svh - var(--ba-site-header)), 880px);
   overflow: hidden;
   border-radius: clamp(18px, 2.3vw, 34px);
   padding: clamp(28px, 6vw, 105px) clamp(22px, 6vw, 104px) 0;
@@ -284,7 +252,7 @@
 
 .maydiGrid {
   display: grid;
-  width: min(100% - 2 * clamp(18px, 5.6vw, 90px), 1420px);
+  width: calc(100% - 2 * clamp(18px, 5.6vw, 90px));
   min-height: 475px;
   margin: auto;
   grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr);
@@ -345,7 +313,7 @@
   color: var(--ba-brand-paper);
 }
 
-.footerInner { width: min(100% - 2 * clamp(18px, 5vw, 80px), 1280px); margin-inline: auto; }
+.footerInner { width: calc(100% - 2 * clamp(18px, 5vw, 80px)); margin-inline: auto; }
 .footer .eyebrow, .footer .sectionTitle > span { color: var(--ba-brand-light); }
 
 .downloadArea { padding-top: clamp(14px, 2.6vw, 32px); }
@@ -463,22 +431,8 @@
   .download { grid-template-columns: minmax(0, 1fr); align-items: start; }
 }
 
-@media (max-width: 1040px) {
-  .home { --ba-header-height: 94px; }
-  .headerInner { grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; padding-top: 4px; }
-  .navigation { grid-row: 2; grid-column: 1 / -1; justify-content: space-between; gap: 9px; border-top: 1px solid var(--ba-rule); }
-  .navDownload { border-color: transparent; padding-inline: 0; }
-}
-
-@media (max-width: 590px) {
-  .home { --ba-header-height: 139px; }
-  .navigation { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 4px; }
-  .navigation a, .navDownload { font-size: .8rem; }
-  .navDownload svg { display: none; }
-}
-
 @media (max-width: 760px) {
-  .heroScene { min-height: clamp(620px, calc(93svh - var(--ba-header-height)), 760px); }
+  .heroScene { min-height: clamp(620px, calc(93svh - var(--ba-site-header)), 760px); }
   .heroPhoto img { object-position: 80% center; }
   .heroPhoto::after { background: linear-gradient(0deg, rgb(23 14 18 / .96), rgb(16 26 54 / .73) 42%, rgb(16 26 54 / .08) 83%), linear-gradient(90deg, rgb(16 26 54 / .44), transparent 70%); }
   .heroCopy { margin-bottom: 26px; }
@@ -491,7 +445,7 @@
 }
 
 @media (max-width: 480px) {
-  .heroScene { min-height: max(580px, calc(90svh - var(--ba-header-height))); }
+  .heroScene { min-height: max(580px, calc(90svh - var(--ba-site-header))); }
   .heroTitle { font-size: clamp(2.65rem, 10.8vw, 3.35rem); }
   .heroCopy .lead { margin-top: 14px; }
   .actions { gap: 7px; margin-top: 17px; }
@@ -502,18 +456,10 @@
   .legalLinks { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 420px) {
-  .navigation { gap: 5px; }
-  .navigation a, .navDownload { font-size: .8rem; }
-  .navDownload svg { display: none; }
-}
-
 @media (max-width: 350px) {
-  .headerInner { width: calc(100% - 24px); }
+  .headerInner { width: calc(100% - 24px); gap: 8px; }
   .brand { font-size: 1.02rem; gap: 2px; }
   .brand img { width: 36px; height: 36px; }
-  .loginLink { padding-inline: 8px; }
-  .navigation a, .navDownload { font-size: .75rem; }
   .download .sectionTitle { font-size: 2.1rem; }
   .heroScene { padding-inline: 16px; }
   .heroFooter a { gap: 4px; }
@@ -524,3 +470,64 @@
   .home :is(a, button), .textButton svg { transition: none; }
   .textButton:hover svg { transform: none; }
 }
+
+/* ===========================================================================================================
+   ANA SAYFA HAREKETİ (22 Kas 2026, animate becerisi). Tanıtım yüzeyi, ilk görüş → "keyif" katmanı serbest.
+   Açılış: CSS animasyonu (yüklenirken ana iş parçacığından bağımsız). Kaydırma: `animation-timeline: view()`
+   (destek yoksa içerik olduğu gibi görünür). Yalnız transform/opacity; güçlü ease-out; hover yalnız ince işaretçide.
+   =========================================================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  /* --- Açılış ------------------------------------------------------------------------------------------------ */
+  .heroPhoto img { animation: hero-settle 1600ms cubic-bezier(.23, 1, .32, 1) both; }
+  .heroCopy .eyebrow { animation: hero-rise 620ms cubic-bezier(.23, 1, .32, 1) 80ms both; }
+  .heroCopy .eyebrow > span { transform-origin: left; animation: line-draw 700ms cubic-bezier(.23, 1, .32, 1) 160ms both; }
+  .heroTitle { animation: hero-rise 760ms cubic-bezier(.23, 1, .32, 1) 140ms both; }
+  .heroTitle > span { animation: hero-rise 760ms cubic-bezier(.23, 1, .32, 1) 230ms both; }
+  .heroCopy .lead { animation: hero-rise 640ms cubic-bezier(.23, 1, .32, 1) 320ms both; }
+  .heroCopy .actions { animation: hero-rise 620ms cubic-bezier(.23, 1, .32, 1) 400ms both; }
+  .trialNote { animation: hero-fade 600ms cubic-bezier(.23, 1, .32, 1) 480ms both; }
+  .heroFooter { animation: hero-fade 700ms cubic-bezier(.23, 1, .32, 1) 560ms both; }
+
+  /* --- Düğmeler: basma geri bildirimi (140 ms) ve ışık süzülmesi ---------------------------------------------- */
+  .primaryButton, .filmButton { position: relative; isolation: isolate; overflow: hidden; transition: background-color 180ms ease, transform 140ms cubic-bezier(.23, 1, .32, 1); }
+  .primaryButton:active, .filmButton:active { transform: scale(.97); }
+  .primaryButton::after {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 30%, #ffffff8c 50%, transparent 70%);
+    content: '';
+    transform: translateX(-120%);
+  }
+  .primaryButton svg { transition: transform 200ms cubic-bezier(.23, 1, .32, 1); }
+
+  /* --- Kaydırınca belirme ------------------------------------------------------------------------------------ */
+  @supports (animation-timeline: view()) {
+    .frame .eyebrow,
+    .sectionTitle,
+    .frame .lead,
+    .operations li,
+    .maydiGrid > * {
+      animation: scroll-rise cubic-bezier(.23, 1, .32, 1) both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 70%;
+    }
+    .finalInner .sectionTitle { animation: none; }
+    .operations li:nth-child(2) { animation-range: entry 6% entry 76%; }
+    .operations li:nth-child(3) { animation-range: entry 12% entry 82%; }
+    .operations li:nth-child(n + 4) { animation-range: entry 18% entry 88%; }
+    .maydiGrid > :nth-child(2) { animation-range: entry 8% entry 78%; }
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  .primaryButton:hover::after { transform: translateX(120%); transition: transform 760ms cubic-bezier(.23, 1, .32, 1); }
+  .primaryButton:hover svg { transform: translate(2px, -2px); }
+}
+
+@keyframes hero-settle { from { transform: scale(1.08); } to { transform: scale(1); } }
+@keyframes hero-rise { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes hero-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes line-draw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes scroll-rise { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+
