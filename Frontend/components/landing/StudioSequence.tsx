@@ -141,7 +141,7 @@ export default function StudioSequence({ children }: { children: ReactNode }) {
   return (
     <div className={styles.sequence}>
       <div className={styles.copy}>{children}</div>
-      <div ref={trackRef} className={styles.track} data-studio-sequence="" data-studio-phase={view}>
+      <div ref={trackRef} className={styles.track} data-studio-sequence="" data-scroll-hint data-studio-phase={view}>
         <div ref={pinRef} className={styles.pin} data-studio-pin="">
           <div className={styles.stage}>
             <div className={styles.room} data-studio-layer="room" aria-hidden="true" />

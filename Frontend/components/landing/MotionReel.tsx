@@ -112,7 +112,7 @@ export default function MotionReel() {
   }, [motion, src])
 
   return (
-    <section ref={section} className={styles.reel} data-motion={motion || undefined} aria-labelledby="reel-title">
+    <section ref={section} className={styles.reel} data-motion={motion || undefined} data-scroll-hint aria-labelledby="reel-title">
       <div className={styles.sticky}>
         <div ref={intro} className={styles.intro}>
           <p className={styles.eyebrow}><span /> BeautyAsist’te bir gün</p>

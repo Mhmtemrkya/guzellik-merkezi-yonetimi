@@ -12,6 +12,7 @@ import MotionReel from '@/components/landing/MotionReel'
 import LandingPricing from '@/components/landing/LandingPricing'
 import MaydiMotion from '@/components/landing/MaydiMotion'
 import SalonDay from '@/components/landing/SalonDay'
+import ScrollHint from '@/components/landing/ScrollHint'
 import StoreLinks from '@/components/landing/StoreLinks'
 import StudioSequence from '@/components/landing/StudioSequence'
 import { FieldNotes, GettingStarted, LandingQuestions, StudioCapabilities } from '@/components/landing/StudioEditorial'
@@ -248,6 +249,7 @@ export default async function HomePage() {
       </main>
       <SiteFooter />
       <AppLaunchDialog />
+      <ScrollHint />
       {/* Yalnız veri bloğu (çalıştırılmaz); içerik sabit kaynaktan, '<' kaçışlı. */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredData() }} />
     </div>

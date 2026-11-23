@@ -80,7 +80,7 @@ function BookingChapter() {
         <h2 id="danisan-deneyimi-baslik">Danışanlarınız randevusunu <span>telefondan alsın.</span></h2>
         <Link href="/salonlar" className={styles.lightLink}>Salonları keşfedin <ArrowUpRight size={17} aria-hidden="true" /></Link>
       </header>
-      <div className={styles.bookingTrack} data-customer-scroll="booking">
+      <div className={styles.bookingTrack} data-customer-scroll="booking" data-scroll-hint>
         <div className={styles.bookingPin}><BookingScene /></div>
         <ol className={styles.bookingSteps}>
           {bookingSteps.map(({ title, text, icon: Icon }) => (
@@ -146,7 +146,7 @@ function AppsChapter() {
         <h2 id="her-ekranda-baslik">Telefonda, tablette, bilgisayarda <span>aynı ajanda.</span></h2>
         <p>Resepsiyonda bilgisayardan, salon içinde telefondan ya da tabletten randevularınıza ulaşın.</p>
       </header>
-      <div className={styles.appsTrack} data-customer-scroll="devices">
+      <div className={styles.appsTrack} data-customer-scroll="devices" data-scroll-hint>
         <div className={styles.appsPin}>
           <Image src="/landing/tablet.webp" alt="" className={styles.appsImage} fill sizes="100vw" />
           <div className={styles.appsShade} />
