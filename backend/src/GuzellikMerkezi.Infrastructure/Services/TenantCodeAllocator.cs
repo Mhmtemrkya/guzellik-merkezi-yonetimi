@@ -46,7 +46,9 @@ public static partial class TenantCodeAllocator
             {
                 'ç' or 'Ç' => 'C',
                 'ğ' or 'Ğ' => 'G',
-                'ı' or 'I' or 'i' or 'İ' => 'I',
+                'ı' or 'I' or 'i' or 'İ' or 'î' or 'Î' => 'I',
+                'â' or 'Â' => 'A',
+                'û' or 'Û' => 'U',
                 'ö' or 'Ö' => 'O',
                 'ş' or 'Ş' => 'S',
                 'ü' or 'Ü' => 'U',

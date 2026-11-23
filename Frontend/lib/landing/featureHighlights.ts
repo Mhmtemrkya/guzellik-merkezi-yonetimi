@@ -21,13 +21,13 @@ export const spotlights: Spotlight[] = [
     kicker: 'WhatsApp entegrasyonu',
     title: 'Danışanlarınıza WhatsApp’tan ulaşın, yanıtı panelde görün.',
     lead:
-      'BeautyAsist, Meta’nın resmî WhatsApp Business altyapısıyla salonunuzun numarasından mesaj gönderir. Hatırlatmalar kendiliğinden gider; danışanın verdiği yanıt da randevunun yanına düşer.',
+      'BeautyAsist, Meta’nın resmî WhatsApp Business altyapısıyla salonunuzun numarasından mesaj gönderir. Hatırlatmalar kendiliğinden gider; danışanın verdiği yanıt da randevunun yanına düşer. WhatsApp, paketinize ve salonunuzun WhatsApp Business kurulumuna göre açılır; kurulumda destek ekibimiz yardımcı olur.',
     points: [
       'Randevu hatırlatması: danışan “EVET” yazarak gelişini onaylar, “HAYIR” yazarak iptal eder; durum takvimde rozet olarak görünür.',
       'Erteleme isteği: danışan “perşembe 15.00 olur mu?” gibi yazdığında BeautyAsist tarihi ve saati anlar, önerilen saati tek dokunuşla uygularsınız.',
       'KVKK onayı WhatsApp üzerinden alınır ve danışan kartına kaydedilir.',
       'Doğum günü kutlaması, kampanya duyurusu, taksit/ödeme hatırlatması, seans yenileme ve uzun süredir gelmeyen danışanlara geri kazanım mesajı.',
-      'Hazır şablonlar, kendi şablonlarınız, gönderim geçmişi ve iletim durumu; aynı mesajları SMS ve e-postayla da gönderebilirsiniz.',
+      'Hazır şablonlar, kendi şablonlarınız, gönderim geçmişi ve iletim durumu; aynı mesajlar e-postayla ve tanımlıysa SMS ile de gönderilebilir.',
     ],
   },
   {
@@ -93,7 +93,7 @@ export const featureQuestions: { question: string; answer: string }[] = [
   {
     question: 'BeautyAsist WhatsApp ile bildirim gönderebiliyor mu?',
     answer:
-      'Evet. Randevu hatırlatması, doğum günü, kampanya, ödeme ve seans yenileme mesajları salonunuzun WhatsApp Business numarasından gider. Danışan EVET/HAYIR ile randevusunu onaylar ya da iptal eder, erteleme isterse önerdiği saat panelinize düşer. Aynı mesajlar SMS ve e-postayla da gönderilebilir.',
+      'Evet. Randevu hatırlatması, doğum günü, kampanya, ödeme ve seans yenileme mesajları salonunuzun WhatsApp Business numarasından gider. Danışan EVET/HAYIR ile randevusunu onaylar ya da iptal eder, erteleme isterse önerdiği saat panelinize düşer. WhatsApp paketinize ve WhatsApp Business kurulumuna göre açılır; mesajlar e-postayla ve tanımlıysa SMS ile de gönderilebilir.',
   },
   {
     question: 'Danışanlarım online randevu alabilir mi?',

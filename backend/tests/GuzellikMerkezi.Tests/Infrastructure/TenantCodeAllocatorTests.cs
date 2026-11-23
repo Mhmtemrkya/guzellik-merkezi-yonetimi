@@ -9,6 +9,7 @@ public sealed class TenantCodeAllocatorTests
     [InlineData("İstanbul", "ISTANBUL")]
     [InlineData("şanlıurfa", "SANLIURFA")]
     [InlineData("Afyon Karahisar", "AFYONKARAHISAR")]
+    [InlineData("Hakkâri", "HAKKARI")]
     [InlineData("Çanakkale", "CANAKKALE")]
     [InlineData(" ", "GENEL")]
     [InlineData(null, "GENEL")]

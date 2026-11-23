@@ -5,12 +5,12 @@
 ## Öne çıkan özellikler
 
 ### WhatsApp entegrasyonu
-- Meta'nın resmî WhatsApp Business altyapısıyla, salonun kendi numarasından mesaj gönderilir.
+- Meta'nın resmî WhatsApp Business altyapısıyla, salonun kendi numarasından mesaj gönderilir. WhatsApp, pakete ve salonun WhatsApp Business kurulumuna göre açılır.
 - Otomatik randevu hatırlatması; danışan "EVET" yazarak onaylar, "HAYIR" yazarak iptal eder, durum takvimde görünür.
 - Danışan erteleme isterse ("perşembe 15.00 olur mu?") tarih ve saat anlaşılır, önerilen saat panelde tek dokunuşla uygulanır.
 - KVKK onayı WhatsApp üzerinden alınır.
 - Doğum günü, kampanya, taksit/ödeme hatırlatması, seans yenileme ve uzun süredir gelmeyen danışana geri kazanım mesajları.
-- Şablonlar, gönderim geçmişi ve iletim durumu; aynı mesajlar SMS ve e-postayla da gönderilebilir.
+- Şablonlar, gönderim geçmişi ve iletim durumu; aynı mesajlar e-postayla ve tanımlıysa SMS ile de gönderilebilir.
 
 ### Online randevu ve müşteri portalı
 - Her salonun hizmetleri, fiyatları, fotoğrafları, çalışma saatleri ve değerlendirmeleriyle vitrin sayfası (beautyasist.com/salonlar).
