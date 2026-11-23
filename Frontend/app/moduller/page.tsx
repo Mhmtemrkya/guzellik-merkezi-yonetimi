@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowDown, ArrowRight, CalendarDays, ChartNoAxesCombined, Check, LockKeyhole, ShieldCheck, UsersRound, WalletCards } from 'lucide-react'
+import FeatureHighlights from '@/components/landing/FeatureHighlights'
 import PublicNavbar from '@/components/public/PublicNavbar'
 import { administratorTools, categories, pages, staffRules, type CatalogEntry } from './catalog'
 import CategoryBar from './CategoryBar'
@@ -10,7 +11,7 @@ import RevealOnScroll from './RevealOnScroll'
 
 export const metadata: Metadata = {
   title: 'Modüller ve yetkiler — BeautyAsist',
-  description: 'BeautyAsist modül kataloğu. Randevu, danışan, seans, kasa, ekip ve Maydi özelliklerini ve personel işlem izinlerini inceleyin.',
+  description: 'BeautyAsist özellikleri ve modül kataloğu: WhatsApp bildirimleri, online randevu ve müşteri portalı, Excel’den veri aktarımı, her cihazda kullanım; randevu, danışan, seans, kasa, ekip ve Maydi modülleri ile personel işlem izinleri.',
 }
 
 const permissionTotal = pages.reduce((total, page) => total + page.actions.length, 0)
@@ -87,6 +88,8 @@ export default function ModulesPage() {
             <p>Maydi <span>Panel asistanınız</span></p>
           </div>
         </section>
+
+        <FeatureHighlights />
 
         <section id="katalog" className={styles.catalog} aria-labelledby="catalog-title">
           <div className={`${styles.wide} ${styles.catalogIntro}`}>

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import AppLaunchDialog, { AppLaunchTrigger } from '@/components/landing/AppLaunchDialog'
 import CustomerStory from '@/components/landing/CustomerStory'
-import FeatureHighlights from '@/components/landing/FeatureHighlights'
+import FeatureTeaser from '@/components/landing/FeatureTeaser'
 import MotionReel from '@/components/landing/MotionReel'
 import LandingPricing from '@/components/landing/LandingPricing'
 import MaydiMotion from '@/components/landing/MaydiMotion'
@@ -238,7 +238,7 @@ export default async function HomePage() {
         <SalonDay />
         <Product />
         <StudioCapabilities />
-        <FeatureHighlights />
+        <FeatureTeaser />
         <Maydi />
         <CustomerStory />
         <GettingStarted />

@@ -10,6 +10,10 @@
 export interface Spotlight {
   id: string
   kicker: string
+  /** Renk tonu (ana sayfa şeridi ve Modüller sayfası aynı tonu kullanır). */
+  tone: 'green' | 'pink' | 'blue' | 'violet'
+  /** Ana sayfa şeridindeki tek satırlık özet. */
+  short: string
   title: string
   lead: string
   points: string[]
@@ -19,6 +23,8 @@ export const spotlights: Spotlight[] = [
   {
     id: 'whatsapp',
     kicker: 'WhatsApp entegrasyonu',
+    tone: 'green',
+    short: 'Hatırlatma, onay ve erteleme yanıtları WhatsApp’tan panele.',
     title: 'Danışanlarınıza WhatsApp’tan ulaşın, yanıtı panelde görün.',
     lead:
       'BeautyAsist, Meta’nın resmî WhatsApp Business altyapısıyla salonunuzun numarasından mesaj gönderir. Hatırlatmalar kendiliğinden gider; danışanın verdiği yanıt da randevunun yanına düşer. WhatsApp, paketinize ve salonunuzun WhatsApp Business kurulumuna göre açılır; kurulumda destek ekibimiz yardımcı olur.',
@@ -33,6 +39,8 @@ export const spotlights: Spotlight[] = [
   {
     id: 'online-randevu',
     kicker: 'Online randevu ve müşteri portalı',
+    tone: 'pink',
+    short: 'Salon vitrini, 7/24 online randevu, online iptal ve erteleme.',
     title: 'Danışanlarınız 7/24 kendi randevusunu alsın.',
     lead:
       'Salonunuz BeautyAsist’te kendi vitrin sayfasıyla yer alır. Danışan web’den ya da mobil uygulamadan şubeyi, hizmeti, uzmanı ve boş saati seçer; talep onayınıza düşer.',
@@ -47,6 +55,8 @@ export const spotlights: Spotlight[] = [
   {
     id: 'veri-aktarimi',
     kicker: 'Hazır veriyi aktarma',
+    tone: 'blue',
+    short: 'Eski programınızdaki danışan, hizmet ve stok Excel’den gelir.',
     title: 'Eski programınızdaki kayıtlarla başlayın.',
     lead:
       'Başka bir programdan ya da kendi tablolarınızdan aldığınız Excel dosyasını yükleyin. BeautyAsist sütunları tanır, kayıtları doğru yere yerleştirir.',
@@ -60,6 +70,8 @@ export const spotlights: Spotlight[] = [
   {
     id: 'her-cihaz',
     kicker: 'Çoklu cihaz desteği',
+    tone: 'violet',
+    short: 'Web, iPhone, iPad, Android, Mac ve Windows; anlık eşitleme.',
     title: 'Resepsiyonda, cebinizde ve tablette aynı panel.',
     lead:
       'BeautyAsist web tarayıcısında, iPhone ve iPad’de, Android’de ve Mac ile Windows masaüstü uygulamasında çalışır. Ekran telefona, tablete ve geniş monitöre göre kendini düzenler.',
