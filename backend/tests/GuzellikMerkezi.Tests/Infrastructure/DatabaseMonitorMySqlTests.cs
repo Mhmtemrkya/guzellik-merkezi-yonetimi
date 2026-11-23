@@ -81,16 +81,19 @@ public sealed class DatabaseMonitorMySqlTests : IDisposable
     {
         var options = new DbContextOptionsBuilder<GuzellikDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         await using var db = new GuzellikDbContext(options);
-        var sut = new DatabaseMonitor(db, Config(), Env(), NullLogger<DatabaseMonitor>.Instance);
+        // Klasörler geçici dizinde ve yok: test, gece yedeği klasörü GERÇEKTEN bulunan üretim sunucusunda da
+        // (yayın betiğinin test kapısı orada koşar) aynı sonucu verir.
+        var sut = new DatabaseMonitor(db, Config(Path.Combine(_root, "yok-1"), Path.Combine(_root, "yok-2")), Env(), NullLogger<DatabaseMonitor>.Instance);
 
         var snapshot = await sut.SnapshotAsync();
         Assert.False(snapshot.Supported);
         Assert.Null(snapshot.Counters);
         Assert.Empty(snapshot.Tables);
-        // Varsayılan klasörler (gece yedeği + ../backups) bu makinede yok.
         Assert.Equal("missing", snapshot.Backups.State);
         Assert.False((await sut.SchemaAsync()).Supported);
-        Assert.Equal(2, sut.BackupDirectories().Count);
+        // Ayar yoksa varsayılan iki klasör (gece yedeği + ../backups) okunur.
+        var defaults = new DatabaseMonitor(db, Config(), Env(), NullLogger<DatabaseMonitor>.Instance);
+        Assert.Equal(DatabaseMonitor.DefaultBackupDirectories.Length, defaults.BackupDirectories().Count);
     }
 
     [Fact]
