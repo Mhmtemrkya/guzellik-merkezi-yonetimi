@@ -511,7 +511,7 @@ public sealed class GuzellikDbContext : DbContext, IUnitOfWork
         builder.HasIndex(x => x.Slug).IsUnique();
         // Kurum kodu (BA-01) ve telefon blind index'i ŞİFRELENMEZ — Name/Phone şifreli olduğu için
         // arama ve mükerrer kontrolü ancak bu düz kolonlardan yapılabilir (bkz. Tenant.Code notu).
-        builder.Property(x => x.Code).HasMaxLength(20);
+        builder.Property(x => x.Code).HasMaxLength(40);
         builder.HasIndex(x => x.Code).IsUnique();
         builder.Property(x => x.PhoneIndex).HasMaxLength(64);
         builder.HasIndex(x => x.PhoneIndex);

@@ -57,16 +57,15 @@ public sealed class TenantService : ITenantService
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var search = request.Search.Trim();
-            // Kod aramasında biçim toleransı: "ba1", "BA-1", "1" hepsi BA-01'i bulmalı.
-            var codeNumber = TenantCodeAllocator.ParseNumber(search);
-            var normalizedCode = codeNumber > 0 ? TenantCodeAllocator.Format(codeNumber) : null;
+            // Kod (BA-ŞEHİR-SIRA) aramasında Türkçe harf toleransı: "istanbul" ya da "İSTANBUL" BA-ISTANBUL-… kodlarını bulur.
+            var foldedCode = search.Length >= 2 ? TenantCodeAllocator.CityKey(search) : null;
 
             var all = await query.ToArrayAsync(cancellationToken);
             var filtered = all
                 .Where(x =>
                     (x.Code is not null && (
                         x.Code.Contains(search, StringComparison.OrdinalIgnoreCase)
-                        || (normalizedCode is not null && x.Code.Equals(normalizedCode, StringComparison.OrdinalIgnoreCase))))
+                        || (foldedCode is not null && foldedCode != TenantCodeAllocator.UnknownCity && x.Code.Contains(foldedCode, StringComparison.Ordinal))))
                     || x.Slug.Contains(search, StringComparison.OrdinalIgnoreCase)
                     || SearchText.FoldedContains(x.Name, search))
                 .ToArray();
@@ -183,7 +182,7 @@ public sealed class TenantService : ITenantService
         var tenant = new Tenant(request.Name, request.Slug, request.Plan, TenantStatus.Trial);
         // Kurum kodu (BA-01) HER İKİ yoldan da atanır — platform paneli ve self-servis kayıt.
         // Tek kaynak TenantCodeAllocator; iki yerde ayrı hesaplanırsa numaralar çakışır.
-        tenant.AssignCode(await TenantCodeAllocator.NextAsync(_db, 0, cancellationToken));
+        tenant.AssignCode(await TenantCodeAllocator.NextAsync(_db, request.DefaultBranchCity, 0, cancellationToken));
         tenant.SetProfile(request.Domain, request.OwnerName);
         tenant.SetContact(request.Phone, null);
         tenant.SetProfileExtras(null, null, NormalizeEmailCandidate(request.Email));

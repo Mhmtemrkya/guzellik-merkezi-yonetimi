@@ -1,70 +1,102 @@
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using GuzellikMerkezi.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace GuzellikMerkezi.Infrastructure.Services;
 
 /// <summary>
-/// İnsan-okur kurum kodu üretir: <c>BA-01</c>, <c>BA-02</c>, … Destek ekibi kurumu bu kodla bulur.
+/// İnsan-okur kurum kodu üretir: <c>BA-ŞEHİR-SIRA</c> — <c>BA-ISTANBUL-001</c>, <c>BA-ERZURUM-002</c> (kullanıcı kararı
+/// 23 Kas 2026; önceki biçim <c>BA-01</c>). Destek ekibi kurumu bu kodla bulur.
 ///
 /// <para>
-/// <b>Neden ayrı sınıf?</b> Kod iki yoldan atanır — platform panelinden kurum açma ve self-servis
-/// kayıt. İki yerde ayrı hesaplanırsa numaralar çakışır ya da atlar. Tek kaynak burasıdır.
+/// <b>Şehir</b> kurumun varsayılan şubesinin ilidir (kayıtta zorunlu). ASCII büyük harfle yazılır (İstanbul → ISTANBUL,
+/// Şanlıurfa → SANLIURFA): kod elle yazılır ve büyük/küçük dönüşümü Türkçe İ/ı'da kültüre göre değişir. Şehri olmayan kurum
+/// <see cref="UnknownCity"/> alır. <b>Sıra</b> şehir içindedir, en az 3 hane; 999'dan sonra büyür.
 /// </para>
 ///
 /// <para>
-/// <b>Yarış koşulu:</b> "en büyüğü bul + 1" iki eşzamanlı kayıtta AYNI numarayı üretir. Son söz
-/// veritabanındaki UNIQUE indekstedir; çağıran taraf ihlali yakalayıp bir sonraki numarayla tekrar
-/// dener (bkz. <see cref="IsDuplicateCodeError"/>). Sayaç tablosu ya da tablo kilidi eklemek,
-/// günde birkaç kayıt için gereksiz karmaşıklık olurdu.
+/// <b>Neden ayrı sınıf?</b> Kod birkaç yoldan atanır — platform panelinden kurum açma, self-servis kayıt ve Maydanoz onayı.
+/// Tek kaynak burasıdır.
+/// </para>
+///
+/// <para>
+/// <b>Yarış koşulu:</b> "en büyüğü bul + 1" iki eşzamanlı kayıtta AYNI numarayı üretir. Son söz veritabanındaki UNIQUE
+/// indekstedir; çağıran taraf ihlali yakalayıp bir sonraki numarayla tekrar dener (bkz. <see cref="IsDuplicateCodeError"/>).
 /// </para>
 /// </summary>
-public static class TenantCodeAllocator
+public static partial class TenantCodeAllocator
 {
-    /// <summary>Kod öneki. Marka değişirse burada değişir — kodlar geçmişe dönük DEĞİŞMEZ.</summary>
+    /// <summary>Kod öneki. Marka değişirse burada değişir.</summary>
     public const string Prefix = "BA";
 
-    /// <summary>En az iki hane: BA-01. Numara 99'u geçince kendiliğinden BA-100 olur.</summary>
-    private const int MinDigits = 2;
+    public const string UnknownCity = "GENEL";
+
+    public const int MaxCityLength = 20;
+
+    /// <summary>Şehri kod parçasına çevirir: Türkçe harfler katlanır, harf dışı her şey atılır.</summary>
+    public static string CityKey(string? city)
+    {
+        if (string.IsNullOrWhiteSpace(city)) return UnknownCity;
+        var builder = new StringBuilder(city.Length);
+        foreach (var raw in city.Trim())
+        {
+            var c = raw switch
+            {
+                'ç' or 'Ç' => 'C',
+                'ğ' or 'Ğ' => 'G',
+                'ı' or 'I' or 'i' or 'İ' => 'I',
+                'ö' or 'Ö' => 'O',
+                'ş' or 'Ş' => 'S',
+                'ü' or 'Ü' => 'U',
+                _ => char.ToUpperInvariant(raw),
+            };
+            if (c is >= 'A' and <= 'Z') builder.Append(c);
+            if (builder.Length == MaxCityLength) break;
+        }
+
+        return builder.Length == 0 ? UnknownCity : builder.ToString();
+    }
+
+    public static string CityPrefix(string? city) => $"{Prefix}-{CityKey(city)}-";
+
+    /// <summary>Şehir ve sıradan kod (İzmir, 5 → "BA-IZMIR-005").</summary>
+    public static string Format(string? city, int number) =>
+        CityPrefix(city) + number.ToString("000", CultureInfo.InvariantCulture);
+
+    /// <summary>Kod yeni (şehirli) biçimde mi? Eski <c>BA-01</c> kodları açılıştaki backfill yeniden numaralar.</summary>
+    public static bool IsCityCode(string? code) => code is not null && CityCodePattern().IsMatch(code);
 
     /// <summary>
-    /// Sıradaki boş kodu döndürür. <paramref name="attempt"/> her yeniden denemede bir artırılır:
-    /// UNIQUE ihlali alan çağıran, aynı numarayı tekrar denemek yerine bir sonrakine geçer.
+    /// Bu şehirde sıradaki boş kod. <paramref name="attempt"/> her yeniden denemede bir artırılır: UNIQUE ihlali alan
+    /// çağıran, aynı numarayı tekrar denemek yerine bir sonrakine geçer.
     /// </summary>
-    public static async Task<string> NextAsync(GuzellikDbContext db, int attempt = 0, CancellationToken ct = default)
+    public static async Task<string> NextAsync(GuzellikDbContext db, string? city, int attempt = 0, CancellationToken ct = default)
     {
-        // IgnoreQueryFilters: silinmiş/iptal edilmiş kurumların kodları da REZERVEDİR. Aksi hâlde
-        // silinen BA-07'nin numarası yeniden dağıtılır ve eski destek kayıtları yanlış kurumu gösterir.
+        // IgnoreQueryFilters: silinmiş/iptal edilmiş kurumların kodları da REZERVEDİR. Aksi hâlde silinen kurumun
+        // numarası yeniden dağıtılır ve eski destek kayıtları yanlış kurumu gösterir.
+        var prefix = CityPrefix(city);
         var codes = await db.Tenants.IgnoreQueryFilters().AsNoTracking()
-            .Where(t => t.Code != null)
+            .Where(t => t.Code != null && t.Code.StartsWith(prefix))
             .Select(t => t.Code!)
             .ToListAsync(ct);
 
+        return Format(city, NextNumber(city, codes) + attempt);
+    }
+
+    /// <summary>Verilen kodlar arasında bu şehrin en büyük sırasından bir sonraki (yoksa 1).</summary>
+    public static int NextNumber(string? city, IEnumerable<string?> codes)
+    {
+        var prefix = CityPrefix(city);
         var max = 0;
         foreach (var code in codes)
         {
-            var n = ParseNumber(code);
-            if (n > max) max = n;
+            if (code is null || !code.StartsWith(prefix, StringComparison.Ordinal)) continue;
+            if (int.TryParse(code.AsSpan(prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out var n) && n > max) max = n;
         }
 
-        return Format(max + 1 + attempt);
-    }
-
-    /// <summary>Numarayı koda çevirir (5 → "BA-05").</summary>
-    public static string Format(int number) => $"{Prefix}-{number.ToString().PadLeft(MinDigits, '0')}";
-
-    /// <summary>
-    /// Koddaki numarayı okur; tanınmayan biçimde 0 döner.
-    /// </summary>
-    /// <remarks>
-    /// Önek KONTROL EDİLMEZ: elle "GM-04" gibi bir kod girilmiş olsa bile numara rezerve sayılmalı,
-    /// aksi hâlde yeni kayıt aynı numarayı alıp UNIQUE ihlaline düşerdi.
-    /// </remarks>
-    public static int ParseNumber(string? code)
-    {
-        if (string.IsNullOrWhiteSpace(code)) return 0;
-        var dash = code.LastIndexOf('-');
-        var tail = dash >= 0 ? code[(dash + 1)..] : code;
-        return int.TryParse(tail.Trim(), out var n) ? n : 0;
+        return max + 1;
     }
 
     /// <summary>
@@ -87,4 +119,7 @@ public static class TenantCodeAllocator
         }
         return false;
     }
+
+    [GeneratedRegex(@"^BA-[A-Z]{1,20}-[0-9]{3,}$", RegexOptions.CultureInvariant)]
+    private static partial Regex CityCodePattern();
 }

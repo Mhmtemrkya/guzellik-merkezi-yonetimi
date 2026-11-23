@@ -38,12 +38,12 @@ public sealed class TenantHardDeleteMySqlTests
         await using var db = database.NewContext();
 
         var tenant = new Tenant("Silinecek Kurum", $"sil-{Guid.NewGuid():N}"[..16], "Premium", TenantStatus.Active);
-        tenant.AssignCode("BA-90");
+        tenant.AssignCode("BA-ISTANBUL-090");
         var branch = tenant.AddBranch("Merkez", "İstanbul", true);
         tenant.GrantAccess("sahip@sil.test", UserRole.InstitutionOwner, null, "Sahip");
 
         var other = new Tenant("Kalacak Kurum", $"kal-{Guid.NewGuid():N}"[..16], "Premium", TenantStatus.Active);
-        other.AssignCode("BA-91");
+        other.AssignCode("BA-ISTANBUL-091");
         var otherBranch = other.AddBranch("Merkez", "Ankara", true);
         other.GrantAccess("sahip@kal.test", UserRole.InstitutionOwner, null, "Diğer Sahip");
 
@@ -132,10 +132,10 @@ public sealed class TenantHardDeleteMySqlTests
             await NewService(db).DeleteAsync(seed.TenantId);
         }
 
-        // BA-90 silindi ama BA-91 (komşu kurum) duruyor → sıradaki kod BA-92 olmalı.
+        // BA-ISTANBUL-090 silindi ama 091 (komşu kurum) duruyor → sıradaki kod 092 olmalı (silinen kod yeniden dağıtılmaz).
         await using var check = database.NewContext();
-        var next = await TenantCodeAllocator.NextAsync(check);
-        Assert.Equal("BA-92", next);
+        var next = await TenantCodeAllocator.NextAsync(check, "İstanbul");
+        Assert.Equal("BA-ISTANBUL-092", next);
     }
 
     /// <summary>Zaten iptal edilmiş (eski soft-delete) kurumlar da kalıcı olarak silinebilir.</summary>

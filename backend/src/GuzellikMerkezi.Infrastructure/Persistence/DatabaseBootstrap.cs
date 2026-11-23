@@ -404,7 +404,7 @@ public static class DatabaseBootstrap
     }
 
     /// <summary>
-    /// KURUM KODU BACKFILL'İ — mevcut kurumlara <c>BA-01</c>, <c>BA-02</c>, … atar.
+    /// KURUM KODU BACKFILL'İ — kodu olmayan ya da eski <c>BA-01</c> biçimindeki kurumlara <c>BA-ŞEHİR-SIRA</c> atar.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -431,18 +431,25 @@ public static class DatabaseBootstrap
             var search = scope.ServiceProvider.GetRequiredService<Application.Abstractions.ISearchIndexService>();
 
             // IgnoreQueryFilters: iptal edilmiş kurumlar da kod almalı (destek kaydı onlara da bakar).
-            var all = await db.Tenants.IgnoreQueryFilters().OrderBy(t => t.CreatedAtUtc).ToListAsync();
+            var all = await db.Tenants.IgnoreQueryFilters().Include(t => t.Branches)
+                .OrderBy(t => t.CreatedAtUtc).ThenBy(t => t.Id).ToListAsync();
             if (all.Count == 0) return;
 
-            var next = all.Max(t => Services.TenantCodeAllocator.ParseNumber(t.Code));
+            // BA-ŞEHİR-SIRA (23 Kas 2026): kodu yoksa ya da eski "BA-01" biçimindeyse varsayılan şubenin iliyle,
+            // şehir içinde kayıt sırasıyla yeniden numaralanır. Yeni biçimdeki kodlara dokunulmaz (idempotent).
+            var codes = all.Select(t => t.Code).Where(c => Services.TenantCodeAllocator.IsCityCode(c)).ToList();
             var codeCount = 0;
             var indexCount = 0;
 
             foreach (var tenant in all)
             {
-                if (string.IsNullOrWhiteSpace(tenant.Code))
+                if (!Services.TenantCodeAllocator.IsCityCode(tenant.Code))
                 {
-                    tenant.AssignCode(Services.TenantCodeAllocator.Format(++next));
+                    var city = tenant.Branches.OrderByDescending(b => b.IsDefault).ThenBy(b => b.CreatedAtUtc)
+                        .Select(b => b.City).FirstOrDefault(c => !string.IsNullOrWhiteSpace(c));
+                    var code = Services.TenantCodeAllocator.Format(city, Services.TenantCodeAllocator.NextNumber(city, codes));
+                    codes.Add(code);
+                    tenant.RenumberCode(code);
                     codeCount++;
                 }
                 // Telefonu olan ama indeksi olmayan kurumlar (kolon yeni eklendi).

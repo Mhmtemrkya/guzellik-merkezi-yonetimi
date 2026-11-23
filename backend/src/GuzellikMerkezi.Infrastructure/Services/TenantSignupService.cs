@@ -614,7 +614,7 @@ public sealed partial class TenantSignupService : ITenantSignupService
 
         for (var attempt = 0; attempt < MaxCodeAttempts; attempt++)
         {
-            var code = await TenantCodeAllocator.NextAsync(_db, attempt, ct);
+            var code = await TenantCodeAllocator.NextAsync(_db, form.City, attempt, ct);
             var tenant = new Tenant(form.TenantName, draft.Slug, plan.Name, TenantStatus.Trial);
             tenant.AssignCode(code);
             tenant.MarkSelfSignup();

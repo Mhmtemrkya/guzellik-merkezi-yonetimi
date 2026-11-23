@@ -181,7 +181,7 @@ public sealed class TenantSignupTests
         var done = await service.VerifyPhoneAsync(new TenantSignupVerifyPhoneRequest(start.Value.SignupId, phoneCode));
         Assert.True(done.IsSuccess);
 
-        Assert.Equal("BA-01", done.Value!.TenantCode);
+        Assert.Equal("BA-ISTANBUL-001", done.Value!.TenantCode);
         Assert.Equal(TenantStatus.Trial, done.Value.Tenant.Status);
         Assert.True(done.Value.Credentials.MustChangePassword);
         Assert.False(string.IsNullOrWhiteSpace(done.Value.Credentials.InitialPassword));
@@ -191,7 +191,7 @@ public sealed class TenantSignupTests
         await using var verify = NewDb(options);
         var tenant = await verify.Tenants.IgnoreQueryFilters().Include(t => t.Branches).Include(t => t.Users)
             .SingleAsync();
-        Assert.Equal("BA-01", tenant.Code);
+        Assert.Equal("BA-ISTANBUL-001", tenant.Code);
         Assert.True(tenant.IsSelfSignup);
         Assert.NotNull(tenant.TrialEndsAtUtc);   // sayaç HEMEN başlar
         Assert.NotNull(tenant.PhoneIndex);       // mükerrer kontrolü için blind index
@@ -234,7 +234,7 @@ public sealed class TenantSignupTests
         Assert.Null(step2.Value.Channel);
 
         var done = step2.Value.Completed!;
-        Assert.Equal("BA-01", done.TenantCode);
+        Assert.Equal("BA-ISTANBUL-001", done.TenantCode);
         Assert.Equal(TenantStatus.Trial, done.Tenant.Status);
         Assert.False(string.IsNullOrWhiteSpace(done.Session.AccessToken));
 
@@ -332,7 +332,7 @@ public sealed class TenantSignupTests
         Assert.True((await service.StartAsync(Form())).IsFailure);
     }
 
-    /// <summary>Kodlar sırayla verilir: ikinci kurum BA-02 olur.</summary>
+    /// <summary>Kodlar sırayla verilir: ikinci kurum şehir içinde BA-ISTANBUL-002 olur.</summary>
     [Fact]
     public async Task SecondTenant_GetsNextCode()
     {
@@ -341,7 +341,7 @@ public sealed class TenantSignupTests
         await using (var seed = NewDb(options))
         {
             var existing = new Tenant("Önceki Kurum", "onceki-kurum", "Başlangıç", TenantStatus.Active);
-            existing.AssignCode("BA-01");
+            existing.AssignCode("BA-ISTANBUL-001");
             seed.Tenants.Add(existing);
             await seed.SaveChangesAsync();
         }
@@ -351,7 +351,7 @@ public sealed class TenantSignupTests
         var service = NewService(db, messaging);
 
         var code = await CompleteAsync(service, messaging, Form());
-        Assert.Equal("BA-02", code);
+        Assert.Equal("BA-ISTANBUL-002", code);
     }
 
     /// <summary>
@@ -367,7 +367,7 @@ public sealed class TenantSignupTests
         await using (var seed = NewDb(options))
         {
             var cancelled = new Tenant("İptal Kurum", "iptal-kurum", "Başlangıç", TenantStatus.Active);
-            cancelled.AssignCode("BA-05");
+            cancelled.AssignCode("BA-ISTANBUL-005");
             cancelled.Cancel();
             seed.Tenants.Add(cancelled);
             await seed.SaveChangesAsync();
@@ -376,7 +376,7 @@ public sealed class TenantSignupTests
         var messaging = NewMessaging();
         await using var db = NewDb(options);
         var code = await CompleteAsync(NewService(db, messaging), messaging, Form());
-        Assert.Equal("BA-06", code);
+        Assert.Equal("BA-ISTANBUL-006", code);
     }
 
     // ------------------------------------------------------------------ mükerrer

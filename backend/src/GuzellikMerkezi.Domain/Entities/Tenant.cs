@@ -168,6 +168,17 @@ public sealed class Tenant : Entity
         Touch();
     }
 
+    /// <summary>
+    /// Kod BİÇİMİ değişiminde (BA-01 → BA-ŞEHİR-SIRA, kullanıcı kararı 23 Kas 2026) tek seferlik yeniden numaralama.
+    /// Yalnız açılıştaki backfill çağırır; olağan akışta kod <see cref="AssignCode"/> ile bir kez verilir.
+    /// </summary>
+    public void RenumberCode(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) throw new DomainException("Kurum kodu boş olamaz.");
+        Code = code.Trim().ToUpperInvariant();
+        Touch();
+    }
+
     /// <summary>Telefon blind index'ini yazar (altyapı katmanı üretir). Boş → temizler.</summary>
     public void SetPhoneIndex(string? index)
     {

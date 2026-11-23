@@ -152,7 +152,7 @@ public sealed partial class TenantSignupService : IConnectorApplications
         var slug = await AllocateSlugAsync(form.TenantName, ct);
         for (var attempt = 0; attempt < MaxCodeAttempts; attempt++)
         {
-            var code = await TenantCodeAllocator.NextAsync(_db, attempt, ct);
+            var code = await TenantCodeAllocator.NextAsync(_db, form.City, attempt, ct);
             // Deneme: sayaç kurum sahibinin İLK girişinde başlar (Tenant kurucusu; AuthService).
             var tenant = new Tenant(form.TenantName, slug, plan.Name, TenantStatus.Trial);
             tenant.UseIdentity(tenantId);
