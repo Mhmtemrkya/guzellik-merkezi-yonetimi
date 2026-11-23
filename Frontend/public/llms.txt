@@ -1,0 +1,46 @@
+# BeautyAsist
+
+> BeautyAsist, güzellik merkezleri, salonlar ve estetik klinikleri için Türkçe yönetim yazılımıdır: randevu, danışan, paket ve seans, kasa ve ön muhasebe, stok ve personel tek panelde. WhatsApp bildirimleri, online randevu ve müşteri portalı, Excel'den veri aktarımı ve web, iOS, Android, Mac ve Windows desteği vardır. 14 gün ücretsiz denenir; kredi kartı gerekmez. Ödemeler Maydanoz Yazılım (maydanozasist.com) üzerinden alınır.
+
+## Öne çıkan özellikler
+
+### WhatsApp entegrasyonu
+- Meta'nın resmî WhatsApp Business altyapısıyla, salonun kendi numarasından mesaj gönderilir.
+- Otomatik randevu hatırlatması; danışan "EVET" yazarak onaylar, "HAYIR" yazarak iptal eder, durum takvimde görünür.
+- Danışan erteleme isterse ("perşembe 15.00 olur mu?") tarih ve saat anlaşılır, önerilen saat panelde tek dokunuşla uygulanır.
+- KVKK onayı WhatsApp üzerinden alınır.
+- Doğum günü, kampanya, taksit/ödeme hatırlatması, seans yenileme ve uzun süredir gelmeyen danışana geri kazanım mesajları.
+- Şablonlar, gönderim geçmişi ve iletim durumu; aynı mesajlar SMS ve e-postayla da gönderilebilir.
+
+### Online randevu ve müşteri portalı
+- Her salonun hizmetleri, fiyatları, fotoğrafları, çalışma saatleri ve değerlendirmeleriyle vitrin sayfası (beautyasist.com/salonlar).
+- Danışan web'den veya mobil uygulamadan şube, hizmet, uzman ve boş saat seçerek randevu talebi gönderir; talep salonun onayına düşer.
+- Müşteri portalında danışan randevularını görür, salonun kuralına uygun süre içinde online iptal eder ya da erteler.
+- Dolu günler için bekleme listesi, hizmet sonrası QR ile puan ve yorum, QR ile hediye kartı doğrulama.
+
+### Hazır veriyi sisteme aktarma
+- Başka programdan ya da kendi tablolarınızdan alınan Excel (.xlsx) dosyası yüklenir; sütunlar tanınır.
+- Danışanlar, hizmetler, paketler, ürünler (stok) ve personel aktarılır; zaten kayıtlı olanlar tekrar eklenmez.
+- Kurulum ekibi aktarımda yardımcı olur. Kayıtlar ve raporlar Excel ve PDF olarak dışa aktarılır.
+
+### Çoklu cihaz desteği
+- Web tarayıcısı, iPhone ve iPad, Android, Mac ve Windows masaüstü uygulaması; ekran telefona, tablete ve geniş monitöre göre düzenlenir.
+- Cihazlar arasında anlık eşitleme.
+- Masaüstü uygulamasında internet kesilirse işlemler sıraya alınır, bağlantı gelince çift kayıt olmadan gönderilir.
+- Tablet, onam imzalatmak için imza istasyonu olarak kullanılır; masaüstü bildirimleri; personelin hangi cihazlardan gireceği belirlenebilir.
+
+## Paneldeki diğer modüller
+- Takvim ve personel çizelgesi; paket ve seans takibi; dijital onam ve imza (imzalı PDF).
+- Konsültasyon formu, işlem günlüğü, önce/sonra fotoğrafları.
+- Adisyon, cari hesap, taksit, gider ve gün sonu kasa kapanışı; stok ve kritik stok uyarısı.
+- Personel yetkileri, izinler ve prim hesabı; kampanya, sadakat puanı, hediye çeki ve kupon.
+- Çoklu şube; KVKK için maskeli telefon/e-posta, yönetici onaylı işlemler ve denetim kaydı.
+- Finans, danışan, personel ve hizmet raporları (Excel/PDF); Maydi yapay zekâ asistanı.
+
+## Sayfalar
+- [Ana sayfa](https://beautyasist.com/)
+- [Modüller](https://beautyasist.com/moduller)
+- [Uygulamalar (iOS, Android, Mac, Windows)](https://beautyasist.com/uygulamalar)
+- [Salonlar ve online randevu](https://beautyasist.com/salonlar)
+- [Ücretsiz kayıt](https://beautyasist.com/kayit)
+- [İletişim](https://beautyasist.com/iletisim)

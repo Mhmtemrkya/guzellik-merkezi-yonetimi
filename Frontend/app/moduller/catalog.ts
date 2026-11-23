@@ -120,7 +120,7 @@ export const pages: ModulePage[] = [
   {
     key: 'Notifications',
     title: 'Bildirimler',
-    summary: 'Mesaj şablonları, gönderim geçmişi ve etkin kanallardaki otomatik hatırlatmalar.',
+    summary: 'WhatsApp, SMS ve e-postayla otomatik randevu hatırlatması, doğum günü, kampanya, ödeme ve seans yenileme mesajları; danışan WhatsApp’tan EVET/HAYIR ile onaylar ya da erteleme ister. Şablonlar ve gönderim geçmişi.',
     icon: Bell,
     actions: [
       { key: 'Notifications.Send', label: 'SMS / WhatsApp / e-posta gönderimi' },
@@ -178,7 +178,7 @@ const workflows: Workflow[] = [
     summary: 'Randevu ve işletme verilerinin günlük görünümü.',
     steps: ['Günlük randevu ve bekleyen işlemler', 'Gelir özeti ve raporlara geçiş'] },
   { key: 'OnlineBooking', title: 'Salon vitrini ve online randevu', icon: Globe2,
-    summary: 'Salonunuzu ziyaretçilere tanıtın ve web ile mobil müşteri portalından randevu talebi alın.',
+    summary: 'Salonunuzu vitrin sayfasıyla tanıtın; danışan web ya da mobil uygulamadan boş saati seçip randevu talebi gönderir, müşteri portalından randevusunu iptal eder ya da erteler.',
     steps: ['Hizmetler, fotoğraflar ve çalışma saatleri', 'Gelen randevu talepleri ve müşteri değerlendirmeleri'] },
   { key: 'Consent', title: 'Dijital onam ve imza tableti', icon: PenLine,
     summary: 'Hizmete bağlı onam belgesini danışana tablet üzerinden imzalatın.',

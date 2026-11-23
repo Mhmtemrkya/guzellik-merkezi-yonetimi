@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import AppLaunchDialog, { AppLaunchTrigger } from '@/components/landing/AppLaunchDialog'
 import CustomerStory from '@/components/landing/CustomerStory'
+import FeatureHighlights from '@/components/landing/FeatureHighlights'
 import MotionReel from '@/components/landing/MotionReel'
 import LandingPricing from '@/components/landing/LandingPricing'
 import MaydiMotion from '@/components/landing/MaydiMotion'
@@ -17,15 +18,43 @@ import { FieldNotes, GettingStarted, LandingQuestions, StudioCapabilities } from
 import PaymentBadges from '@/components/legal/PaymentBadges'
 import MaydiMenu from '@/components/public/MaydiMenu'
 import { fetchPublicPlans } from '@/lib/landingPlans'
+import { featureQuestions, moreFeatures, spotlights } from '@/lib/landing/featureHighlights'
 import { legalLinks } from '@/lib/legal/company'
 import styles from './home.module.css'
 
 export const metadata: Metadata = {
   title: 'BeautyAsist | Güzellik Merkezi Yönetimi ve Maydi',
-  description: 'Randevu, danışan, seans ve kasa yönetimi tek yerde. BeautyAsist’i web, iOS, Android, Mac ve Windows’ta kullanın, yapay zekâ asistanı Maydi ile tanışın.',
+  description: 'Güzellik merkezi yazılımı: online randevu ve müşteri portalı, WhatsApp hatırlatma ve onay, Excel’den veri aktarımı, seans, kasa ve stok. Web, iOS, Android, Mac ve Windows’ta; yapay zekâ asistanı Maydi ile.',
 }
 
 export const revalidate = 300
+
+/**
+ * Arama motorları ve yapay zekâ tarayıcıları için yapılandırılmış veri (schema.org). Metin, sayfadaki bölümlerle aynı
+ * kaynaktan gelir (lib/landing/featureHighlights). JSON içinde "<" kaçışlanır: veri bloğu HTML'i kapatamaz.
+ */
+function structuredData(): string {
+  const site = 'https://beautyasist.com'
+  const graph = [
+    {
+      '@type': 'SoftwareApplication',
+      name: 'BeautyAsist',
+      url: site,
+      applicationCategory: 'BusinessApplication',
+      applicationSubCategory: 'Güzellik merkezi ve salon yönetim yazılımı',
+      operatingSystem: 'Web, iOS, iPadOS, Android, macOS, Windows',
+      inLanguage: 'tr',
+      description: 'Güzellik merkezleri için randevu, danışan, seans, kasa ve stok yönetimi; WhatsApp bildirimleri, online randevu ve müşteri portalı, Excel ile veri aktarımı.',
+      featureList: [...spotlights.map(s => `${s.kicker}: ${s.lead}`), ...moreFeatures.map(f => `${f.title}: ${f.body}`)],
+      offers: { '@type': 'Offer', description: '14 gün ücretsiz deneme, kredi kartı gerekmez.' },
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: featureQuestions.map(q => ({ '@type': 'Question', name: q.question, acceptedAnswer: { '@type': 'Answer', text: q.answer } })),
+    },
+  ]
+  return JSON.stringify({ '@context': 'https://schema.org', '@graph': graph }).replace(/</g, '\\u003c')
+}
 
 const operations = [
   { title: 'Randevu ve takvim', description: 'Uzman, oda ve saatleri aynı takvimde planlayın.', icon: CalendarDays },
@@ -174,6 +203,7 @@ function SiteFooter() {
             <h3>Keşfedin</h3>
             <ul>
               <li><a href="#bir-gun-sahne">Salonun bir günü</a></li>
+              <li><a href="#ozellikler">Öne çıkan özellikler</a></li>
               <li><Link href="/moduller">Modüller</Link></li>
               <li><a href="#danisan-deneyimi">Danışan deneyimi</a></li>
               <li><Link href="/salonlar">Salonları keşfet</Link></li>
@@ -208,6 +238,7 @@ export default async function HomePage() {
         <SalonDay />
         <Product />
         <StudioCapabilities />
+        <FeatureHighlights />
         <Maydi />
         <CustomerStory />
         <GettingStarted />
@@ -217,6 +248,8 @@ export default async function HomePage() {
       </main>
       <SiteFooter />
       <AppLaunchDialog />
+      {/* Yalnız veri bloğu (çalıştırılmaz); içerik sabit kaynaktan, '<' kaçışlı. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredData() }} />
     </div>
   )
 }

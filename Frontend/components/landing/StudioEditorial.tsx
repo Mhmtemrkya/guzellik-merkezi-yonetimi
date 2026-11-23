@@ -4,6 +4,7 @@ import {
   ArrowUpRight, Bell, Boxes, ChartNoAxesCombined, ChevronDown, CircleCheck,
   ClipboardCheck, Layers3, ShieldCheck, Store, UsersRound,
 } from 'lucide-react'
+import { featureQuestions } from '@/lib/landing/featureHighlights'
 import styles from './StudioEditorial.module.css'
 
 const capabilities = [
@@ -49,6 +50,7 @@ const steps = [
 ]
 
 const questions = [
+  ...featureQuestions,
   { question: 'Ücretsiz deneme nasıl başlıyor?', answer: 'Başvurunuz onaylandıktan ve hesabınız açıldıktan sonra BeautyAsist’i 14 gün ücretsiz deneyebilirsiniz. Kredi kartı gerekmez.' },
   { question: 'Birden fazla şubem varsa ne yapabilirim?', answer: 'Şubelerinizi aynı hesapta yönetebilirsiniz. Şube başına ücret ve varsa kullanım kademeleri fiyatlandırma bölümündeki planda gösterilir.' },
   { question: 'BeautyAsist’i hangi cihazlarda kullanabilirim?', answer: 'Web panelini tarayıcınızda açabilir, mobil uygulamayı iOS ve Android’de, BeautyAsist Desktop’ı Mac ve Windows’ta kullanabilirsiniz.' },
