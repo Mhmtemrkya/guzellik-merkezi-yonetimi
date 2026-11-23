@@ -38,6 +38,14 @@ export default function MotionReel() {
   const video = useRef<HTMLVideoElement>(null)
   const [motion, setMotion] = useState(false)
   const [active, setActive] = useState(-1)
+  // Video kaynağı ekrana göre (kullanıcı isteği 23 Kas 2026: 4K). Fiziksel piksel genişliği 2600'ü aşan geniş ekranlar
+  // 3840×2160'ı, telefon ve tablet 1920×1080'i indirir. Kaynak: tools/maydi-reel (Remotion).
+  const [src, setSrc] = useState<string | null>(null)
+
+  useEffect(() => {
+    const physical = Math.max(window.screen.width, window.screen.height) * (window.devicePixelRatio || 1)
+    setSrc(physical > 2600 && window.innerWidth >= 1024 ? '/landing/reel-scrub-4k.mp4' : '/landing/reel-scrub-1080.mp4')
+  }, [])
 
   useEffect(() => {
     const query = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -101,7 +109,7 @@ export default function MotionReel() {
       window.removeEventListener('scroll', schedule)
       window.removeEventListener('resize', schedule)
     }
-  }, [motion])
+  }, [motion, src])
 
   return (
     <section ref={section} className={styles.reel} data-motion={motion || undefined} aria-labelledby="reel-title">
@@ -113,9 +121,9 @@ export default function MotionReel() {
 
         <div ref={frame} className={styles.frame}>
           <Image src="/landing/reel-scrub-poster.jpg" alt="" fill sizes="100vw" className={styles.media} />
-          {motion && (
-            <video ref={video} className={styles.media} muted playsInline preload="auto" aria-hidden="true">
-              <source src="/landing/reel-scrub.mp4" type="video/mp4" />
+          {motion && src && (
+            <video ref={video} key={src} className={styles.media} muted playsInline preload="auto" aria-hidden="true">
+              <source src={src} type="video/mp4" />
             </video>
           )}
 
