@@ -144,7 +144,7 @@ export default function SalonDay() {
       <header className={styles.intro}>
         <div>
           <p className={styles.label}>Bir gün, dört sahne</p>
-          <h2 id="salon-day-heading">Bir salonun günü.</h2>
+          <h2 id="salon-day-heading">Sabahtan akşama BeautyAsist.</h2>
         </div>
         <p>Kapıyı açtığınız andan kasayı kapatana kadar BeautyAsist’in nerede devreye girdiğini görün.</p>
       </header>

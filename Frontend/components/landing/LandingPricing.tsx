@@ -20,7 +20,7 @@ export default function LandingPricing({ plans }: { plans: PublicPlan[] | null }
     <section className={styles.pricing} id="fiyat" aria-labelledby="landing-pricing-heading">
       <header className={styles.header}>
         <p className={styles.label}>Fiyatlandırma</p>
-        <h2 id="landing-pricing-heading">Merkezinize uygun plan.</h2>
+        <h2 id="landing-pricing-heading">Salonunuza göre şeffaf fiyat.</h2>
       </header>
 
       {shown.length > 0 ? (

@@ -77,7 +77,7 @@ function BookingChapter() {
     <section id="danisan-deneyimi" className={styles.bookingChapter} aria-labelledby="danisan-deneyimi-baslik">
       <header className={styles.bookingHeading}>
         <p className={styles.eyebrow}>Danışan deneyimi</p>
-        <h2 id="danisan-deneyimi-baslik">İlk randevu <span>cep telefonunda başlar.</span></h2>
+        <h2 id="danisan-deneyimi-baslik">Danışanlarınız randevusunu <span>telefondan alsın.</span></h2>
         <Link href="/salonlar" className={styles.lightLink}>Salonları keşfedin <ArrowUpRight size={17} aria-hidden="true" /></Link>
       </header>
       <div className={styles.bookingTrack} data-customer-scroll="booking">
@@ -143,7 +143,7 @@ function AppsChapter() {
     <section id="her-ekranda" className={styles.appsChapter} aria-labelledby="her-ekranda-baslik">
       <header className={styles.appsHeading}>
         <p className={styles.eyebrow}>Mobil ve masaüstü</p>
-        <h2 id="her-ekranda-baslik">Salonunuzun ajandası <span>her ekranda.</span></h2>
+        <h2 id="her-ekranda-baslik">Telefonda, tablette, bilgisayarda <span>aynı ajanda.</span></h2>
         <p>Resepsiyonda bilgisayardan, salon içinde telefondan ya da tabletten randevularınıza ulaşın.</p>
       </header>
       <div className={styles.appsTrack} data-customer-scroll="devices">

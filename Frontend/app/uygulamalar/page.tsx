@@ -63,7 +63,7 @@ export default function AppsPage() {
         <section className={styles.hero} aria-labelledby="apps-title">
           <div className={styles.heroCopy}>
             <p className={styles.eyebrow}><MonitorSmartphone size={15} aria-hidden="true" /> Mobil ve masaüstü</p>
-            <h1 id="apps-title">BeautyAsist <span>her cihazda.</span></h1>
+            <h1 id="apps-title">Salonunuz <span>her cihazda yanınızda.</span></h1>
             <p className={styles.intro}>Cebinizde, resepsiyon masanızda ve tabletinizde aynı panel. Bir kez giriş yapın; randevular, müşteriler ve kasa her cihazda aynı anda güncel.</p>
             <ul className={styles.platformChips} aria-label="Desteklenen platformlar">
               {platforms.map(({ name, icon: Icon, tone }) => (
@@ -88,7 +88,7 @@ export default function AppsPage() {
         <section className={`${styles.wide} ${styles.platforms}`} aria-labelledby="platforms-title">
           <div className={styles.sectionHead} data-reveal>
             <p className={styles.eyebrow}>İndirin</p>
-            <h2 id="platforms-title">Size uygun <span>platformu seçin.</span></h2>
+            <h2 id="platforms-title">Bir hesap, <span>bütün cihazlar.</span></h2>
           </div>
           <ul className={styles.cards}>
             {platforms.map(({ name, device, text, icon: Icon, tone, href, badge, download }) => (
@@ -120,7 +120,7 @@ export default function AppsPage() {
             <span className={styles.webIcon} aria-hidden="true"><Globe size={28} /></span>
             <div>
               <p className={styles.eyebrow}>Kurulum gerekmez</p>
-              <h2 id="web-title">Tarayıcıdan <span>hemen başlayın.</span></h2>
+              <h2 id="web-title">Kurulum yok, <span>tarayıcıdan başlayın.</span></h2>
               <p>Hiçbir şey indirmeden her bilgisayardan giriş yapabilirsiniz. Uygulamalar aynı hesabı ve aynı veriyi kullanır.</p>
             </div>
             <div className={styles.webActions}>

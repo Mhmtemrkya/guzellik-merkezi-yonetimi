@@ -108,7 +108,7 @@ export default function MotionReel() {
       <div className={styles.sticky}>
         <div ref={intro} className={styles.intro}>
           <p className={styles.eyebrow}><span /> BeautyAsist’te bir gün</p>
-          <h2 id="reel-title" className={styles.title}>Randevu, kasa, rapor ve Maydi. <span>Tek akışta.</span></h2>
+          <h2 id="reel-title" className={styles.title}>Randevu, kasa ve raporlar <span>Maydi ile tek ekranda.</span></h2>
         </div>
 
         <div ref={frame} className={styles.frame}>

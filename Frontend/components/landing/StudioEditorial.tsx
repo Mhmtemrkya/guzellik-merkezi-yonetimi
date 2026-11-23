@@ -61,7 +61,7 @@ export function FieldNotes() {
   return (
     <section className={styles.notes} aria-labelledby="field-notes-title">
       <p className={styles.kicker}>Güzellik işi, her ayrıntısıyla</p>
-      <h2 id="field-notes-title">Bir günün ritmini <span>yakından görün.</span></h2>
+      <h2 id="field-notes-title">Salonunuzun her anı <span>kontrolünüzde.</span></h2>
       <p>İlk randevudan son tahsilata kadar, salonun önünde ve arkasında olup biten her şeyi aynı yerden takip edin.</p>
       <a href="#bir-gun-sahne">Salonun bir gününe inin <ChevronDown size={17} aria-hidden="true" /></a>
     </section>
@@ -73,7 +73,7 @@ export function StudioCapabilities() {
     <section id="isletme" className={styles.capabilities} aria-labelledby="capabilities-title">
       <header className={styles.intro}>
         <p className={styles.kicker}>Günlük iş akışı</p>
-        <h2 id="capabilities-title">Salonun arkasındaki <span>işler de yolunda.</span></h2>
+        <h2 id="capabilities-title">Seans, ekip ve stok <span>hep düzende.</span></h2>
         <p>Danışan kayıtları, ekip planı ve gelir-gider takibi aynı işletme panelinde.</p>
       </header>
 
@@ -110,7 +110,7 @@ export function GettingStarted() {
       <header className={styles.setupIntro}>
         <div className={styles.setupCopy}>
           <p className={styles.kicker}>İlk kurulum</p>
-          <h2 id="setup-title">İlk randevunuza <span>üç adım.</span></h2>
+          <h2 id="setup-title">Üç adımda <span>kullanmaya başlayın.</span></h2>
           <p>Kurulum, veri aktarımı ve eğitim desteğiyle çalışma düzeninizi BeautyAsist’e taşıyın.</p>
           <Link className={styles.link} href="/kayit">14 günlük denemeye başvurun <ArrowUpRight size={17} aria-hidden="true" /></Link>
         </div>
@@ -135,7 +135,7 @@ export function LandingQuestions() {
     <section id="sorular" className={styles.faq} aria-labelledby="faq-title">
       <header className={styles.intro}>
         <p className={styles.kicker}>Sık sorulan sorular</p>
-        <h2 id="faq-title">Başlamadan <span>önce.</span></h2>
+        <h2 id="faq-title">Merak <span>ettikleriniz.</span></h2>
         <Link className={styles.link} href="/destek">Destek ekibine ulaşın <ArrowUpRight size={17} aria-hidden="true" /></Link>
       </header>
       <div className={styles.questions}>

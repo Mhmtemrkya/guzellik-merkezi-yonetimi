@@ -72,7 +72,7 @@ export default function ModulesPage() {
         <section className={styles.hero} aria-labelledby="modules-title">
           <div className={styles.heroCopy}>
             <p className={styles.eyebrow}>BeautyAsist modül kataloğu</p>
-            <h1 id="modules-title">Salon yönetimi.<br /><span>Tek panelde.</span></h1>
+            <h1 id="modules-title">Bütün modüller.<br /><span>Tek yazılımda.</span></h1>
             <p className={styles.intro}>Randevu, danışan, kasa ve ekip yönetimi modüllerini keşfedin. Ekibinizin sayfa ve işlem izinlerini siz belirleyin.</p>
             <div className={styles.actions}>
               <a href="#katalog" className={styles.primary}>Modüllere göz atın <ArrowDown size={16} aria-hidden="true" /></a>
@@ -93,7 +93,7 @@ export default function ModulesPage() {
 
         <section id="katalog" className={styles.catalog} aria-labelledby="catalog-title">
           <div className={`${styles.wide} ${styles.catalogIntro}`}>
-            <h2 id="catalog-title">Modülleri keşfedin.</h2>
+            <h2 id="catalog-title">Salonunuzun bütün işleri, modül modül.</h2>
             <p>Kullanılabilir özellikler, paketinizde etkin olan modüllere ve hesabınızın rolüne göre değişir.</p>
           </div>
 
@@ -118,7 +118,7 @@ export default function ModulesPage() {
         <section id="yetkiler" className={`${styles.wide} ${styles.permissions}`} aria-labelledby="permissions-title">
           <header>
             <p className={styles.eyebrow}>{pages.length} sayfa izni · {permissionTotal} işlem izni</p>
-            <h2 id="permissions-title">Erişimi rolüne göre açın.</h2>
+            <h2 id="permissions-title">Kim neyi görecek, siz karar verin.</h2>
             <p>Sayfa izni görüntüleme erişimi verir. İşlem izinleri personelin o sayfada yapabileceği işlemleri belirler.</p>
           </header>
           <div className={styles.roles}>
@@ -140,7 +140,7 @@ export default function ModulesPage() {
 
       <footer className={`${styles.wide} ${styles.footer}`}>
         <div>
-          <h2>BeautyAsist’i deneyin.</h2>
+          <h2>Salonunuzda deneyin, farkı görün.</h2>
           <p>Kurulum, veri aktarımı ve eğitim dahil. Ücretsiz deneme kredi kartı gerektirmez.</p>
         </div>
         <div className={styles.actions}>

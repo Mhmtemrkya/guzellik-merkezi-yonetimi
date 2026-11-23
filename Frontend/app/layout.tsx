@@ -18,8 +18,8 @@ import OutboxSync from '@/components/desktop/OutboxSync'
 import ReducedMotionProvider from '@/components/dashboard/ReducedMotionProvider'
 
 export const metadata: Metadata = {
-  title: 'BeautyAsist — Güzellik Merkezleri İçin Yönetim Sistemi',
-  description: "Excel'i unutun. Müşteri, paket, taksit, seans, randevu ve kasa yönetimi tek panelden.",
+  title: 'BeautyAsist — Güzellik Merkezi ve Salon Yönetim Yazılımı',
+  description: 'Randevu, kasa, rapor ve danışan yönetimi tek yazılımda; yapay zekâ asistanı Maydi ile salonunuzu yönetmek artık çok kolay.',
 }
 
 /**

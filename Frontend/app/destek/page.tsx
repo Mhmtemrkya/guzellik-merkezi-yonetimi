@@ -159,7 +159,7 @@ export default function SupportPage() {
 
         <section className={`${styles.wide} ${styles.trial}`} aria-labelledby="support-trial-title">
           <div>
-            <h2 id="support-trial-title">BeautyAsist’i deneyin.</h2>
+            <h2 id="support-trial-title">Salonunuzda deneyin, farkı görün.</h2>
             <p>Kurulum, veri aktarımı ve eğitim dahil. Ücretsiz deneme kredi kartı gerektirmez.</p>
           </div>
           <div>

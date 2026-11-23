@@ -23,7 +23,7 @@ import { legalLinks } from '@/lib/legal/company'
 import styles from './home.module.css'
 
 export const metadata: Metadata = {
-  title: 'BeautyAsist | Güzellik Merkezi Yönetimi ve Maydi',
+  title: 'BeautyAsist | Güzellik Merkezi ve Salon Yönetim Yazılımı',
   description: 'Güzellik merkezi yazılımı: online randevu ve müşteri portalı, WhatsApp hatırlatma ve onay, Excel’den veri aktarımı, seans, kasa ve stok. Web, iOS, Android, Mac ve Windows’ta; yapay zekâ asistanı Maydi ile.',
 }
 
@@ -91,9 +91,9 @@ function Hero() {
           <Image src="/landing/studio-nightfall.webp" alt="" fill preload sizes="100vw" />
         </div>
         <div className={styles.heroCopy}>
-          <p className={styles.eyebrow}><span /> Güzellik merkezi yönetimi</p>
-          <h1 id="hero-title" className={styles.heroTitle}>Güzellik işiniz <span>tek akışta.</span></h1>
-          <p className={styles.lead}>Randevudan gün sonuna, danışanlarınızı, seanslarınızı ve kasanızı BeautyAsist’ten yönetin.</p>
+          <p className={styles.eyebrow}><span /> Güzellik merkezi yönetim yazılımı</p>
+          <h1 id="hero-title" className={styles.heroTitle}>Salonunuzu yönetmek <span>artık çok kolay.</span></h1>
+          <p className={styles.lead}>Randevularınızı, kasanızı ve raporlarınızı tek uygulamadan yönetin; yapay zekâ asistanı Maydi her adımda yanınızda.</p>
           <div className={styles.actions}>
             <Link href="/kayit" className={styles.primaryButton}>Kayıt ol <ArrowUpRight aria-hidden="true" size={18} /></Link>
           </div>
@@ -114,7 +114,7 @@ function Product() {
       <StudioSequence>
         <div id="nasil" className={styles.productCopy}>
           <p className={styles.eyebrow}><span /> BeautyAsist paneli</p>
-          <h2 id="product-title" className={styles.sectionTitle}>Ajandadan <span>gün sonuna.</span></h2>
+          <h2 id="product-title" className={styles.sectionTitle}>Randevu, danışan ve kasa <span>tek panelde.</span></h2>
           <ul className={styles.operations}>
             {operations.map(({ title, description, icon: Icon }) => (
               <li key={title}>
@@ -136,7 +136,7 @@ function Maydi() {
       <div className={styles.maydiGrid}>
         <div className={styles.maydiCopy}>
           <p className={styles.eyebrow}><Sparkles aria-hidden="true" size={16} /> Yapay zekâ asistanınız</p>
-          <h2 id="maydi-title" className={styles.sectionTitle}>Sorun, <span>Maydi anlatsın.</span></h2>
+          <h2 id="maydi-title" className={styles.sectionTitle}>Randevunuzu, kasanızı <span>Maydi’ye sorun.</span></h2>
           <p className={styles.lead}>Bugünkü randevularınızı öğrenin, kasayı sorun veya bir işlemin nasıl yapıldığını adım adım görün. Maydi, yetkiniz dahilindeki bilgilerle BeautyAsist panelinde yardımcı olur.</p>
           <Link href="/login" className={`${styles.textButton} ${styles.maydiLink}`}>Maydi’yi panelde açın <ArrowUpRight aria-hidden="true" size={17} /></Link>
         </div>
@@ -155,8 +155,8 @@ function FinalScene() {
       <div className={styles.finalInner}>
         <Image className={styles.finalMark} src="/logo.png" alt="" width={128} height={128} />
         <p className={styles.eyebrow}><span /> BeautyAsist</p>
-        <h2 id="final-title" className={styles.sectionTitle}>Bugünü kapatın. <span>Yarına hazır olun.</span></h2>
-        <p className={styles.lead}>Yarınki randevularınızdan bugünün tahsilatına kadar, salonunuzun bütün günü yanınızda.</p>
+        <h2 id="final-title" className={styles.sectionTitle}>Salon yönetimini <span>bugün kolaylaştırın.</span></h2>
+        <p className={styles.lead}>Randevudan rapora bütün salonunuz tek uygulamada; Maydi her sorunuza hazır.</p>
         <div className={styles.actions}>
           <Link className={styles.primaryButton} href="/kayit">14 gün ücretsiz deneyin <ArrowUpRight size={17} aria-hidden="true" /></Link>
           <AppLaunchTrigger className={styles.finalDownload}><Download size={17} aria-hidden="true" /> Uygulamaları indirin</AppLaunchTrigger>
@@ -187,7 +187,7 @@ function SiteFooter() {
           <div className={styles.download}>
             <div>
               <p className={styles.eyebrow}><MonitorSmartphone size={17} aria-hidden="true" /> Mobil ve masaüstü</p>
-              <h2 className={styles.sectionTitle}>Uygulamalarımız <span>yayında.</span></h2>
+              <h2 className={styles.sectionTitle}>BeautyAsist <span>cebinizde.</span></h2>
               <p>BeautyAsist’i iPhone, iPad ve Android’de, BeautyAsist Desktop’ı Mac ve Windows’ta kullanın.</p>
             </div>
             <StoreLinks />

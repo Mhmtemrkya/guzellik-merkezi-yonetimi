@@ -19,7 +19,7 @@ export default function FeatureHighlights() {
     <section id="ozellikler" className={styles.section} aria-labelledby="features-title">
       <header className={styles.intro} data-reveal>
         <p className={styles.kicker}>Öne çıkan özellikler</p>
-        <h2 id="features-title">Salonunuzu büyüten <span>dört güç.</span></h2>
+        <h2 id="features-title">Salonunuzu dijitale taşıyan <span>dört özellik.</span></h2>
         <p>WhatsApp bildirimlerinden online randevuya, eski kayıtlarınızı aktarmaktan her cihazda çalışmaya kadar.</p>
       </header>
 

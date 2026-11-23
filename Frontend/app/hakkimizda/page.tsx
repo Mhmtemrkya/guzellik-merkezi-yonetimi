@@ -62,7 +62,7 @@ export default function HakkimizdaPage() {
         <section className={styles.hero} aria-labelledby="about-title">
           <div className={styles.heroCopy}>
             <p className={styles.eyebrow}>Kurumsal</p>
-            <h1 id="about-title">Güzellik işinin <span>tek defteri.</span></h1>
+            <h1 id="about-title">Güzellik merkezleri için <span>akıllı yönetim yazılımı.</span></h1>
             <p className={styles.intro}>
               <strong>{company.brand}</strong>; güzellik merkezleri, medikal estetik klinikleri ve salonlar için geliştirilmiş bir
               işletme yönetim yazılımıdır. Randevudan seansa, paket satışından taksit takibine ve ön muhasebeye kadar bir merkezin
@@ -86,7 +86,7 @@ export default function HakkimizdaPage() {
         <section className={`${styles.wide} ${styles.story}`} aria-labelledby="story-title">
           <div data-reveal>
             <p className={styles.eyebrow}>Ne yapıyoruz?</p>
-            <h2 id="story-title">Üç defteri <span>tek yerde</span> birleştiriyoruz.</h2>
+            <h2 id="story-title">Ajanda, kasa ve danışan defteri <span>tek yazılımda.</span></h2>
           </div>
           <div className={styles.storyBody} data-reveal>
             <p>
@@ -106,7 +106,7 @@ export default function HakkimizdaPage() {
         <section className={`${styles.wide} ${styles.offers}`} aria-labelledby="offers-title">
           <div className={styles.sectionHead} data-reveal>
             <p className={styles.eyebrow}>Neler sunuyoruz?</p>
-            <h2 id="offers-title">Bir merkezin <span>bütün günü.</span></h2>
+            <h2 id="offers-title">Randevudan rapora <span>her iş tek yerde.</span></h2>
           </div>
           <ul className={styles.offerGrid}>
             {offers.map(({ title, text, icon: Icon, tone }) => (

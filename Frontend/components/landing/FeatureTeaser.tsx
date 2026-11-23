@@ -14,7 +14,7 @@ export default function FeatureTeaser() {
       <div className={styles.head}>
         <div>
           <p className={styles.kicker}>Öne çıkan özellikler</p>
-          <h2 id="teaser-title">Salonunuzu büyüten <span>dört güç.</span></h2>
+          <h2 id="teaser-title">Salonunuzu dijitale taşıyan <span>dört özellik.</span></h2>
         </div>
         <Link className={styles.all} href="/moduller#ozellikler">Tüm özellikler ve modüller <ArrowUpRight size={17} aria-hidden="true" /></Link>
       </div>
