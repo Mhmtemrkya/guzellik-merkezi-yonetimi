@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="178" viewBox="0 0 320 178" fill="none">
+  <defs>
+    <linearGradient id="frame" x1="53" y1="14" x2="258" y2="126" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B8C7DC"/>
+      <stop offset=".22" stop-color="#67778F"/>
+      <stop offset=".52" stop-color="#354053"/>
+      <stop offset="1" stop-color="#60728D"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="64" y1="25" x2="246" y2="111" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A2C5F1"/>
+      <stop offset=".45" stop-color="#6396D5"/>
+      <stop offset="1" stop-color="#234E85"/>
+    </linearGradient>
+    <linearGradient id="stand" x1="142" y1="118" x2="180" y2="144" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#303C53"/>
+      <stop offset=".55" stop-color="#8592A7"/>
+      <stop offset="1" stop-color="#495970"/>
+    </linearGradient>
+    <linearGradient id="base" x1="116" y1="142" x2="203" y2="149" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#677A92"/>
+      <stop offset=".5" stop-color="#BBC7DB"/>
+      <stop offset="1" stop-color="#53647C"/>
+    </linearGradient>
+    <linearGradient id="keyboard" x1="87" y1="151" x2="227" y2="167" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8C9DB4"/>
+      <stop offset=".43" stop-color="#536987"/>
+      <stop offset="1" stop-color="#374A64"/>
+    </linearGradient>
+    <filter id="shadow" x="45" y="143" width="254" height="34" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+  </defs>
+  <ellipse cx="171" cy="161" rx="112" ry="5.2" fill="#193A67" opacity=".26" filter="url(#shadow)"/>
+  <path d="M146 114h27l5 32h-37l5-32Z" fill="url(#stand)" stroke="#8394AE" stroke-width=".6"/>
+  <path d="M123 140h73l8 6v3h-89v-3l8-6Z" fill="url(#base)" stroke="#62738C" stroke-width=".65"/>
+  <path d="M115 146h89v2.8h-89z" fill="#506078"/>
+  <rect x="51" y="14" width="220" height="113" rx="7.5" fill="#2C3D57"/>
+  <rect x="48" y="10.5" width="220" height="113" rx="7.5" fill="url(#frame)" stroke="#E4EEFF" stroke-opacity=".82"/>
+  <rect x="51" y="13.5" width="214" height="105" rx="5.4" fill="#161F31"/>
+  <rect x="56.5" y="19" width="203" height="94" rx="1.7" fill="url(#screen)"/>
+  <path d="M56.5 20.7c0-1 .7-1.7 1.7-1.7H154l-39 94H58.2c-1 0-1.7-.7-1.7-1.7z" fill="white" opacity=".11"/>
+  <rect x="77" y="27" width="162" height="73" rx="3.6" fill="#F3F8FF"/>
+  <path d="M77 30.6a3.6 3.6 0 0 1 3.6-3.6h154.8a3.6 3.6 0 0 1 3.6 3.6v6.1H77z" fill="#DDEAFB"/>
+  <path d="M83 32h25m117 0h2m4 0h2" stroke="#7990B7" stroke-width="1.05" stroke-linecap="round"/>
+  <rect x="82" y="41" width="29" height="54" rx="2.5" fill="#2D456B"/>
+  <path d="M88 50h12m-12 7h16m-16 7h13m-13 7h15m-15 7h10" stroke="#ABC5EA" stroke-opacity=".8" stroke-width="1.15" stroke-linecap="round"/>
+  <path d="M119 46h25m-25 5h18" stroke="#6780AA" stroke-width="1.25" stroke-linecap="round"/>
+  <rect x="119" y="57" width="35" height="15" rx="2.5" fill="#DDEBFB"/>
+  <rect x="158" y="57" width="35" height="15" rx="2.5" fill="#E9E4F9"/>
+  <rect x="197" y="57" width="35" height="15" rx="2.5" fill="#F3E4EF"/>
+  <path d="M124 64h12m27 0h12m27 0h14" stroke="#726B99" stroke-width="1.15" stroke-linecap="round"/>
+  <rect x="119" y="77" width="113" height="16" rx="2.5" fill="#EAF2FC"/>
+  <path d="m127 89 13-2 14 1 13-5 14 1 11-3 13 3 18-4" stroke="#6388BB" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="138" y="103.5" width="40" height="7" rx="3.5" fill="#E8F3FF" fill-opacity=".67"/>
+  <path d="M146 107h.1m8 0h.1m8 0h.1m8 0h.1" stroke="#658AB9" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M150 121h16" stroke="#8D9DB6" stroke-width=".75" stroke-linecap="round"/>
+  <circle cx="254" cy="121" r=".85" fill="#8DC7F0"/>
+  <path d="M87 151.5h131l11 10v2H77v-2l10-10Z" fill="url(#keyboard)" stroke="#C7D3E6" stroke-opacity=".75" stroke-width=".7"/>
+  <path d="M77 161.5h152v2.3H77z" fill="#33455D"/>
+  <path d="M90 154h125m-129 2.6h132m-134 2.6h137" stroke="#D0D8E6" stroke-opacity=".66" stroke-width=".67" stroke-dasharray="4.4 1.2"/>
+  <path d="M247 152.5c0-4 3.3-7.1 7.8-7.1h5.4c4.4 0 7.8 3.1 7.8 7.1v4.5c0 4-3.4 6.7-7.8 6.7h-5.4c-4.5 0-7.8-2.7-7.8-6.7v-4.5Z" fill="url(#keyboard)" stroke="#8F9FB6" stroke-width=".75"/>
+  <path d="M257.5 147.5v5" stroke="#CFD6E2" stroke-width=".85" stroke-linecap="round"/>
+</svg>

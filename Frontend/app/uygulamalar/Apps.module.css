@@ -75,6 +75,7 @@
   font-weight: 700;
 }
 .platformChips svg { color: color-mix(in srgb, var(--tone) 60%, #fff); }
+.platformChips img { display: block; width: 32px; height: auto; }
 
 .heroArt { position: relative; height: 100%; min-height: 380px; }
 .glow { position: absolute; inset: 15% 10%; border-radius: 50%; background: radial-gradient(circle, #f472b655, transparent 65%); filter: blur(10px); }
@@ -104,27 +105,47 @@
 .sectionHead { margin-bottom: clamp(18px, 3vw, 32px); }
 .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .card {
-  position: relative;
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
-  gap: 10px;
+  grid-template-rows: auto 1fr;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--tone) 24%, var(--line));
   border-radius: 24px;
-  padding: clamp(20px, 2.4vw, 28px);
-  background: linear-gradient(170deg, color-mix(in srgb, var(--tone-soft) 85%, #fff), #fff 60%);
+  background: #fff;
 }
-.card::after { position: absolute; right: -60px; bottom: -60px; width: 180px; aspect-ratio: 1; border: 22px solid color-mix(in srgb, var(--tone) 12%, transparent); border-radius: 50%; content: ''; pointer-events: none; }
-.card > * { position: relative; z-index: 1; }
-.cardTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.cardIcon { display: grid; width: 56px; height: 56px; place-items: center; border-radius: 17px; background: linear-gradient(135deg, var(--tone), var(--tone-ink)); color: #fff; box-shadow: 0 14px 26px -12px var(--tone); }
-.device { border-radius: 999px; padding: 4px 10px; background: #fff; color: var(--tone-ink); font-size: .72rem; font-weight: 800; }
-.card h3 { margin-top: 6px; font-family: var(--font-display, system-ui, sans-serif); font-size: clamp(1.35rem, 1.9vw, 1.7rem); font-weight: 800; letter-spacing: -.04em; }
+.cardArt {
+  display: grid;
+  block-size: clamp(155px, 15vw, 206px);
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+  overflow: hidden;
+  border-bottom: 1px solid color-mix(in srgb, var(--tone) 14%, #fff);
+  background:
+    radial-gradient(ellipse 64% 88% at 50% 28%, #fff 0%, transparent 92%),
+    linear-gradient(155deg, var(--tone-soft), color-mix(in srgb, var(--tone) 20%, #fff));
+}
+.cardArt img {
+  display: block;
+  width: min(96%, 360px);
+  max-height: 100%;
+  height: auto;
+  object-fit: contain;
+}
+.cardBody {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: auto auto 1fr auto;
+  justify-items: start;
+  gap: 8px;
+  padding: clamp(20px, 2.4vw, 28px);
+}
+.device { border-radius: 999px; padding: 4px 10px; background: var(--tone-soft); color: var(--tone-ink); font-size: .72rem; font-weight: 800; }
+.card h3 { font-family: var(--font-display, system-ui, sans-serif); font-size: clamp(1.35rem, 1.9vw, 1.7rem); font-weight: 800; letter-spacing: -.04em; }
 .card p { color: var(--muted); font-size: .92rem; line-height: 1.55; }
 .badge, .download { display: inline-flex; width: fit-content; min-height: 48px; align-items: center; gap: 10px; margin-top: 8px; }
 .badge img { display: block; width: auto; height: 42px; }
 .badge svg { color: var(--tone-ink); }
-.download { border-radius: 12px; padding: 0 16px; background: linear-gradient(135deg, var(--tone), var(--tone-ink)); color: #fff; font-size: .9rem; font-weight: 760; }
+.download { border-radius: 12px; padding: 0 16px; background: var(--tone-ink); color: #fff; font-size: .9rem; font-weight: 760; }
+.download:hover { background: color-mix(in srgb, var(--tone-ink) 80%, #101a36); }
 
 /* --- Web kartı ---------------------------------------------------------------------------------------------- */
 .sync2 { margin-top: clamp(40px, 6vw, 80px); }
@@ -152,7 +173,10 @@
   .heroArt { min-height: 320px; }
   .webCard { grid-template-columns: minmax(0, 1fr); }
 }
-@media (max-width: 560px) { .cards { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) {
+  .cards { grid-template-columns: minmax(0, 1fr); }
+  .cardArt { block-size: clamp(164px, 56vw, 212px); }
+}
 
 /* --- Hareket ------------------------------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: no-preference) {
@@ -183,14 +207,14 @@
   .cards > :nth-child(2) { --reveal-delay: 70ms; }
   .cards > :nth-child(3) { --reveal-delay: 140ms; }
   .cards > :nth-child(4) { --reveal-delay: 210ms; }
-  .cardIcon { transition: transform 240ms var(--ease); }
+  .cardArt img { transition: transform 320ms var(--ease); }
   .badge svg { transition: transform 200ms var(--ease); }
   .badge, .download, .webActions a { transition: transform 140ms var(--ease), background-color 160ms ease; }
   .badge:active, .download:active, .webActions a:active { transform: scale(.97); }
 }
 @media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
   .card:hover { transform: translateY(-5px); box-shadow: 0 26px 46px -28px var(--tone-ink); }
-  .card:hover .cardIcon { transform: rotate(-6deg) scale(1.06); }
+  .card:hover .cardArt img { transform: scale(1.04); }
   .badge:hover svg { transform: translate(2px, -2px); }
 }
 

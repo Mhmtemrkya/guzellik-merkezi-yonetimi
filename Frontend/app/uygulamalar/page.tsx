@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
-import { AppWindow, ArrowDownToLine, ArrowUpRight, Globe, Laptop, MonitorSmartphone, RefreshCw, Smartphone, TabletSmartphone, type LucideIcon } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpRight, Globe, MonitorSmartphone, RefreshCw } from 'lucide-react'
 import PublicNavbar from '@/components/public/PublicNavbar'
 import { stores } from '@/components/landing/StoreLinks'
 import { windowsInstallerHref } from '@/components/landing/windowsInstaller'
@@ -17,7 +17,7 @@ type Platform = {
   name: string
   device: string
   text: string
-  icon: LucideIcon
+  illustration: string
   tone: string
   href: string
   badge?: { src: string; width: number; height: number; label: string }
@@ -32,22 +32,22 @@ const macStore = store('Mac')
 
 const platforms: Platform[] = [
   {
-    name: 'iPhone ve iPad', device: 'iOS · iPadOS', icon: TabletSmartphone, tone: 'pink',
+    name: 'iPhone ve iPad', device: 'iOS · iPadOS', illustration: '/landing/devices/iphone-ipad.svg', tone: 'pink',
     text: 'Randevularınız, müşterileriniz ve kasanız cebinizde. iPad’de resepsiyon ekranı olarak da kullanın.',
     href: appStore?.href ?? '#', badge: appStore && { src: appStore.image, width: appStore.width, height: appStore.height, label: appStore.label },
   },
   {
-    name: 'Android', device: 'Telefon · Tablet', icon: Smartphone, tone: 'green',
+    name: 'Android', device: 'Telefon · Tablet', illustration: '/landing/devices/android.svg', tone: 'green',
     text: 'Android telefon ve tabletlerde aynı panel; ekibiniz kendi cihazından çalışsın.',
     href: googlePlay?.href ?? '#', badge: googlePlay && { src: googlePlay.image, width: googlePlay.width, height: googlePlay.height, label: googlePlay.label },
   },
   {
-    name: 'Mac', device: 'BeautyAsist Desktop', icon: Laptop, tone: 'violet',
+    name: 'Mac', device: 'BeautyAsist Desktop', illustration: '/landing/devices/mac.svg', tone: 'violet',
     text: 'Resepsiyon bilgisayarında ayrı bir pencere olarak açılır; tarayıcı sekmeleri arasında kaybolmaz.',
     href: macStore?.href ?? '#', badge: macStore && { src: macStore.image, width: macStore.width, height: macStore.height, label: macStore.label },
   },
   {
-    name: 'Windows', device: '64 bit · .exe kurulum', icon: AppWindow, tone: 'blue',
+    name: 'Windows', device: '64 bit · .exe kurulum', illustration: '/landing/devices/windows.svg', tone: 'blue',
     text: 'Windows bilgisayarlar için masaüstü uygulaması. Kurulum dosyasını indirip çalıştırın.',
     href: windowsInstallerHref, download: true,
   },
@@ -66,8 +66,11 @@ export default function AppsPage() {
             <h1 id="apps-title">Salonunuz <span>her cihazda yanınızda.</span></h1>
             <p className={styles.intro}>Cebinizde, resepsiyon masanızda ve tabletinizde aynı panel. Bir kez giriş yapın; randevular, müşteriler ve kasa her cihazda aynı anda güncel.</p>
             <ul className={styles.platformChips} aria-label="Desteklenen platformlar">
-              {platforms.map(({ name, icon: Icon, tone }) => (
-                <li key={name} data-tone={tone}><Icon size={15} aria-hidden="true" /> {name}</li>
+              {platforms.map(({ name, illustration, tone }) => (
+                <li key={name} data-tone={tone}>
+                  <Image src={illustration} width={32} height={18} alt="" unoptimized />
+                  {name}
+                </li>
               ))}
               <li data-tone="amber"><Globe size={15} aria-hidden="true" /> Web</li>
             </ul>
@@ -91,24 +94,26 @@ export default function AppsPage() {
             <h2 id="platforms-title">Bir hesap, <span>bütün cihazlar.</span></h2>
           </div>
           <ul className={styles.cards}>
-            {platforms.map(({ name, device, text, icon: Icon, tone, href, badge, download }) => (
+            {platforms.map(({ name, device, text, illustration, tone, href, badge, download }) => (
               <li key={name} className={styles.card} data-tone={tone} data-reveal>
-                <div className={styles.cardTop}>
-                  <span className={styles.cardIcon} aria-hidden="true"><Icon size={26} strokeWidth={1.7} /></span>
-                  <span className={styles.device}>{device}</span>
+                <div className={styles.cardArt}>
+                  <Image src={illustration} width={320} height={178} alt="" unoptimized />
                 </div>
-                <h3>{name}</h3>
-                <p>{text}</p>
-                {download ? (
-                  <a className={styles.download} href={href} download aria-label="BeautyAsist Desktop Windows x64 kurulum dosyasını indirin">
-                    <ArrowDownToLine size={18} aria-hidden="true" /> Windows için indir
-                  </a>
-                ) : badge ? (
-                  <a className={styles.badge} href={href} target="_blank" rel="noopener noreferrer" aria-label={badge.label}>
-                    <Image src={badge.src} width={badge.width} height={badge.height} alt="" unoptimized />
-                    <ArrowUpRight size={16} aria-hidden="true" />
-                  </a>
-                ) : null}
+                <div className={styles.cardBody}>
+                  <span className={styles.device}>{device}</span>
+                  <h3>{name}</h3>
+                  <p>{text}</p>
+                  {download ? (
+                    <a className={styles.download} href={href} download aria-label="BeautyAsist Desktop Windows x64 kurulum dosyasını indirin">
+                      <ArrowDownToLine size={18} aria-hidden="true" /> Windows için indir
+                    </a>
+                  ) : badge ? (
+                    <a className={styles.badge} href={href} target="_blank" rel="noopener noreferrer" aria-label={badge.label}>
+                      <Image src={badge.src} width={badge.width} height={badge.height} alt="" unoptimized />
+                      <ArrowUpRight size={16} aria-hidden="true" />
+                    </a>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>

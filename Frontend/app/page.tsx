@@ -186,10 +186,11 @@ function SiteFooter() {
             </div>
           </div>
           <div className={styles.download}>
-            <div>
+            <div className={styles.downloadCopy}>
               <p className={styles.eyebrow}><MonitorSmartphone size={17} aria-hidden="true" /> Mobil ve masaüstü</p>
               <h2 className={styles.sectionTitle}>BeautyAsist <span>cebinizde.</span></h2>
               <p>BeautyAsist’i iPhone, iPad ve Android’de, BeautyAsist Desktop’ı Mac ve Windows’ta kullanın.</p>
+              <Link href="/uygulamalar" className={styles.allApps}>Tüm uygulamaları gör <ArrowUpRight size={15} aria-hidden="true" /></Link>
             </div>
             <StoreLinks />
           </div>
@@ -202,7 +203,7 @@ function SiteFooter() {
           </div>
           <nav aria-label="BeautyAsist bağlantıları">
             <h3>Keşfedin</h3>
-            <ul>
+            <ul className={styles.footerLinks}>
               <li><a href="#bir-gun-sahne">Salonun bir günü</a></li>
               <li><a href="#ozellikler">Öne çıkan özellikler</a></li>
               <li><Link href="/moduller">Modüller</Link></li>
@@ -214,12 +215,18 @@ function SiteFooter() {
           </nav>
           <nav aria-label="Kurumsal ve yasal bağlantılar">
             <h3>Kurumsal ve yasal</h3>
-            <ul className={styles.legalLinks}>
+            <ul className={styles.footerLinks}>
               {legalLinks.map(({ href, label }) => <li key={href}><Link href={href}>{label}</Link></li>)}
             </ul>
           </nav>
         </div>
-        <p className={styles.copyright}>© {new Date().getFullYear()} BeautyAsist. Tüm hakları saklıdır.</p>
+        <div className={styles.footerCredits}>
+          <ul className={styles.footerLogos} aria-label="Marka logoları">
+            <li><Image src="/landing/brands/maydanoz-yazilim.webp" alt="Maydanoz Yazılım" width={624} height={240} unoptimized /></li>
+            <li><Image src="/landing/brands/ajans-orkestra.webp" alt="Ajans Orkestra" width={951} height={206} unoptimized /></li>
+          </ul>
+          <p className={styles.copyright}>© {new Date().getFullYear()} BeautyAsist. Tüm hakları saklıdır.</p>
+        </div>
       </div>
     </footer>
   )
