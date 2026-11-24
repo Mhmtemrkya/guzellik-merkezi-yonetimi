@@ -83,7 +83,26 @@ public sealed class AssistantHelpServiceTests : IDisposable
         Assert.DoesNotContain("Maydi", question);
         // Kurum sahibine müşteri portalı makalesi sunulmaz.
         Assert.DoesNotContain(offered, item => item.Id == "customer-book");
-        Assert.Contains(offered, item => item.Id == "subscription");
+        // Yalnız soruya en yakın makaleler gider (liste kısaltılır); doğru makale başta.
+        Assert.InRange(offered.Count, 1, 25);
+        Assert.Contains(offered.Take(3), item => item.Id == "appointment-create");
+    }
+
+    [Fact]
+    public async Task Ai_GetsTopRankedDataChoices_AndArticles()
+    {
+        var matcher = new FakeMatcher(null);
+        var choices = AssistantIntentCatalog.DataRules.Where(rule => rule.Portals.Contains(AssistantPortals.Owner))
+            .Select(rule => new AssistantDataChoice(rule.Intent, rule.Description)).ToList();
+        await Service(matcher).AnswerAsync("geçen ay salona giren para toplamı", new(DataChoices: choices), CancellationToken.None);
+        var offered = Assert.Single(matcher.Calls).Articles;
+        Assert.InRange(offered.Count, 1, 25);
+        Assert.True(offered.Any(item => item.Id == "veri_Revenue"), string.Join(", ", offered.Select(o => o.Id)));
+
+        var how = new FakeMatcher(null);
+        await Service(how).AnswerAsync("personelin prim oranını nereden girerim", new(DataChoices: choices), CancellationToken.None);
+        var articles = Assert.Single(how.Calls).Articles.Where(item => !item.Id.StartsWith(AssistantDataChoice.Prefix, StringComparison.Ordinal));
+        Assert.Contains(articles.Take(3), item => item.Id == "staff-commission");
     }
 
     [Fact]

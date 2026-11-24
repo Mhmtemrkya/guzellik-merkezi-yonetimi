@@ -103,7 +103,7 @@ public sealed class AssistantServiceTests : IDisposable
         var db = Db(user, branchOverride);
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Assistant:Enabled"] = enabled.ToString() }).Build();
         var service = new AssistantService(db, user, new TestTenantContext(user.TenantId, branchOverride ?? user.BranchId, user.IsPlatformAdmin), new FakeFeatures(features),
-            help ?? new FakeHelp(AssistantHelpAnswer.None("owner")), new NoAi(), reports ?? new ReportsService(db, user), Substitute.For<ICustomerService>(),
+            help ?? new FakeHelp(AssistantHelpAnswer.None("owner")), new NoAi(), reports ?? new ReportsService(db, user), Substitute.For<ICustomerService>(), new AssistantEntityFinder(db, TestSearchIndex.Create()),
             config, NullLogger<AssistantService>.Instance);
         return (service, db);
     }
@@ -402,6 +402,65 @@ public sealed class AssistantServiceTests : IDisposable
         Assert.Contains("1 randevu iptal edildi", cancelled.Text);
         var count = (await service.SendAsync(Ask("toplam kaç müşterimiz var"), default)).Value!;
         Assert.StartsWith("Toplam 3 kayıtlı müşteri", count.Text);
+    }
+
+    // ── Adıyla sorulan kayıtlar ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task CustomerByName_OwnerSeesCard_StaffOnlyOwnCustomers()
+    {
+        using (var db = Db(owner))
+        {
+            db.Customers.Add(new Customer(Tenant, BranchA, "Merve Kara", "05320000009"));
+            await db.SaveChangesAsync();
+        }
+        var card = (await Build(owner).Service.SendAsync(Ask("Elif Yıldız'ın sıradaki randevusu ne zaman"), default)).Value!;
+        Assert.Equal("CustomerLookup", card.Intent);
+        Assert.StartsWith("Elif Yıldız:", card.Text);
+        Assert.Contains("borcu yok", card.Text);
+        // Apostrofsuz iyelik de tanınır.
+        Assert.Equal("CustomerLookup", (await Build(owner).Service.SendAsync(Ask("elifin borcu var mı"), default)).Value!.Intent);
+
+        var staffWithCustomers = new TestCurrentUser(UserRole.Staff, Tenant, BranchA, Permissions.Appointments, Permissions.Customers) { UserId = staffAyse.UserId };
+        var own = (await Build(staffWithCustomers).Service.SendAsync(Ask("Elif Yıldız'ın kalan seansı"), default)).Value!;
+        Assert.StartsWith("Elif Yıldız:", own.Text);
+        Assert.DoesNotContain("borc", own.Text); // muhasebe izni yok → borç söylenmez
+        Assert.Contains("\\u2022", System.Text.Json.JsonSerializer.Serialize(own.Data)); // telefon maskeli (•)
+        var other = (await Build(staffWithCustomers).Service.SendAsync(Ask("Merve Kara'nın bilgileri"), default)).Value!;
+        Assert.Contains("hizmet verdiğiniz müşteriler arasında değil", other.Text);
+        // Müşteri izni olmayan personel hiç göremez.
+        Assert.Equal("denied", (await Build(staffAyse).Service.SendAsync(Ask("Elif Yıldız'ın randevusu"), default)).Value!.Outcome);
+    }
+
+    [Fact]
+    public async Task ServicePrice_ProductStock_StaffSchedule_ByName()
+    {
+        var price = (await Build(owner).Service.SendAsync(Ask("cilt bakımı kaç TL"), default)).Value!;
+        Assert.Equal("Cilt bakımı: 900,00 ₺ (60 dakika).", price.Text);
+        var customer = new TestCurrentUser(UserRole.Customer, Tenant) { CustomerId = Guid.NewGuid() };
+        Assert.StartsWith("Fiyat listesi", (await Build(customer).Service.SendAsync(Ask("fiyat listesi"), default)).Value!.Text);
+
+        var stock = (await Build(owner, features: [FeatureCatalog.AiAssistant, FeatureCatalog.StockProducts]).Service.SendAsync(Ask("serumdan kaç tane kaldı"), default)).Value!;
+        Assert.StartsWith("Serum: stokta 1 adet", stock.Text);
+
+        var schedule = (await Build(owner).Service.SendAsync(Ask("Ayşe Demir yarın çalışıyor mu"), default)).Value!;
+        Assert.Equal("StaffSchedule", schedule.Intent);
+        Assert.StartsWith("Ayşe Demir yarın", schedule.Text);
+        // Personel başkasının programını göremez.
+        var burakAsked = (await Build(owner, branchOverride: BranchB).Service.SendAsync(Ask("Burak Can bugün çalışıyor mu"), default)).Value!;
+        Assert.StartsWith("Burak Can bugün", burakAsked.Text);
+    }
+
+    [Fact]
+    public async Task StoreBuild_NeverLinksToPurchaseScreens()
+    {
+        var store = new AssistantClientContext(StoreBuild: true);
+        var subscription = (await Build(owner).Service.SendAsync(Ask("aboneliğim ne zaman bitiyor", context: store), default)).Value!;
+        Assert.Equal("Subscription", subscription.Intent);
+        Assert.Empty(subscription.Actions);
+        var credits = (await Build(owner).Service.SendAsync(Ask("whatsapp kredim ne kadar", context: store), default)).Value!;
+        Assert.Equal("MessagingCredits", credits.Intent);
+        Assert.Empty(credits.Actions);
     }
 
     [Fact]

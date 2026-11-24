@@ -94,7 +94,7 @@ internal sealed class TestCurrentUser : ICurrentUser
     public UserRole? Role { get; }
     public Guid? TenantId { get; }
     public Guid? BranchId { get; }
-    public Guid? CustomerId => null;
+    public Guid? CustomerId { get; init; }
     /// <summary>Panel kullanıcısı (JWT) varsayılır; bağlayıcı / zamanlayıcı gibi kullanıcısız çağrılar için <c>false</c>.</summary>
     public bool IsAuthenticated { get; init; } = true;
     public bool IsPlatformAdmin => Role == UserRole.PlatformAdmin;

@@ -88,6 +88,40 @@ public static partial class AssistantIntentResolver
         var customerWord = Any(t, " musteri", " danisan", " customer", " client");
         var hasPeriod = AssistantDateParser.Parse(t.Trim(), now) is not null;
 
+        // ── Rolün kendi durum soruları ──
+        if (Any(t, " abonelik", " aboneligim", " aboneligimiz", " uyelik", " uyeligim", " deneme sure", " deneme surem", " lisans", " beautyasist paket",
+                " paketimiz ne zaman", " sistem paketim", " subscription")
+            && !Any(t, " bitince", " biterse", " silinir", " ne olur", " kaybolur", " ne yapmali"))
+            return AssistantIntent.Subscription;
+        if (Any(t, " kontor", " mesaj hakki", " sms hakki", " mesaj kredi", " whatsapp kredi", " sms kredi", " kredi bakiye", " kredim", " kredimiz",
+                " kac mesaj gonderebilir", " credits"))
+            return AssistantIntent.MessagingCredits;
+        if (Any(t, " kasa kapan", " kasayi kapat", " gun sonu kapan", " gun sonu yapildi", " gun sonu alindi", " kasa kapatildi", " gun sonu raporu"))
+            return AssistantIntent.CashClosingStatus;
+        if (Any(t, " kampanya", " indirimler", " aktif indirim", " indirim var", " campaign"))
+            return AssistantIntent.Campaigns;
+        if (Any(t, " kvkk", " onam vermeyen", " onay vermeyen", " onamsiz", " izin vermeyen musteri", " consent"))
+            return AssistantIntent.KvkkPending;
+        if (Any(t, " hediye cek", " hediye kart", " kupon", " gift card", " voucher"))
+            return AssistantIntent.GiftCards;
+        if (Any(t, " sadakat", " puan bakiye", " biriken puan", " puanlarim", " kac puanim", " puanim ne", " loyalty"))
+            return AssistantIntent.Loyalty;
+        if (Any(t, " borcum", " borcumu", " taksitim", " taksitlerim", " odemelerim", " kalan odemem", " ne kadar borcum", " odeme planim"))
+            return AssistantIntent.MyDebt;
+        if (Any(t, " adres", " konumunuz", " neredesiniz", " salon nerede", " telefon numaraniz", " telefonunuz", " iletisim", " instagram",
+                " calisma saat", " kacta acil", " kacta kapan", " kaca kadar acik", " acik misiniz", " acik mi", " mesai saat", " opening hours", " address"))
+            return AssistantIntent.SalonInfo;
+        if (Any(t, " fiyat listesi", " fiyatlar", " fiyatlariniz", " ucretler", " hizmetleriniz", " hizmet listesi", " hangi hizmetler", " neler yapiyorsunuz",
+                " fiyati ne", " fiyati kac", " kac tl", " kac lira", " ucreti ne", " ucreti kac", " price list", " prices")
+            && !IsRevenue(t) && !Any(t, " kazan", " ciro", " satis", " gider", " borc", " alacak", " tahsil", " kasa"))
+            return AssistantIntent.ServicePrice;
+        if (Any(t, " kim izinli", " kimler izinli", " izinli personel", " izinde olan", " kim calisiyor", " kimler calisiyor", " bugun calisan", " yarin calisan",
+                " bugun kim var", " personel listesi", " kac personel", " who is off", " who is working"))
+            return AssistantIntent.StaffToday;
+        if (Any(t, " kac islem yaptim", " kac randevu yaptim", " kac musteriye baktim", " kac musteri baktim", " performansim", " islemlerim",
+                " yaptigim islem", " bu ay kac islem", " ne kadar calistim", " my work"))
+            return AssistantIntent.MyWork;
+
         // ── Müşteri niyetleri (kalıp olarak "gelmeyen müşteri" de içerirler; gelmeyenlerden ÖNCE) ──
         if (Any(t, " uzun suredir gelmeyen", " uzun zamandir gelmeyen", " pasif musteri", " kayip musteri", " gelmeyi birak", " kaybettigimiz musteri",
                 " aylardir gelmeyen", " bir suredir gelmeyen", " inactive customer", " pasife dusen", " pasif olan"))
@@ -182,6 +216,38 @@ public static partial class AssistantIntentResolver
         return AssistantIntent.Unknown;
     }
 
+    // ── Adıyla sorulan kayıtlar: hangi kayıt bulunduysa, sorunun o kayıtla ilgili ipucu var mı ──
+
+    /// <summary>Fiyat sorusu ("lazer kaç TL", "cilt bakımının ücreti", "ne kadar").</summary>
+    public static bool AsksPrice(string folded)
+    {
+        var t = Pad(folded);
+        return Any(t, " kac tl", " kac lira", " fiyat", " ucret", " ne kadar", " kaca", " kac para", " tutar", " price", " cost", " how much");
+    }
+
+    /// <summary>Stok sorusu ("kaç tane var", "stokta var mı", "kaldı mı").</summary>
+    public static bool AsksStock(string folded)
+    {
+        var t = Pad(folded);
+        return Any(t, " kac tane", " kac adet", " stok", " kaldi", " kalmis", " var mi", " bitti", " tukendi", " in stock", " how many");
+    }
+
+    /// <summary>Personel programı sorusu ("yarın çalışıyor mu", "izinli mi", "randevuları", "müsait mi").</summary>
+    public static bool AsksStaffSchedule(string folded)
+    {
+        var t = Pad(folded);
+        return Any(t, " calis", " izin", " mesai", " musait", " randevu", " program", " vardiya", " geliyor mu", " gelecek mi", " burada mi",
+            " bos mu", " dolu mu", " working", " schedule");
+    }
+
+    /// <summary>Bir müşteri hakkında soru (borç, seans, randevu, telefon, son geliş…).</summary>
+    public static bool AsksCustomer(string folded)
+    {
+        var t = Pad(folded);
+        return Any(t, " borc", " seans", " randevu", " geldi", " gelecek", " telefon", " numara", " bilgi", " kart", " puan", " son ", " ne zaman",
+            " kac kez", " kac defa", " durum", " hakkinda", " odeme", " taksit", " paket", " hesab", " bakiye", " kim", " nedir", " goster", " info");
+    }
+
     private static bool IsActionRequest(string t) =>
         Any(t, " istiyorum", " istiyoruz", " istedim", " lazim", " gerekiyor", " alabilir", " yapabilir", " edebilir", " ekleyebilir", " girebilir",
             " gitsin", " olsun ", " eklemek", " eklemem", " girmek", " girmem", " onaylamak", " onaylamam", " olusturmak", " olusturmam", " ertelemek",
@@ -201,7 +267,7 @@ public static partial class AssistantIntentResolver
     {
         if (Any(t, " ciro", " hasilat", " kazanc", " kazandik", " kazandim", " ne kadar kazan", " tahsilat", " revenue", " income", " kac para",
                 " ne kadar para", " para girdi", " para gird", " kasaya gir", " kasada ne kadar", " kasada kac", " kasa ne kadar", " kasa durumu",
-                " gunluk kasa", " gun sonu kasa", " kasamiz", " para kazan", " para yaptik", " para toplad", " tahsil ettik", " tahsil edilen", " earn"))
+                " gunluk kasa", " kasamiz", " para kazan", " para yaptik", " para toplad", " tahsil ettik", " tahsil edilen", " earn"))
             return true;
         if (!Any(t, " gelir")) return false;
         if (Word(t, "gelirim", "gelirsin", "gelirse", "gelirken", "gelirmisin", "gelirmisiniz", "gelirdi", "gelirdin", "gelirlerse", "gelirsek", "gelirsiniz", "geliriz")
@@ -240,7 +306,8 @@ public static partial class AssistantIntentResolver
     private static bool IsHowTo(string t) =>
         Any(t, " nasil ", " nasil?", " nerede", " nereden", " nereye", " hangi sayfa", " hangi ekran", " how do", " how to", " how can", " where ")
         && !Any(t, " nasilsin", " nasilsiniz", " nasil gidiyor", " nasil gecti", " nasil gecmis", " durum nasil", " nasil bir ay", " nasil bir gun",
-            " nasildi", " ciro nasil", " satislar nasil", " gelir nasil", " isler nasil");
+            " nasildi", " ciro nasil", " satislar nasil", " gelir nasil", " isler nasil", " salon nerede", " neredesiniz", " siz nerede",
+            " salonunuz nerede", " adresiniz nerede");
 
     private static bool Any(string text, params string[] terms) => terms.Any(term => text.Contains(term, StringComparison.Ordinal));
 

@@ -255,6 +255,7 @@ public static class DependencyInjection
         // Maydi yardım katmanı: yapay zekâ ile makale seçimi (anahtar yoksa kapalı) + katalog/anahtar kelime.
         services.AddScoped<Application.Features.Assistant.IAssistantHelpMatcher, Services.Assistant.AssistantHelpMatcher>();
         services.AddScoped<Application.Features.Assistant.IAssistantHelpService, Services.Assistant.AssistantHelpService>();
+        services.AddScoped<Services.Assistant.AssistantEntityFinder>();
         services.AddScoped<Application.Features.Assistant.IAssistantService, Services.Assistant.AssistantService>();
         services.AddScoped<Application.Features.Assistant.IAssistantStatsService, Services.Assistant.AssistantStatsService>();
         services.AddScoped<Services.Assistant.AssistantDataRetention>();

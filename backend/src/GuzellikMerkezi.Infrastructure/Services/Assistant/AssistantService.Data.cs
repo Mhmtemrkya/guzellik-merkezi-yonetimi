@@ -112,11 +112,28 @@ public sealed partial class AssistantService
             : new ReportRangeRequest(Utc(range.From), Utc(range.To));
     }
 
-    private async Task<DataAnswer> DataAsync(AssistantIntent intent, AssistantDateRange? range, string portal, AssistantVoice v, CancellationToken ct)
+    private async Task<DataAnswer> DataAsync(AssistantIntent intent, AssistantDateRange? range, string portal, AssistantVoice v, CancellationToken ct,
+        AssistantEntities? entities = null)
     {
         var staff = portal == AssistantPortals.Staff;
+        var found = entities ?? AssistantEntities.None;
         return intent switch
         {
+            AssistantIntent.CustomerLookup => await CustomerLookupAsync(found, portal, v, ct),
+            AssistantIntent.ServicePrice => await ServicePriceAsync(found, v, ct),
+            AssistantIntent.StaffSchedule => found.Staff.Count > 0 ? await StaffScheduleAsync(found, range, portal, v, ct) : await StaffTodayAsync(range, v, ct),
+            AssistantIntent.StaffToday => await StaffTodayAsync(range, v, ct),
+            AssistantIntent.ProductStock => found.Products.Count > 0 ? ProductStock(found, v) : await InventoryAsync(range ?? MonthRange, v, ct),
+            AssistantIntent.Subscription => await SubscriptionAsync(v, ct),
+            AssistantIntent.MessagingCredits => await MessagingCreditsAsync(v, ct),
+            AssistantIntent.CashClosingStatus => await CashClosingStatusAsync(v, ct),
+            AssistantIntent.Campaigns => await CampaignsAsync(v, ct),
+            AssistantIntent.KvkkPending => await KvkkPendingAsync(v, ct),
+            AssistantIntent.GiftCards => await GiftCardsAsync(portal, v, ct),
+            AssistantIntent.MyWork => await MyWorkAsync(range ?? MonthRange, v, ct),
+            AssistantIntent.MyDebt => await MyDebtAsync(v, ct),
+            AssistantIntent.Loyalty => await LoyaltyAsync(v, ct),
+            AssistantIntent.SalonInfo => await SalonInfoAsync(v, ct),
             AssistantIntent.AppointmentsToday => portal == AssistantPortals.Customer
                 ? (range is null ? await CustomerNextAsync(v, ct) : await CustomerAppointmentsAsync(range, v, ct))
                 : staff ? await MyAppointmentsAsync(range ?? TodayRange, v, ct) : await AppointmentsAsync(range ?? TodayRange, v, ct),

@@ -103,9 +103,10 @@ public sealed class AssistantIntentResolverTests
             Assert.True(AssistantIntentCatalog.IsData(rule.Intent));
             Assert.All(rule.Portals, portal => Assert.True(rule.Route.ContainsKey(portal), $"{rule.Intent}/{portal} rotası yok"));
             Assert.All(rule.FeatureKeys, key => Assert.True(GuzellikMerkezi.Domain.FeatureCatalog.Exists(key)));
-            // Ciro ve finans yalnız yöneticiye.
-            if (rule.Intent is AssistantIntent.Revenue or AssistantIntent.OverdueInstallments)
-                Assert.DoesNotContain(AssistantPortals.Staff, rule.Portals);
+            // Finans personele yalnız o ekranın izniyle açılır (personel paneli de sayfayı izinle gösterir).
+            if (rule.Intent is AssistantIntent.Revenue or AssistantIntent.OverdueInstallments or AssistantIntent.Receivables or AssistantIntent.Expenses
+                or AssistantIntent.Profit or AssistantIntent.Sales or AssistantIntent.TopStaff && rule.Portals.Contains(AssistantPortals.Staff))
+                Assert.NotNull(rule.StaffPermission);
         }
     }
 }

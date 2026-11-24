@@ -1,5 +1,6 @@
 using GuzellikMerkezi.Application.Features.Assistant;
 using GuzellikMerkezi.Application.Features.Customers;
+using GuzellikMerkezi.Domain;
 using GuzellikMerkezi.Domain.Assistant;
 using GuzellikMerkezi.Domain.Enums;
 using GuzellikMerkezi.Infrastructure.Persistence;
@@ -29,6 +30,23 @@ public sealed class AssistantDataMySqlTests
         "bu ay en çok çalışan personel", "en çok satan hizmetler", "şubeleri karşılaştır", "bu ay kaç yeni müşteri geldi",
         "toplam kaç müşterimiz var", "en çok harcayan müşteriler", "uzun süredir gelmeyen müşteriler", "bu ay doğum günü olanlar",
         "gelmeyen müşteriler", "bu ay iptal edilen randevular", "en yoğun saatler",
+        // Adıyla ve durum soruları
+        "Deniz yarın çalışıyor mu", "cilt bakımı kaç TL", "fiyat listesi", "Serum kaç tane kaldı", "kadıköyün borcu ne kadar",
+        "aboneliğim ne zaman bitiyor", "whatsapp kredim ne kadar", "bugün kasa kapanışı yapıldı mı", "bugün kim izinli",
+        "aktif kampanyalar neler", "kvkk onayı olmayan müşteriler", "kaç aktif hediye çeki var", "salonun adresi ne",
+    ];
+
+    private static readonly string[] StaffQuestions =
+    [
+        "bugünkü randevularım", "yarınki randevularım", "sıradaki müşterim kim", "bu haftaki programım", "bu ay kaç işlem yaptım",
+        "yıldız puanım kaç", "paketli müşterilerimin kalan seansı", "Deniz yarın çalışıyor mu", "kadıköyün kalan seansı", "cilt bakımı kaç TL",
+        "bugünün geliri ne", "kritik stoktaki ürünler", "salonun adresi ne",
+    ];
+
+    private static readonly string[] CustomerQuestions =
+    [
+        "yaklaşan randevum ne zaman", "yarın randevum var mı", "kalan seansım kaç", "randevu geçmişim", "borcum ne kadar", "sadakat puanım kaç",
+        "hediye çekim var mı", "fiyat listesi", "cilt bakımı kaç TL", "salonun adresi ne", "kaçta açılıyorsunuz",
     ];
 
     [MySqlFact]
@@ -42,18 +60,35 @@ public sealed class AssistantDataMySqlTests
             await db.SaveChangesAsync();
         }
 
-        var covered = new HashSet<AssistantIntent>();
-        foreach (var (role, branch) in new[] { (UserRole.InstitutionOwner, (Guid?)null), (UserRole.BranchManager, (Guid?)seed.Kadikoy) })
+        var staffUserId = seed.User; // FK: personel mevcut bir kullanıcıya bağlanır
+        await using (var db = database.NewContext())
         {
-            var user = new TestCurrentUser(role, seed.TenantId, branch);
+            var staffMember = await db.StaffMembers.IgnoreQueryFilters().SingleAsync(x => x.Id == seed.Staff);
+            staffMember.LinkTenantUser(staffUserId);
+            db.Products.Add(new GuzellikMerkezi.Domain.Entities.Product(seed.TenantId, seed.Kadikoy, "Serum", ProductCategory.SkinCare, "adet", 10m, 20m, 1m, 5m));
+            await db.SaveChangesAsync();
+        }
+
+        var everyPermission = typeof(Permissions).GetFields().Where(f => f.IsLiteral && f.FieldType == typeof(string)).Select(f => (string)f.GetRawConstantValue()!).ToArray();
+        var askers = new (TestCurrentUser User, Guid? Branch, string[] Questions)[]
+        {
+            (new TestCurrentUser(UserRole.InstitutionOwner, seed.TenantId), null, OwnerQuestions),
+            (new TestCurrentUser(UserRole.BranchManager, seed.TenantId, seed.Kadikoy), seed.Kadikoy, OwnerQuestions),
+            (new TestCurrentUser(UserRole.Staff, seed.TenantId, seed.Kadikoy, everyPermission) { UserId = staffUserId }, seed.Kadikoy, StaffQuestions),
+            (new TestCurrentUser(UserRole.Customer, seed.TenantId) { CustomerId = seed.Customer }, null, CustomerQuestions),
+        };
+        var covered = new HashSet<AssistantIntent>();
+        foreach (var (user, branch, questions) in askers)
+        {
+            var role = user.Role;
             var tenant = new TestTenantContext(seed.TenantId, branch);
-            foreach (var question in OwnerQuestions)
+            foreach (var question in questions)
             {
                 await using var db = new GuzellikDbContext(
                     new DbContextOptionsBuilder<GuzellikDbContext>().UseMySQL(database.ConnectionString).Options,
                     tenant, user, null, null, TestSearchIndex.Create());
                 var service = new AssistantService(db, user, tenant, new AllowAllFeatureService(), new NoHelp(), new NoAi(),
-                    new ReportsService(db, user), Customers(),
+                    new ReportsService(db, user), Customers(), new AssistantEntityFinder(db, TestSearchIndex.Create()),
                     new ConfigurationBuilder().Build(), NullLogger<AssistantService>.Instance);
                 var result = await service.SendAsync(new AssistantSendRequest(null, question, null, null), CancellationToken.None);
                 Assert.True(result.IsSuccess, $"{role}: '{question}' → {(result.IsFailure ? result.Error.Message : "")}");
@@ -63,9 +98,8 @@ public sealed class AssistantDataMySqlTests
             }
         }
 
-        // Yönetici portalındaki bütün veri niyetleri en az bir kez gerçekten çalıştı.
-        var managerIntents = AssistantIntentCatalog.DataRules.Where(rule => rule.Portals.Contains(AssistantPortals.Owner)).Select(rule => rule.Intent);
-        Assert.Empty(managerIntents.Except(covered));
+        // Bütün veri niyetleri (her portalda) en az bir kez gerçekten çalıştı.
+        Assert.Empty(AssistantIntentCatalog.DataRules.Select(rule => rule.Intent).Except(covered));
     }
 
     private static ICustomerService Customers()

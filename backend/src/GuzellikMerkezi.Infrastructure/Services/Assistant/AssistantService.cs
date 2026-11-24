@@ -37,6 +37,7 @@ public sealed partial class AssistantService(
     IAssistantHelpMatcher matcher,
     IReportsService reports,
     ICustomerService customerService,
+    AssistantEntityFinder entityFinder,
     IConfiguration configuration,
     ILogger<AssistantService> logger) : IAssistantService
 {
@@ -241,16 +242,41 @@ public sealed partial class AssistantService(
             case AssistantIntent.BeautyAdvice:
                 return new Reply("text", voice.AdviceRefused(), parse.Intent, "advice_refused", SuggestionList: Suggest(3));
             case AssistantIntent.HowTo:
-            case AssistantIntent.Unknown:
                 return await HelpAsync(message, parse, portal, active, context, voice, Suggest, ct);
         }
 
-        return await DataReplyAsync(parse.Intent, parse.Range, portal, active, context, voice, Suggest, "rule", ct);
+        // Adıyla geçen kayıt (müşteri, personel, hizmet, ürün) genel niyetten önce gelir: "Ayşe'nin borcu" → o müşterinin kartı.
+        // Adlar veritabanında bulunur; yapay zekâya gitmez. Ad kelimeleri çıkarılınca dönem yeniden okunur ("Kasım'ın randevusu").
+        var entities = await entityFinder.FindAsync(message, currentUser.TenantId!.Value, tenantContext.BranchId,
+            includeCustomers: portal != AssistantPortals.Customer, ct);
+        var folded = parse.CorrectedText ?? parse.Folded;
+        if (EntityIntent(entities, folded, portal, parse.Intent) is AssistantIntent entityIntent)
+        {
+            var range = AssistantIntentResolver.RangeOf(WithoutNames(folded, entities), entityIntent, LocalNow);
+            return await DataReplyAsync(entityIntent, range, portal, active, context, voice, Suggest, "rule", ct, entities);
+        }
+        if (parse.Intent == AssistantIntent.Unknown)
+            return await HelpAsync(message, parse, portal, active, context, voice, Suggest, ct, entities);
+
+        var intent = ForPortal(parse.Intent, portal);
+        var dataRange = entities.NameWords.Count > 0 ? AssistantIntentResolver.RangeOf(WithoutNames(folded, entities), intent, LocalNow) : parse.Range;
+        return await DataReplyAsync(intent, dataRange, portal, active, context, voice, Suggest, "rule", ct, entities);
     }
 
+    /// <summary>
+    /// App Store / Mac App Store derlemesinde (3.1.1) satın almaya götüren hiçbir bağlantı verilmez: abonelik/paket,
+    /// ödeme ve kredi (bildirim/cüzdan) ekranları.
+    /// </summary>
+    private static bool PurchaseRoute(string route, AssistantIntent intent) =>
+        route.StartsWith("/panel/paket", StringComparison.Ordinal) && !route.StartsWith("/panel/paketler", StringComparison.Ordinal)
+        || route.StartsWith("/odeme", StringComparison.Ordinal)
+        || intent is AssistantIntent.Subscription or AssistantIntent.MessagingCredits;
+
     private async Task<Reply> DataReplyAsync(AssistantIntent intent, AssistantDateRange? range, string portal, IReadOnlyCollection<string>? active,
-        AssistantClientContext context, AssistantVoice voice, Func<int, List<string>> suggest, string matchedBy, CancellationToken ct)
+        AssistantClientContext context, AssistantVoice voice, Func<int, List<string>> suggest, string matchedBy, CancellationToken ct,
+        AssistantEntities? entities = null)
     {
+        intent = ForPortal(intent, portal);
         var rule = AssistantIntentCatalog.RuleFor(intent)!;
         if (!rule.Portals.Contains(portal))
             return new Reply("text", voice.OutOfPortal() + " " + voice.Intro(), intent, "denied", SuggestionList: suggest(4), MatchedBy: matchedBy);
@@ -259,8 +285,8 @@ public sealed partial class AssistantService(
         if (!Granted(portal, rule.StaffPermission))
             return new Reply("text", voice.NoPermission(), intent, "denied", SuggestionList: suggest(3), MatchedBy: matchedBy);
 
-        var data = await DataAsync(intent, range, portal, voice, ct);
-        var actions = rule.Route.TryGetValue(portal, out var route) && !(context.StoreBuild && route.StartsWith("/panel/paket", StringComparison.Ordinal))
+        var data = await DataAsync(intent, range, portal, voice, ct, entities);
+        var actions = rule.Route.TryGetValue(portal, out var route) && !(context.StoreBuild && PurchaseRoute(route, intent))
             ? new[] { new AssistantActionDto("navigate", voice.OpenPage(), route) }
             : [];
         object payload = range is null
@@ -280,7 +306,7 @@ public sealed partial class AssistantService(
             .ToList();
 
     private async Task<Reply> HelpAsync(string message, AssistantParse parse, string portal, IReadOnlyCollection<string>? active,
-        AssistantClientContext context, AssistantVoice voice, Func<int, List<string>> suggest, CancellationToken ct)
+        AssistantClientContext context, AssistantVoice voice, Func<int, List<string>> suggest, CancellationToken ct, AssistantEntities? entities = null)
     {
         var intent = parse.Intent;
         // "Nasıl yapılır" sorusu yalnız makaleye gider; anlaşılamayan soru veri de olabilir (ör. "kasaya bugün ne girdi").
@@ -288,8 +314,10 @@ public sealed partial class AssistantService(
         var answer = await help.AnswerAsync(message, new AssistantHelpOptions(context.English, context.StoreBuild, context.AllowAi, choices), ct);
         if (answer.Outcome == AssistantHelpOutcome.Data && answer.DataIntent is AssistantIntent dataIntent)
         {
-            var range = AssistantIntentResolver.RangeOf(parse.CorrectedText ?? parse.Folded, dataIntent, LocalNow);
-            return await DataReplyAsync(dataIntent, range, portal, active, context, voice, suggest, answer.MatchedBy, ct);
+            var text = parse.CorrectedText ?? parse.Folded;
+            if (entities is not null) text = WithoutNames(text, entities);
+            var range = AssistantIntentResolver.RangeOf(text, dataIntent, LocalNow);
+            return await DataReplyAsync(dataIntent, range, portal, active, context, voice, suggest, answer.MatchedBy, ct, entities);
         }
         switch (answer.Outcome)
         {

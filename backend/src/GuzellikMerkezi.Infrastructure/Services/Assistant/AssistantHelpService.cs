@@ -46,8 +46,12 @@ public sealed class AssistantHelpService(
             nameWords = await PersonNameWordsAsync(query, cancellationToken);
             var masked = AssistantPrivacy.Mask(query, nameWords);
             var choices = options.DataChoices ?? [];
-            var list = choices.Select(choice => (choice.Id, "VERİ: " + choice.Description))
-                .Concat(visible.Select(item => (item.Id, options.English ? item.TitleEn : item.TitleTr)))
+            // Yalnız soruya en yakın seçenekler gider (≈25): makale ve veri niyetleri ayrı ayrı sıralanıp birleştirilir.
+            var foldedQuery = AssistantText.Fold(query);
+            var rankedArticles = AssistantHelpCatalog.RankForPrompt(foldedQuery, visible).Take(MaxPromptArticles);
+            var rankedData = RankChoices(foldedQuery, choices).Take(MaxPromptData);
+            var list = rankedData.Select(choice => (choice.Id, "VERİ: " + choice.Description))
+                .Concat(rankedArticles.Select(item => (item.Id, options.English ? item.TitleEn : item.TitleTr)))
                 .ToList();
             var picked = await matcher.PickArticleAsync(masked, list, cancellationToken);
             if (picked is not null && choices.FirstOrDefault(choice => choice.Id == picked) is { } data)
@@ -74,6 +78,21 @@ public sealed class AssistantHelpService(
         return otherPortal
             ? new AssistantHelpAnswer(AssistantHelpOutcome.OtherPortal, portal, article, matchedBy, null)
             : Found(portal, article, matchedBy);
+    }
+
+    private const int MaxPromptArticles = 15;
+    private const int MaxPromptData = 10;
+
+    /// <summary>Veri niyetlerini tarif kelimelerinin soruyla örtüşmesine göre sıralar (eşitlikte katalog sırası).</summary>
+    private static IEnumerable<AssistantDataChoice> RankChoices(string foldedQuery, IReadOnlyList<AssistantDataChoice> choices)
+    {
+        var words = foldedQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 4).Select(w => w.Length > 5 ? w[..5] : w).ToArray();
+        return choices.Select((choice, index) =>
+            {
+                var bag = AssistantText.Fold(choice.Description).Split([' ', ',', '(', ')', '/', ':', ';'], StringSplitOptions.RemoveEmptyEntries);
+                return (choice, index, score: words.Count(w => bag.Any(b => b.StartsWith(w, StringComparison.Ordinal))));
+            })
+            .OrderByDescending(x => x.score).ThenBy(x => x.index).Select(x => x.choice);
     }
 
     private static AssistantHelpAnswer Found(string portal, AssistantHelpArticle article, string matchedBy) =>

@@ -152,7 +152,7 @@ public static class AssistantHelpCatalog
 
         // ── Hizmet & paket ──────────────────────────────────────────────────
         new("service-define", "Hizmet tanımlama", "Defining a service",
-            ["hizmet ekle", "yeni hizmet", "hizmet tanimla", "hizmet fiyati", "fiyat degistir", "hizmet havuzu", "kategori ekle", "add service", "service price", "hizmet suresi", "hizmet sure", "hizmeti duzenle", "hizmet degistir"],
+            ["hizmet ekle", "yeni hizmet", "hizmet tanimla", "hizmet havuzu", "kategori ekle", "add service", "service price", "hizmet suresi", "hizmet sure", "hizmeti duzenle", "hizmet degistir"],
             ["Paket & Hizmet sayfasında Hizmet havuzu'nu açın.", "Yeni hizmet'e basın; süre, fiyat ve kategoriyi girin.", "Kaydedin; hizmet randevu ve satış ekranlarında seçilebilir.", DraftNoteTr],
             ["Open Service pool on the Packages & Services page.", "Press New service; enter duration, price and category.", "Save; the service can now be chosen when booking or selling.", DraftNoteEn],
             Managers("/panel/paketler", "/ekip/paketler")) { StaffPermission = Permissions.Services },
@@ -299,6 +299,83 @@ public static class AssistantHelpCatalog
             ["Open your Profile page (Settings for managers).", "Update your name and contact details.", "Enter your current and new password in Change password, then save."],
             R((S, "/ekip/profil"), (O, "/panel/ayarlar"), (B, "/panel/ayarlar"))),
 
+        // ── Sık sorulanlar (destek sayfasındaki cevaplarla aynı; ekran adları menüden) ──
+        new("password-forgot", "Şifremi unuttum", "I forgot my password",
+            ["sifremi unuttum", "sifre unuttum", "parolami unuttum", "sifre hatirlamiyorum", "giremiyorum", "giris yapamiyorum", "sifre sifirla", "forgot password", "reset password", "hesabima giremiyorum"],
+            ["Giriş ekranındaki “Şifremi unuttum” bağlantısına basın.", "Hesap e-postanıza gelen doğrulama kodunu girip yeni şifrenizi belirleyin; güvenlik için diğer oturumlarınız kapatılır.", "Personelseniz kurum yöneticiniz de Personel & Roller sayfasından şifrenizi sıfırlayabilir."],
+            ["Press “Forgot password” on the sign-in screen.", "Enter the code sent to your account email and set a new password; your other sessions are signed out.", "If you are staff, your manager can also reset it from Staff & Roles."],
+            R((O, "/panel/ayarlar"), (B, "/panel/ayarlar"), (S, "/ekip/profil"))),
+        new("staff-password-reset", "Personelin şifresini sıfırlama", "Resetting a staff password",
+            ["personel sifre", "personelin sifresi", "calisan sifre", "personel sifresini sifirla", "sifresini unuttu", "personel giremiyor", "staff password", "reset staff password"],
+            ["Personel & Roller sayfasını açın.", "Personelin satırındaki işlemlerden “Şifreyi sıfırla”ya basıp onaylayın.", "Ekranda çıkan yeni giriş bilgilerini personele iletin."],
+            ["Open Staff & Roles.", "In the staff member's row, press “Reset password” and confirm.", "Share the new sign-in details shown on screen."],
+            R((O, "/panel/personel"), (B, "/panel/personel"))),
+        new("staff-devices", "Personel cihazları ve cihaz onayı", "Staff devices and device approval",
+            ["cihaz", "cihazlar", "cihaz onayi", "telefon onayi", "yeni cihaz", "cihaz kilidi", "hangi cihazdan", "device", "device approval", "cihaz sil"],
+            ["Personel & Roller sayfasını açın.", "Personelin satırındaki “Cihazlar”a basın.", "Personelin giriş yaptığı cihazları görün; yeni cihazı onaylayın ya da kaldırın."],
+            ["Open Staff & Roles.", "Press “Devices” in the staff member's row.", "See the devices they sign in from; approve a new one or remove it."],
+            R((O, "/panel/personel"), (B, "/panel/personel"))) { FeatureKeys = [FeatureCatalog.SecurityDeviceControl] },
+        new("staff-leave", "Personel izni girme", "Recording staff leave",
+            ["izin gir", "izin ekle", "izinli isaretle", "izinli yap", "izin ver", "tatil", "rapor aldi", "hasta", "bugun gelmeyecek", "izni kaldir", "staff leave", "day off", "personel izni"],
+            ["Personel & Roller altında Çizelge'yi açın.", "Personelin ilgili gün hücresinde “İzinli işaretle”ye basın.", "İzni geri almak için aynı hücrede “İzni kaldır”a basın; izinli günde o personele randevu verilmez."],
+            ["Open Schedule under Staff & Roles.", "In the staff member's cell for that day, press “Mark as on leave”.", "To undo, press “Remove leave” in the same cell; no appointments are booked for them that day."],
+            R((O, "/panel/personel/cizelge"), (B, "/panel/personel/cizelge"))) { FeatureKeys = [FeatureCatalog.StaffSchedule] },
+        new("staff-commission", "Personel primi (komisyon)", "Staff commission",
+            ["prim", "komisyon", "prim orani", "komisyon orani", "hakedis", "personel primi", "yuzde kac prim", "commission", "commission rate"],
+            ["Personel & Roller sayfasında personeli düzenleyin.", "Komisyon % alanına oranı girip kaydedin.", "Hak edilen primi Raporlar → Personel performansı ekranında görün."],
+            ["Edit the staff member on Staff & Roles.", "Enter the rate in Commission % and save.", "See earned commission under Reports → Staff performance."],
+            R((O, "/panel/personel"), (B, "/panel/personel"))) { FeatureKeys = [FeatureCatalog.StaffCommission] },
+        new("staff-permissions", "Personel hangi sayfaları görebilir", "What staff can see",
+            ["personel ne gorur", "hangi sayfalari gorebilir", "personel neleri gorebilir", "yetki seviyesi", "islem izni", "personel onay", "personel kaydi degistiremesin", "what can staff see"],
+            ["Yetki iki seviyelidir: sayfa izni (ör. Müşteriler) ve işlem izni (ör. Müşteri silme); her personel için Personel & Roller'den tek tek seçilir.", "İsterseniz personelin yazma işlemleri onay kutunuza düşer; siz onaylamadan hiçbir kayıt değişmez.", "Personel panelinde işletme geneli ciro gösterilmez; yalnız kendisine atanan işler görünür."],
+            ["Permissions have two levels: page access (e.g. Customers) and actions (e.g. deleting a customer), set per staff member on Staff & Roles.", "Optionally, staff changes go to your approval queue and nothing changes until you approve.", "The staff panel never shows business-wide revenue; only work assigned to them."],
+            R((O, "/panel/personel"), (B, "/panel/personel"))),
+        new("sale-cancel-refund", "Satış iptali ve iade", "Cancelling a sale and refunds",
+            ["iade", "para iadesi", "iade et", "satis iptal", "satisi iptal", "paket iptal", "parasini geri", "geri odeme", "refund", "cancel sale", "iptali geri al"],
+            ["Ön Muhasebe'de Cari hesap bölümünden satışı açın.", "Satışı iptal ederken müşteriye geri ödenen tutarı ve iade yöntemini (nakit, kart, havale) girin; iade edilen kısım gelirden düşer.", "Yanlışlıkla iptal ettiyseniz aynı ekrandaki “İptali geri al” ile geri alın."],
+            ["Open the sale from Accounts in Pre-accounting.", "When cancelling, enter the amount refunded to the customer and the refund method; the refunded part is deducted from income.", "If cancelled by mistake, use “Undo cancellation” on the same screen."],
+            Managers("/panel/on-muhasebe", "/ekip/on-muhasebe")) { StaffPermission = Permissions.Accounting },
+        new("service-price-change", "Hizmet fiyatını değiştirme", "Changing a service price",
+            ["fiyat degistir", "fiyati degistir", "fiyat guncelle", "zam", "zam yap", "fiyat artir", "ucret degistir", "hizmet fiyati", "change price", "update price"],
+            ["Paket & Hizmet sayfasında Hizmet havuzu'nu açın.", "Hizmeti düzenleyip yeni fiyatı girin ve kaydedin.", "Yeni fiyat bundan sonraki satış ve randevularda kullanılır; daha önce satılmış paketlerin tutarı değişmez.", DraftNoteTr],
+            ["Open the Service pool on Packages & Services.", "Edit the service, enter the new price and save.", "The new price applies to future sales and appointments; packages already sold keep their amount.", DraftNoteEn],
+            Managers("/panel/paketler", "/ekip/paketler")) { StaffPermission = Permissions.Services },
+        new("appointment-reassign", "Randevuyu başka personele ya da saate taşıma", "Moving an appointment to another staff member or time",
+            ["baska personele", "personeli degistir", "personel degistir", "randevuyu aktar", "randevu tasi", "saatini degistir", "randevu saati degistir", "gunu degistir", "move appointment", "reassign", "randevuyu kaydir"],
+            ["Randevular'da randevuyu açıp düzenleyin.", "Personel, tarih ya da saat alanını değiştirin; çakışma varsa uyarı görürsünüz.", "Kaydedin; müşteri hatırlatması yeni saate göre yeniden gönderilir.", DraftNoteTr],
+            ["Open and edit the appointment on the Appointments page.", "Change the staff, date or time; you are warned about clashes.", "Save; the customer's reminder is resent for the new time.", DraftNoteEn],
+            Managers("/panel/randevular", "/ekip/randevular")) { StaffPermission = Permissions.Appointments },
+        new("whatsapp-reminders", "WhatsApp hatırlatmaları nasıl çalışır", "How WhatsApp reminders work",
+            ["whatsapp nasil calisir", "hatirlatma nasil", "evet hayir", "musteri onayliyor", "otomatik onay", "mesaj kredisi", "kredi nasil duser", "kota bitince", "how reminders work", "whatsapp onay"],
+            ["Randevudan önce müşteriye otomatik hatırlatma gider; müşteri “Evet/Hayır” yazarak onaylar ya da iptal eder.", "İptal olan saat bekleme listesindeki sıradaki kişiye teklif edilir.", "Gönderimler önce paketinizdeki aylık kotadan, kota bitince mesaj kredisinden düşer (1 kredi = 1 WhatsApp hatırlatma); bakiyeyi Bildirimler'de görürsünüz."],
+            ["Customers get an automatic reminder before the appointment and reply “Yes/No” to confirm or cancel.", "A cancelled slot is offered to the next person on the waitlist.", "Messages use your plan's monthly quota first, then message credits (1 credit = 1 WhatsApp reminder); see the balance under Notifications."],
+            R((O, "/panel/bildirimler"), (B, "/panel/bildirimler"))),
+        new("branches-multi", "Birden fazla şube", "Multiple branches",
+            ["sube", "subeler", "sube degistir", "baska sube", "sube secici", "coklu sube", "iki subem", "sube gecis", "branch", "switch branch", "multiple branches"],
+            ["Şubeleri Ayarlar sayfasından tanımlayın.", "Üst çubuktaki şube seçicisiyle şubeler arasında geçiş yapın.", "Raporlarda şubeleri karşılaştırabilir, personeli şubeler arasında aktarabilirsiniz; çok şube desteği pakete bağlıdır."],
+            ["Define branches on the Settings page.", "Switch between them with the branch picker in the top bar.", "Compare branches in Reports and move staff between them; multi-branch depends on your plan."],
+            R((O, "/panel/ayarlar"))),
+        new("account-delete", "Kurum hesabını kapatma", "Closing the business account",
+            ["hesabimi sil", "hesap sil", "hesabi kapat", "uyeligi iptal", "kaydimi sil", "hesabimi kapat", "delete account", "close account"],
+            ["Ayarlar sayfasının en altındaki “Hesabımı sil” bölümünden talep oluşturun.", "Silme hemen olmaz: 30 gün bekleme süresi vardır ve bu sürede talebi geri alabilirsiniz.", "Süre boyunca panel normal çalışır; verilerinizi dışa aktarabilirsiniz."],
+            ["Create a request from “Delete my account” at the bottom of Settings.", "Deletion isn't immediate: there's a 30-day waiting period during which you can withdraw the request.", "The panel keeps working meanwhile; you can export your data."],
+            R((O, "/panel/ayarlar"))),
+        new("trial-end", "Deneme süresi bitince ne olur", "What happens when the trial ends",
+            ["deneme bitince", "deneme suresi", "deneme bitti", "verilerim silinir mi", "veriler kaybolur mu", "trial", "trial ends"],
+            ["Deneme bitince hesabınız askıya alınır ve panele giriş kapanır; verileriniz silinmez.", "Bir paket seçtiğinizde kaldığınız yerden devam edersiniz.", "Deneme bitiş tarihini bana “aboneliğim ne zaman bitiyor” diye sorabilirsiniz."],
+            ["When the trial ends the account is suspended and sign-in closes; your data is kept.", "Choose a plan to continue where you left off.", "Ask me “when does my subscription end” to see the date."],
+            R((O, "/panel"))),
+        new("data-security", "Verilerim güvende mi", "Is my data safe",
+            ["guvenli mi", "veriler nerede", "verilerim guvende", "sifreleniyor mu", "guvenlik", "kvkk uyumlu", "data security", "is my data safe", "iki adimli"],
+            ["Müşteri adı, telefonu, T.C. kimlik numarası ve notlar gibi hassas alanlar veritabanında AES-256-GCM ile şifrelenir.", "Tüm iletişim HTTPS üzerinden yapılır; panele giriş iki adımlıdır (şifre + e-postaya gelen kod).", "Ayrıntılar Gizlilik Politikası sayfasındadır."],
+            ["Sensitive fields such as names, phone numbers, ID numbers and notes are encrypted with AES-256-GCM.", "All traffic uses HTTPS; panel sign-in is two-step (password + email code).", "See the Privacy Policy for details."],
+            R((O, "/panel/ayarlar"), (B, "/panel/ayarlar"), (S, "/ekip/profil"))),
+        new("excel-export", "Excel'e aktarma (dışa aktarma)", "Exporting to Excel",
+            ["excel indir", "excele aktar", "disa aktar", "excel cikti", "liste indir", "rapor indir", "export", "download excel", "pdf indir"],
+            ["Randevular, Müşteriler ya da Raporlar sayfasını açın.", "Sayfadaki Excel (raporlarda PDF de) düğmesine basın.", "Dosya, ekrandaki filtrelerle birlikte indirilir."],
+            ["Open Appointments, Customers or Reports.", "Press the Excel button (PDF too in Reports).", "The file downloads with the filters on screen."],
+            R((O, "/panel/raporlar"), (B, "/panel/raporlar"))) { FeatureKeys = [FeatureCatalog.ExcelReports, FeatureCatalog.ExcelCustomers, FeatureCatalog.ExcelAppointments, FeatureCatalog.PdfReports] },
+
         // ── Müşteri portalı ─────────────────────────────────────────────────
         new("customer-book", "Online randevu alma", "Booking online",
             ["randevu al", "online randevu", "randevu almak", "bos saat", "musait saat", "randevu olustur", "book online", "available time", "kendime gun", "gun ayarla", "bos saatler", "hangi saatler bos"],
@@ -310,6 +387,16 @@ public static class AssistantHelpCatalog
             ["Randevularım ekranını açın.", "Değiştirmek istediğiniz randevuyu seçin.", "Ertele ya da İptal Et'e basın; salon bilgilendirilir."],
             ["Open My Appointments.", "Choose the appointment you want to change.", "Press Reschedule or Cancel; the salon is notified."],
             R((C, "/randevu"))) { FeatureKeys = [FeatureCatalog.AppointmentsOnlineBooking] },
+        new("customer-data-security", "Bilgilerim güvende mi", "Is my data safe",
+            ["guvenli mi", "bilgilerim guvende", "verilerim", "kvkk", "kisisel veri", "kim gorebilir", "is my data safe", "privacy"],
+            ["Adınız, telefonunuz ve notlar gibi bilgileriniz şifrelenerek saklanır; bütün iletişim HTTPS üzerindendir.", "Bilgilerinizi yalnız randevu aldığınız salon görür.", "Ayrıntılar Gizlilik Politikası sayfasındadır; hesabınızı istediğiniz zaman silebilirsiniz."],
+            ["Your name, phone and notes are stored encrypted; all traffic uses HTTPS.", "Only the salon you book with can see your details.", "See the Privacy Policy for details; you can delete your account at any time."],
+            R((C, "/randevu"))),
+        new("customer-account-delete", "Müşteri hesabımı silme", "Deleting my customer account",
+            ["hesabimi sil", "hesap sil", "kaydimi sil", "bilgilerimi sil", "hesabimi kapat", "delete my account", "uyeligimi sil"],
+            ["Randevu ekranının en altına inin (mobil uygulamada Profil sekmesi).", "“Hesabımı sil”e basıp onaylayın.", "Hesabınız silinir ve oturum kapanır; Maydi sohbetleriniz de silinir."],
+            ["Scroll to the bottom of the booking screen (Profile tab in the mobile app).", "Press “Delete my account” and confirm.", "Your account is deleted and you're signed out; your Maydi chats are deleted too."],
+            R((C, "/randevu"))),
     ];
 
     /// <summary>
@@ -342,24 +429,48 @@ public static class AssistantHelpCatalog
     /// Eşleşme kelime bazlıdır ve Türkçe ekleri tolere eder: bir anahtar ifadenin her kelimesi metindeki bir
     /// kelimenin başına uymalı (randevu/randevuyu, iptal/iptali). Puan: eşleşen ifadelerin kelime sayısı toplamı.
     /// </summary>
+    private static string[] TokensOf(string foldedText) =>
+        foldedText.Split([' ', ',', '.', '?', '!', '\'', '’', ':', ';', '(', ')', '/', '-'], StringSplitOptions.RemoveEmptyEntries);
+
+    private static bool WordMatches(string word, string token)
+    {
+        if (token.StartsWith(word, StringComparison.Ordinal)) return true;
+        if (word.Length < 4 || token.Length < 4) return false;
+        var common = 0;
+        while (common < word.Length && common < token.Length && word[common] == token[common]) common++;
+        // Ünsüz yumuşaması (kitap → kitabı, çizelge → çizelgeyi): son harf değişebilir.
+        return common >= Math.Max(4, word.Length - 1);
+    }
+
+    /// <summary>Anahtar ifade puanı: metinde bütün kelimeleri bulunan ifadelerin kelime sayısı toplamı.</summary>
+    private static int ScoreOf(AssistantHelpArticle article, string[] tokens) => article.Keywords
+        .Select(keyword => keyword.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        .Where(words => words.All(word => tokens.Any(token => WordMatches(word, token))))
+        .Sum(words => words.Length);
+
+    /// <summary>
+    /// Yapay zekâya sunulacak makaleleri soruya yakınlığa göre sıralar: anahtar ifade puanı, sonra başlık/adım
+    /// kelimesi örtüşmesi. Liste kısaltılınca (ilk N) seçim hem ucuz hem isabetli olur.
+    /// </summary>
+    public static IReadOnlyList<AssistantHelpArticle> RankForPrompt(string foldedText, IReadOnlyList<AssistantHelpArticle> visible)
+    {
+        var tokens = TokensOf(foldedText);
+        var words = tokens.Where(t => t.Length >= 4).ToArray();
+        int Overlap(AssistantHelpArticle article)
+        {
+            var text = AssistantText.Fold(article.TitleTr + " " + string.Join(' ', article.StepsTr));
+            var bag = TokensOf(text);
+            return words.Count(w => bag.Any(b => WordMatches(w.Length > 5 ? w[..5] : w, b)));
+        }
+        return visible.Select((article, index) => (article, index, score: ScoreOf(article, tokens) * 10 + Overlap(article)))
+            .OrderByDescending(x => x.score).ThenBy(x => x.index).Select(x => x.article).ToList();
+    }
+
     public static (AssistantHelpArticle? Article, bool OtherPortal) Match(string foldedText, string portal, IReadOnlyList<AssistantHelpArticle> visible)
     {
-        var tokens = foldedText.Split([' ', ',', '.', '?', '!', '\'', '’', ':', ';', '(', ')', '/', '-'], StringSplitOptions.RemoveEmptyEntries);
+        var tokens = TokensOf(foldedText);
 
-        static bool WordMatches(string word, string token)
-        {
-            if (token.StartsWith(word, StringComparison.Ordinal)) return true;
-            if (word.Length < 4 || token.Length < 4) return false;
-            var common = 0;
-            while (common < word.Length && common < token.Length && word[common] == token[common]) common++;
-            // Ünsüz yumuşaması (kitap → kitabı, çizelge → çizelgeyi): son harf değişebilir.
-            return common >= Math.Max(4, word.Length - 1);
-        }
-
-        int Score(AssistantHelpArticle article) => article.Keywords
-            .Select(keyword => keyword.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-            .Where(words => words.All(word => tokens.Any(token => WordMatches(word, token))))
-            .Sum(words => words.Length);
+        int Score(AssistantHelpArticle article) => ScoreOf(article, tokens);
 
         var ranked = Articles
             .Select(article => (Article: article, Score: Score(article)))

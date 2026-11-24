@@ -89,6 +89,45 @@ public sealed class AssistantDataQuestionEvalTests
     public void Resolves(string message, AssistantIntent expected) => Assert.Equal(expected, R(message).Intent);
 
     [Theory]
+    // ── Kurum sahibi / şube yöneticisi: durum soruları ──
+    [InlineData("aboneliğim ne zaman bitiyor", AssistantIntent.Subscription)]
+    [InlineData("deneme süremiz ne zaman doluyor", AssistantIntent.Subscription)]
+    [InlineData("whatsapp kredim ne kadar", AssistantIntent.MessagingCredits)]
+    [InlineData("kaç sms hakkımız kaldı", AssistantIntent.MessagingCredits)]
+    [InlineData("bugün kasa kapanışı yapıldı mı", AssistantIntent.CashClosingStatus)]
+    [InlineData("gün sonu alındı mı", AssistantIntent.CashClosingStatus)]
+    [InlineData("bugün kim izinli", AssistantIntent.StaffToday)]
+    [InlineData("yarın kimler çalışıyor", AssistantIntent.StaffToday)]
+    [InlineData("aktif kampanyalar neler", AssistantIntent.Campaigns)]
+    [InlineData("kvkk onayı olmayan müşteriler", AssistantIntent.KvkkPending)]
+    [InlineData("kaç aktif hediye çeki var", AssistantIntent.GiftCards)]
+    [InlineData("fiyat listesi", AssistantIntent.ServicePrice)]
+    [InlineData("hizmetleriniz neler", AssistantIntent.ServicePrice)]
+    // ── Personel: kendisi ──
+    [InlineData("bu ay kaç işlem yaptım", AssistantIntent.MyWork)]
+    [InlineData("geçen hafta kaç müşteriye baktım", AssistantIntent.MyWork)]
+    [InlineData("yarınki randevularım", AssistantIntent.AppointmentsToday)]
+    [InlineData("yıldız puanım kaç", AssistantIntent.MyRating)]
+    // ── Müşteri: kendisi ──
+    [InlineData("borcum ne kadar", AssistantIntent.MyDebt)]
+    [InlineData("taksitlerim ne zaman", AssistantIntent.MyDebt)]
+    [InlineData("sadakat puanım kaç", AssistantIntent.Loyalty)]
+    [InlineData("hediye çekim var mı", AssistantIntent.GiftCards)]
+    [InlineData("salonun adresi ne", AssistantIntent.SalonInfo)]
+    [InlineData("kaçta açılıyorsunuz", AssistantIntent.SalonInfo)]
+    [InlineData("salon nerede", AssistantIntent.SalonInfo)]
+    [InlineData("telefon numaranız ne", AssistantIntent.SalonInfo)]
+    [InlineData("kalan seansım kaç", AssistantIntent.RemainingSessions)]
+    public void RoleStatusQuestions(string message, AssistantIntent expected) => Assert.Equal(expected, R(message).Intent);
+
+    [Theory]
+    // Ciro sorusu fiyat sorusu sanılmaz; fiyat sorusu ciro sanılmaz.
+    [InlineData("bugün kaç TL kazandık", AssistantIntent.Revenue)]
+    [InlineData("lazer kaç TL", AssistantIntent.ServicePrice)]
+    [InlineData("en çok çalışan personel", AssistantIntent.TopStaff)]
+    public void Disambiguation(string message, AssistantIntent expected) => Assert.Equal(expected, R(message).Intent);
+
+    [Theory]
     // "gelir" = gelmek fiili: gelir sorusu değildir.
     [InlineData("yarın gelirim")]
     [InlineData("müşteri kaçta gelir")]
