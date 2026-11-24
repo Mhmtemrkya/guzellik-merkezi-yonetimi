@@ -1,5 +1,6 @@
 using GuzellikMerkezi.Application.Common;
 using GuzellikMerkezi.Application.Features.PlatformMessaging;
+using GuzellikMerkezi.Domain.Enums;
 
 namespace GuzellikMerkezi.Application.Features.WhatsApp;
 
@@ -100,9 +101,10 @@ public interface IWhatsAppService
     /// da teslimat sayılmaz (SMS/e-posta ile aynı kural).
     /// </para>
     /// <para>
-    /// Serbest metindir — Meta'nın 24 saat penceresi kapalıysa iletilmez ve sebep hata olarak döner.
-    /// Randevu hatırlatması bu yoldan DEĞİL, onaylı şablonu kullanan
-    /// <see cref="SendReminderAsync"/> üzerinden gider.
+    /// Müşteri son 24 saatte yazdıysa kurumun metni olduğu gibi (serbest metin) gider. Pencere
+    /// kapalıysa Meta serbest metni İLETMEZ; o durumda tetikleyiciye karşılık gelen onaylı şablon
+    /// kullanılır (<paramref name="trigger"/>). Randevu hatırlatması bu yoldan DEĞİL, onaylı şablonu
+    /// kullanan <see cref="SendReminderAsync"/> üzerinden gider.
     /// </para>
     /// </summary>
     /// <param name="marketing">
@@ -110,7 +112,8 @@ public interface IWhatsAppService
     /// seans yenileme, elle kampanya) Marketing'tir: pahalıdır ve kurumun açıkça izin vermesini
     /// gerektirir. Hatırlatma/ödeme bildirimi Utility'dir.
     /// </param>
-    Task<MessagingTestResult> SendNotificationAsync(Guid tenantId, Guid customerId, string body, bool marketing, CancellationToken cancellationToken = default);
+    /// <param name="trigger">Hangi onaylı şablonun kullanılacağını belirler (pencere kapalıyken).</param>
+    Task<MessagingTestResult> SendNotificationAsync(Guid tenantId, Guid customerId, string body, bool marketing, NotificationTrigger trigger, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// RANDEVU HATIRLATMASI bildirim şablonundan (Bildirimler sayfası, elle/toplu) gönderildiğinde: müşterinin

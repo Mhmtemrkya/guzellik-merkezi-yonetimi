@@ -655,7 +655,19 @@ public sealed class WhatsAppService : IWhatsAppService
         return new MessagingTestResult(sent.Sent, sent.Simulated, sent.ProviderMessageId, sent.Error);
     }
 
-    public async Task<MessagingTestResult> SendNotificationAsync(Guid tenantId, Guid customerId, string body, bool marketing, CancellationToken ct = default)
+    /// <summary>
+    /// Bildirim tetikleyicisi → Meta'da onaylı şablon adı. Bu şablonlar BeautyAsist'in platform
+    /// WhatsApp hesabında açıldı (24 Kas 2026). Eskiden bu bildirimler yalnız serbest metin
+    /// gidiyordu: müşteri son 24 saatte yazmadıysa Meta mesajı kabul edip birkaç saniye sonra
+    /// "teslim edilemedi" diye düşürüyordu — kurum "gönderildi" görüyor, müşteriye hiçbir şey ulaşmıyordu.
+    /// </summary>
+    internal const string PaymentDueTemplateName = "odeme_hatirlatma";
+    internal const string SessionRenewalTemplateName = "paket_yenileme";
+    internal const string WinBackTemplateName = "sizi_ozledik";
+    internal const string BirthdayTemplateName = "dogum_gunu";
+    internal const string CampaignTemplateName = "kampanya_duyuru";
+
+    public async Task<MessagingTestResult> SendNotificationAsync(Guid tenantId, Guid customerId, string body, bool marketing, NotificationTrigger trigger, CancellationToken ct = default)
     {
         try
         {
@@ -664,9 +676,32 @@ public sealed class WhatsAppService : IWhatsAppService
             if (customer is null || string.IsNullOrWhiteSpace(customer.Phone))
                 return new MessagingTestResult(false, false, null, "Müşterinin telefon numarası yok.");
 
+            // Şablon parametreleri (pencere kapalıyken kullanılır). Şablonlar {{1}} = müşterinin adı,
+            // {{2}} = salon (seans yenilemede paket adı), {{3}} = kampanya metni bekler.
+            var firstName = FirstName(customer.FullName);
+            var salonName = await SalonNameAsync(tenantId, customer.BranchId, ct);
+            TemplateFallback? template = trigger switch
+            {
+                NotificationTrigger.PaymentDue => new TemplateFallback(PaymentDueTemplateName, "tr",
+                    new[] { TemplateParam(firstName, "Değerli müşterimiz"), TemplateParam(salonName, "Salonumuz") }),
+                NotificationTrigger.SessionRenewal => new TemplateFallback(SessionRenewalTemplateName, "tr",
+                    new[] { TemplateParam(firstName, "Değerli müşterimiz"),
+                            TemplateParam(await RenewalPackageNameAsync(tenantId, customer.Id, ct), "Seans") }),
+                NotificationTrigger.WinBack => new TemplateFallback(WinBackTemplateName, "tr",
+                    new[] { TemplateParam(firstName, "Değerli müşterimiz"), TemplateParam(salonName, "Salonumuz") }),
+                NotificationTrigger.BirthdayGreeting => new TemplateFallback(BirthdayTemplateName, "tr",
+                    new[] { TemplateParam(firstName, "Değerli müşterimiz"), TemplateParam(salonName, "Salonumuz") }),
+                NotificationTrigger.Campaign or NotificationTrigger.Manual => new TemplateFallback(CampaignTemplateName, "tr",
+                    new[] { TemplateParam(firstName, "Değerli müşterimiz"), TemplateParam(salonName, "Salonumuz"),
+                            // Meta şablon gövdesi en çok 1024 karakter: sabit metin (~100) + ad/salon payı.
+                            ClipTemplateParam(TemplateParam(body, "-"), 800) }),
+                _ => null,
+            };
+
             var category = marketing ? WhatsAppMessageCategory.Marketing : WhatsAppMessageCategory.Utility;
             var result = await DispatchAsync(tenantId, customer.BranchId, appointmentId: null, customer.Id,
-                waitlistEntryId: null, customer.Phone!, body, category, templateName: "notification", ct);
+                waitlistEntryId: null, customer.Phone!, body, category, templateName: "notification", ct,
+                templateFallback: s => template is null ? null : template with { LanguageCode = s?.TemplateLanguageCode ?? "tr" });
 
             // Engellenen gönderim de BAŞARISIZDIR: sebep (paket/kota/kontör/kampanya izni) çağırana
             // aynen taşınır ki bildirim geçmişinde "neden gitmedi" yazsın.
@@ -789,6 +824,29 @@ public sealed class WhatsAppService : IWhatsAppService
             : null;
         if (!string.IsNullOrWhiteSpace(name)) return name!;
         return await _db.Tenants.IgnoreQueryFilters().AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.Name).FirstOrDefaultAsync(ct) ?? "Salonumuz";
+    }
+
+    /// <summary>
+    /// Seans yenileme şablonundaki paket adı: müşterinin EN SON kullanılan, kalanı 0-1 olan paketi
+    /// (yenileme taramasının seçtiği paketle aynı ölçüt). Bulunamazsa null → şablonda yer tutucu.
+    /// </summary>
+    private async Task<string?> RenewalPackageNameAsync(Guid tenantId, Guid customerId, CancellationToken ct)
+    {
+        var rows = await _db.CustomerPackageSessions.IgnoreQueryFilters().AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.CustomerId == customerId && s.TotalSessions > 1)
+            .Select(s => new { s.ServicePackageId, s.TotalSessions, s.UsedSessions, s.UpdatedAtUtc })
+            .ToListAsync(ct);
+        var packageId = rows
+            .GroupBy(r => r.ServicePackageId)
+            .Where(g => g.Sum(x => x.TotalSessions - x.UsedSessions) <= 1)
+            .OrderByDescending(g => g.Max(x => x.UpdatedAtUtc))
+            .Select(g => (Guid?)g.Key)
+            .FirstOrDefault();
+        if (packageId is null) return null;
+        return await _db.ServicePackages.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.Id == packageId.Value)
+            .Select(p => p.Name)
+            .FirstOrDefaultAsync(ct);
     }
 
     /// <inheritdoc cref="SendWaitlistOfferAsync" />
@@ -1107,7 +1165,19 @@ public sealed class WhatsAppService : IWhatsAppService
                             var wamid = st.TryGetProperty("id", out var sid) ? sid.GetString() : null;
                             var statusStr = st.TryGetProperty("status", out var ss) ? ss.GetString() : null;
                             if (string.IsNullOrWhiteSpace(wamid) || string.IsNullOrWhiteSpace(statusStr)) continue;
-                            await ProcessStatusAsync(wamid!, statusStr!, ct);
+                            // Meta'nın ret sebebi (failed durumunda): errors[0].code / title.
+                            int? errorCode = null;
+                            string? errorTitle = null;
+                            if (st.TryGetProperty("errors", out var errs) && errs.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var e in errs.EnumerateArray())
+                                {
+                                    if (e.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.Number && code.TryGetInt32(out var c)) errorCode = c;
+                                    if (e.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String) errorTitle = title.GetString();
+                                    break;
+                                }
+                            }
+                            await ProcessStatusAsync(wamid!, statusStr!, ct, errorCode, errorTitle);
                         }
                     }
 
@@ -1205,7 +1275,7 @@ public sealed class WhatsAppService : IWhatsAppService
     }
 
     /// <summary>Meta teslim durumu (delivered/read/failed) → mesajı işaretle + kontörü kesinleştir/iade et.</summary>
-    private async Task ProcessStatusAsync(string wamid, string status, CancellationToken ct)
+    private async Task ProcessStatusAsync(string wamid, string status, CancellationToken ct, int? errorCode = null, string? errorTitle = null)
     {
         var msg = await _db.WhatsAppMessages.IgnoreQueryFilters()
             .FirstOrDefaultAsync(m => m.ProviderMessageId == wamid && m.Direction == WhatsAppMessageDirection.Outbound, ct);
@@ -1224,14 +1294,53 @@ public sealed class WhatsAppService : IWhatsAppService
             }
             case "failed":
             {
-                if (msg.MarkFailed("Meta: teslim edilemedi"))
+                var reason = DeliveryFailureReason(errorCode, errorTitle);
+                if (msg.MarkFailed(reason))
                 {
+                    // BİLDİRİM GEÇMİŞİ DE DÜZELİR. Meta mesajı önce kabul edip (wamid döner) sonra
+                    // düşürdüğünde bildirim satırı "Gönderildi" kalıyordu; kurum gitmeyen mesajı
+                    // gitti sanıyordu (24 Kas 2026 canlıda görüldü).
+                    await MarkNotificationLogFailedAsync(msg, reason, ct);
                     await _db.SaveChangesAsync(ct);
                     await _billing.RefundAsync(msg, ct); // rezervasyonu iade et
                 }
                 break;
             }
         }
+    }
+
+    /// <summary>Meta'nın teslim hatası kodunu kurumun anlayacağı Türkçe sebebe çevirir.</summary>
+    internal static string DeliveryFailureReason(int? code, string? title) => code switch
+    {
+        131047 => "Meta teslim etmedi: müşteri son 24 saatte yazmadığı için yalnız onaylı şablonla mesaj gönderilebilir.",
+        131026 => "Meta teslim etmedi: numara WhatsApp kullanmıyor ya da mesajı alamıyor.",
+        131049 => "Meta teslim etmedi: bu müşteriye kısa sürede çok pazarlama mesajı gitti (Meta sınırı).",
+        131050 => "Meta teslim etmedi: müşteri pazarlama mesajlarını almayı kapatmış.",
+        132001 => "Meta teslim etmedi: WhatsApp şablonu henüz onaylanmamış ya da bulunamadı.",
+        131042 => "Meta teslim etmedi: WhatsApp hesabında ödeme yöntemi sorunu var.",
+        null => "Meta: teslim edilemedi",
+        _ => string.IsNullOrWhiteSpace(title) ? $"Meta teslim etmedi (kod {code})." : $"Meta teslim etmedi (kod {code}): {title}",
+    };
+
+    /// <summary>
+    /// Toplu/otomatik bildirimden doğan WhatsApp mesajı sonradan düştüyse, karşılık gelen bildirim
+    /// satırını "Başarısız" yapar. İki kayıt arasında yabancı anahtar yok: aynı kurum + müşteri +
+    /// WhatsApp kanalı ve mesajın oluşturulmasından hemen sonra "Gönderildi" işaretlenmiş EN YAKIN
+    /// satır eşleştirilir (bildirim satırı sağlayıcı yanıtının hemen ardından işaretlenir).
+    /// </summary>
+    private async Task MarkNotificationLogFailedAsync(WhatsAppMessage msg, string reason, CancellationToken ct)
+    {
+        if (msg.TemplateName != "notification" || msg.CustomerId is null) return;
+        var from = msg.CreatedAtUtc;
+        var until = msg.CreatedAtUtc.AddMinutes(2);
+        var log = await _db.NotificationLogs.IgnoreQueryFilters()
+            .Where(l => l.TenantId == msg.TenantId && l.CustomerId == msg.CustomerId
+                     && l.Channel == NotificationChannel.WhatsApp
+                     && l.Status == NotificationLogStatus.Sent
+                     && l.SentAtUtc >= from && l.SentAtUtc <= until)
+            .OrderBy(l => l.SentAtUtc)
+            .FirstOrDefaultAsync(ct);
+        log?.MarkFailed(reason);
     }
 
     /// <summary>
@@ -1761,6 +1870,9 @@ public sealed class WhatsAppService : IWhatsAppService
     /// <paramref name="fallback"/> kullanılır — bir müşteri adındaki kopyala-yapıştır satır sonu
     /// yüzünden hatırlatma kaybolmasın.</para>
     /// </summary>
+    private static string ClipTemplateParam(string value, int max) =>
+        value.Length <= max ? value : value[..(max - 1)].TrimEnd() + "…";
+
     private static string TemplateParam(string? value, string fallback)
     {
         var raw = (value ?? string.Empty).Trim();
