@@ -453,11 +453,45 @@
 }
 .footerLogos li {
   display: grid;
-  place-items: center;
-  padding-inline: clamp(9px, 2vw, 16px);
+  padding-inline: 6px;
 }
 .footerLogos li + li { border-inline-start: 1px solid var(--ba-brand-line); }
+/* Logolar marka sitelerine gider: hover'da hafif zemin, logo yukarı süzülür, köşede ↗ belirir; basınca küçülür. */
+.logoLink {
+  position: relative;
+  display: grid;
+  min-height: 44px;
+  place-items: center;
+  border-radius: 9px;
+  padding: 4px clamp(5px, 1.4vw, 10px);
+  transition: background-color 200ms ease;
+}
+.logoLink:focus-visible { outline: 2px solid var(--ba-brand-accent); outline-offset: 2px; }
 .footerLogos img { display: block; width: 100%; height: clamp(29px, 3vw, 41px); object-fit: contain; }
+.logoArrow {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  color: var(--ba-brand-accent);
+  opacity: 0;
+}
+.logoLink:focus-visible .logoArrow { opacity: 1; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .footerLogos img { transition: transform 220ms cubic-bezier(.23, 1, .32, 1); }
+  .logoArrow { transform: translate(-3px, 3px); transition: opacity 200ms cubic-bezier(.23, 1, .32, 1), transform 200ms cubic-bezier(.23, 1, .32, 1); }
+  .logoLink:focus-visible .logoArrow { transform: translate(0, 0); }
+  .logoLink { transition: background-color 200ms ease, transform 140ms cubic-bezier(.23, 1, .32, 1); }
+  .logoLink:active { transform: scale(.97); }
+}
+@media (hover: hover) and (pointer: fine) {
+  .logoLink:hover { background-color: #fce7f4; }
+  .logoLink:hover .logoArrow { opacity: 1; }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .logoLink:hover img { transform: translateY(-2px) scale(1.04); }
+  .logoLink:hover .logoArrow { transform: translate(0, 0); }
+}
 .copyright { color: var(--ba-brand-line); font-size: .77rem; }
 
 @media (prefers-reduced-motion: no-preference) {

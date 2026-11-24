@@ -222,8 +222,18 @@ function SiteFooter() {
         </div>
         <div className={styles.footerCredits}>
           <ul className={styles.footerLogos} aria-label="Marka logoları">
-            <li><Image src="/landing/brands/maydanoz-yazilim.webp" alt="Maydanoz Yazılım" width={624} height={240} unoptimized /></li>
-            <li><Image src="/landing/brands/ajans-orkestra.webp" alt="Ajans Orkestra" width={951} height={206} unoptimized /></li>
+            <li>
+              <a className={styles.logoLink} href="https://maydanozasist.com" target="_blank" rel="noopener" aria-label="Maydanoz Yazılım (yeni sekmede açılır)">
+                <Image src="/landing/brands/maydanoz-yazilim.webp" alt="" width={624} height={240} unoptimized />
+                <ArrowUpRight className={styles.logoArrow} size={14} strokeWidth={2.4} aria-hidden="true" />
+              </a>
+            </li>
+            <li>
+              <a className={styles.logoLink} href="https://ajansorkestra.com" target="_blank" rel="noopener" aria-label="Ajans Orkestra (yeni sekmede açılır)">
+                <Image src="/landing/brands/ajans-orkestra.webp" alt="" width={951} height={206} unoptimized />
+                <ArrowUpRight className={styles.logoArrow} size={14} strokeWidth={2.4} aria-hidden="true" />
+              </a>
+            </li>
           </ul>
           <p className={styles.copyright}>© {new Date().getFullYear()} BeautyAsist. Tüm hakları saklıdır.</p>
         </div>
