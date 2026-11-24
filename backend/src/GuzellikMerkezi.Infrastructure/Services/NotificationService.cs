@@ -377,7 +377,7 @@ public sealed class NotificationService : INotificationService
                     // ikinci kez hatırlatırdı (20 Kas 2026 canlı testinde yaşandı).
                     (ok, error) = template.Trigger == NotificationTrigger.AppointmentReminder
                         ? Judge(await whatsApp.SendCustomerAppointmentReminderAsync(tenantId, c.Id, body, ct))
-                        : Judge(await whatsApp.SendNotificationAsync(tenantId, c.Id, body, marketing, ct));
+                        : Judge(await whatsApp.SendNotificationAsync(tenantId, c.Id, body, marketing, template.Trigger, ct));
                     break;
                 }
                 default:
